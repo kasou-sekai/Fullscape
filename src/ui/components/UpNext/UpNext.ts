@@ -8,6 +8,8 @@ import { Settings, Config } from "../../../types/fullscreen";
 export class UpNext {
     static upnextTimer: NodeJS.Timeout;
     static upNextShown = false;
+    private static readonly visibleTransform = "translateX(0px)";
+    private static readonly hiddenTransform = "translateX(calc(100% + 40px))";
 
     static async updateUpNextInfo() {
         const LOCALE = CFM.getGlobal("locale") as Config["locale"];
@@ -91,7 +93,9 @@ export class UpNext {
     }
 
     static showUpNext() {
-        DOM.fsd_myUp.style.transform = "translateX(0px)";
+        DOM.fsd_myUp.style.transform = this.visibleTransform;
+        DOM.fsd_myUp.style.opacity = "1";
+        DOM.fsd_myUp.style.pointerEvents = "auto";
         this.upNextShown = true;
         if (DOM.fsd_second_span.offsetWidth > DOM.fsd_next_tit_art.offsetWidth - 2) {
             this.setupScrollingAnimation();
@@ -102,7 +106,9 @@ export class UpNext {
 
     static hideUpNext() {
         this.upNextShown = false;
-        DOM.fsd_myUp.style.transform = "translateX(600px)";
+        DOM.fsd_myUp.style.transform = this.hiddenTransform;
+        DOM.fsd_myUp.style.opacity = "0";
+        DOM.fsd_myUp.style.pointerEvents = "none";
         this.resetUpNextAnimation();
     }
 
@@ -139,13 +145,15 @@ export class UpNext {
                     clearTimeout(this.upnextTimer);
                 }
                 if (timetogo < 10) {
-                    if (!this.upNextShown || DOM.fsd_myUp.style.transform !== "translateX(0px)") {
+                    if (
+                        !this.upNextShown ||
+                        DOM.fsd_myUp.style.transform !== this.visibleTransform
+                    ) {
                         this.updateUpNext();
                     }
                     this.upNextShown = true;
                 } else {
-                    DOM.fsd_myUp.style.transform = "translateX(600px)";
-                    this.upNextShown = false;
+                    this.hideUpNext();
                     if (Spicetify.Player.isPlaying()) {
                         this.upnextTimer = setTimeout(() => {
                             this.updateUpNext();

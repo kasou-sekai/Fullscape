@@ -62,7 +62,9 @@
     }
     #fsd-title {
         font-size: 62px;
-        font-weight: 900;
+        font-weight: 700;
+        font-family: inherit;
+        font-synthesis: none;
     }
     @media (max-width: 900px), (max-height: 800px) {
         #fsd-title {

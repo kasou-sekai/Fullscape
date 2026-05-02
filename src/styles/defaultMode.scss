@@ -203,7 +203,9 @@
     }
     #fsd-title {
         font-size: var(--fsd-title-size);
-        font-weight: 900;
+        font-weight: 700;
+        font-family: inherit;
+        font-synthesis: none;
         transition: all var(--transition-duration) var(--transition-function);
     }
     #fsd-artist,

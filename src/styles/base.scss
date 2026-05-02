@@ -202,8 +202,12 @@
         flex-direction: row;
         text-align: right;
         z-index: 50;
-        transition: transform 0.75s ease-in-out;
-        transform: translateX(600px);
+        opacity: 0;
+        pointer-events: none;
+        transition:
+            transform 0.75s ease-in-out,
+            opacity 0.25s ease-in-out;
+        transform: translateX(calc(100% + 40px));
     }
     #fsd_next_art_image {
         background-size: cover;

@@ -4,6 +4,8 @@ import CFM from "../../../utils/config";
 type LyricLine = { time: number | null; text: string };
 
 export class Lyrics {
+    private static readonly REQUEST_TIMEOUT_MS = 12000;
+    private static readonly RETRY_DELAYS_MS = [0, 900, 1800, 3200];
     private static container: HTMLElement | null = null;
     private static lyricsRoot: HTMLElement | null = null;
     private static scrollbarThumb: HTMLElement | null = null;
@@ -18,6 +20,7 @@ export class Lyrics {
     private static isSynced = false;
     private static lastStatus: "synced" | "unsynced" | "unavailable" | "loading" = "unavailable";
     private static lastLines: LyricLine[] = [];
+    private static loadSequence = 0;
 
     static attach(container: HTMLElement) {
         this.container = container;
@@ -39,6 +42,7 @@ export class Lyrics {
         this.isSynced = false;
         this.lastStatus = "unavailable";
         this.lastLines = [];
+        this.loadSequence += 1;
     }
 
     static toggleLyrics() {
@@ -46,6 +50,7 @@ export class Lyrics {
     }
 
     static async loadLyrics(trackUri?: string) {
+        const sequence = ++this.loadSequence;
         if (!CFM.get("lyricsDisplay") || !trackUri) {
             this.renderStatus("Lyrics unavailable", true);
             return;
@@ -58,9 +63,8 @@ export class Lyrics {
             return;
         }
         try {
-            const response = await Spicetify.CosmosAsync.get(
-                `https://spclient.wg.spotify.com/color-lyrics/v2/track/${trackId}?format=json&market=from_token`,
-            );
+            const response = await this.getLyricsWithRetry(trackId, sequence);
+            if (!this.isCurrentLoad(sequence)) return;
             const lines = this.normalizeLines(response?.lyrics?.lines);
             if (!lines.length) {
                 this.renderStatus("Lyrics unavailable", true);
@@ -68,11 +72,62 @@ export class Lyrics {
             }
             this.applyLines(lines);
         } catch (err) {
+            if (!this.isCurrentLoad(sequence)) return;
             this.renderStatus("Lyrics unavailable", true);
         }
     }
 
     // ---- internal helpers ----
+
+    private static async getLyricsWithRetry(trackId: string, sequence: number) {
+        const url = `https://spclient.wg.spotify.com/color-lyrics/v2/track/${trackId}?format=json&market=from_token`;
+        let lastError: unknown;
+
+        for (let attempt = 0; attempt < this.RETRY_DELAYS_MS.length; attempt++) {
+            if (!this.isCurrentLoad(sequence)) throw new Error("Lyrics load superseded");
+            const delay = this.RETRY_DELAYS_MS[attempt];
+            if (delay) await this.sleep(delay);
+            if (!this.isCurrentLoad(sequence)) throw new Error("Lyrics load superseded");
+
+            try {
+                return await this.withTimeout(
+                    Spicetify.CosmosAsync.get(url),
+                    this.REQUEST_TIMEOUT_MS,
+                );
+            } catch (err) {
+                lastError = err;
+            }
+        }
+
+        throw lastError;
+    }
+
+    private static withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+        return new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(
+                () => reject(new Error("Lyrics request timed out")),
+                timeoutMs,
+            );
+            promise.then(
+                (value) => {
+                    clearTimeout(timeoutId);
+                    resolve(value);
+                },
+                (err) => {
+                    clearTimeout(timeoutId);
+                    reject(err);
+                },
+            );
+        });
+    }
+
+    private static sleep(ms: number) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    private static isCurrentLoad(sequence: number) {
+        return sequence === this.loadSequence;
+    }
 
     private static renderStatus(text: string, unavailable: boolean) {
         if (!this.container) return;
