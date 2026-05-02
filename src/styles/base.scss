@@ -396,7 +396,7 @@
             filter: none !important;
             transition: none !important;
             max-width: calc(100% - 60px);
-            margin: 0 0 calc(var(--lyrics-base-font-size) * var(--lyrics-font-scale, 1) * 0.35);
+            margin: 0 0 calc(var(--lyrics-base-font-size) * var(--lyrics-font-scale, 1) * 0.25);
         }
         .rnp-lyrics-scrollbar {
             display: none;

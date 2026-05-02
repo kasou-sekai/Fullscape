@@ -246,7 +246,7 @@ export class Lyrics {
         if (Math.abs(fontSize - this.lastMeasuredFontSize) > 0.5) {
             this.measureHeights();
         }
-        const baseGap = Math.max(28, Math.min(72, fontSize * 1.35));
+        const baseGap = Math.max(22, Math.min(58, fontSize * 1.0));
         const containerHeight = this.containerHeight || this.lyricsRoot.clientHeight || 1;
         const centerY = containerHeight * 0.38;
         const baseIndent = Math.max(12, Math.min(36, fontSize * 0.8));
@@ -355,7 +355,7 @@ export class Lyrics {
 
     private static measureHeights() {
         if (!this.lyricsRoot) return;
-        this.lineHeights = this.lineNodes.map((node) => node.getBoundingClientRect().height || 0);
+        this.lineHeights = this.lineNodes.map((node) => node.offsetHeight || node.scrollHeight || 0);
         this.containerHeight = this.lyricsRoot.clientHeight;
         this.lastMeasuredFontSize = this.getFontSize();
     }
