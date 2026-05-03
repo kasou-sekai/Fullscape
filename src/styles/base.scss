@@ -302,7 +302,9 @@
             left: 0;
             transform-origin: left center;
             line-height: 1.55;
+            width: calc(100% - 60px);
             max-width: calc(100% - 60px);
+            box-sizing: border-box;
             will-change: transform, filter, opacity;
             transition:
                 transform 0.5s var(--lyric-timing-function),
@@ -311,12 +313,25 @@
             opacity: 0.55;
         }
         .rnp-lyrics-line > div {
+            line-height: 1.32;
             transition:
                 opacity 0.4s ease,
                 font-weight 0.45s ease,
                 text-shadow 0.45s ease;
             color: var(--tertiary-color);
             white-space: pre-wrap;
+            line-break: strict;
+            word-break: auto-phrase;
+            overflow-wrap: break-word;
+            text-wrap: pretty;
+        }
+        .rnp-lyrics-line-original,
+        .rnp-lyrics-line-karaoke {
+            word-break: normal;
+            overflow-wrap: break-word;
+        }
+        .rnp-lyrics-line-original {
+            white-space: normal;
         }
         .rnp-lyrics-line-furigana,
         .rnp-lyrics-line-romaji,
@@ -336,18 +351,24 @@
             font-size: 0.58em;
         }
         .rnp-lyrics-line > .rnp-lyrics-line-karaoke {
-            line-height: inherit;
+            line-height: 1.32;
             white-space: normal;
             word-spacing: 0;
             letter-spacing: 0;
-            word-break: normal;
-            overflow-wrap: normal;
+            word-break: keep-all;
+            overflow-wrap: break-word;
         }
         .rnp-karaoke-word {
-            display: inline;
+            display: inline-block;
+            margin: 0;
+            padding: 0;
+            vertical-align: baseline;
+            transform: translateY(var(--karaoke-lift, 0em)) scale(var(--karaoke-scale, 1));
+            transform-origin: center bottom;
+            will-change: transform;
             transition:
                 color 0.2s ease,
-                transform 0.2s ease;
+                transform 0.08s linear;
         }
         .rnp-karaoke-word > span {
             background: linear-gradient(
@@ -364,9 +385,26 @@
         .rnp-karaoke-word.active {
             color: var(--primary-color);
         }
+        .rnp-karaoke-word.glowing > span {
+            text-shadow:
+                0 0 calc(7px + 16px * var(--karaoke-glow, 0))
+                    rgba(var(--main-color), calc(0.14 + 0.34 * var(--karaoke-glow, 0))),
+                0 0 calc(14px + 30px * var(--karaoke-glow, 0))
+                    rgba(var(--main-color), calc(0.08 + 0.24 * var(--karaoke-glow, 0)));
+        }
         .rnp-karaoke-word.finished > span {
             background: none;
             color: var(--primary-color);
+            text-shadow:
+                0 0 7px rgba(var(--main-color), 0.12),
+                0 0 14px rgba(var(--main-color), 0.08);
+        }
+        .rnp-karaoke-word.finished.glowing > span {
+            text-shadow:
+                0 0 calc(7px + 16px * var(--karaoke-glow, 0))
+                    rgba(var(--main-color), calc(0.14 + 0.34 * var(--karaoke-glow, 0))),
+                0 0 calc(14px + 30px * var(--karaoke-glow, 0))
+                    rgba(var(--main-color), calc(0.08 + 0.24 * var(--karaoke-glow, 0)));
         }
         .rnp-lyrics-line.active {
             z-index: 2;

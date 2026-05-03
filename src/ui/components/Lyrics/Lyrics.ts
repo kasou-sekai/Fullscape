@@ -230,10 +230,10 @@ export class Lyrics {
             ? `<div class="rnp-lyrics-line-karaoke">${line
                   .words!.map(
                       (word) =>
-                          `<span class="rnp-karaoke-word" data-time="${word.time}" data-duration="${word.duration}"><span>${this.escapeHtml(word.text)}</span></span>`,
+                          `<span class="rnp-karaoke-word" data-time="${word.time}" data-duration="${word.duration}"><span>${this.formatLyricText(word.text)}</span></span>`,
                   )
                   .join("")}</div>`
-            : `<div class="rnp-lyrics-line-original">${this.escapeHtml(line.text)}</div>`;
+            : `<div class="rnp-lyrics-line-original">${this.formatLyricText(line.text)}</div>`;
 
         const romanization =
             CFM.get("showLyricsRomanization") && line.romanization
@@ -258,6 +258,12 @@ export class Lyrics {
             .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#039;");
+    }
+
+    private static formatLyricText(text: string) {
+        return this.escapeHtml(text)
+            .replace(/([\t \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+)/g, "$1<wbr>")
+            .replace(/([,.;:!?，。！？、；：…~～\-‐‑‒–—―/\\|)\]）】」』》〉]+)/g, "$1<wbr>");
     }
 
     private static startLoop() {
@@ -306,18 +312,68 @@ export class Lyrics {
             if (idx === this.activeIndex) return;
             lineNode.querySelectorAll<HTMLElement>(".rnp-karaoke-word").forEach((wordNode) => {
                 wordNode.style.setProperty("--karaoke-progress", "0%");
-                wordNode.classList.remove("active", "finished");
+                wordNode.style.setProperty("--karaoke-lift", "0em");
+                wordNode.style.setProperty("--karaoke-scale", "1");
+                wordNode.style.setProperty("--karaoke-glow", "0");
+                wordNode.classList.remove("active", "finished", "glowing");
             });
         });
 
-        activeLine.querySelectorAll<HTMLElement>(".rnp-karaoke-word").forEach((wordNode) => {
+        const currentLine = this.lines[this.activeIndex];
+        const nextLine = this.lines[this.activeIndex + 1];
+        const lineEndCandidates = [
+            currentLine?.time !== null && currentLine?.duration
+                ? currentLine.time + currentLine.duration
+                : null,
+            nextLine?.time ?? null,
+        ].filter((time): time is number => Number.isFinite(time));
+        const lineEnd = lineEndCandidates.length ? Math.min(...lineEndCandidates) : null;
+        const wordNodes = Array.from(activeLine.querySelectorAll<HTMLElement>(".rnp-karaoke-word"));
+
+        wordNodes.forEach((wordNode, idx) => {
             const time = Number(wordNode.dataset.time);
             const duration = Number(wordNode.dataset.duration);
             if (!Number.isFinite(time) || !Number.isFinite(duration) || duration <= 0) return;
-            const percent = Math.max(0, Math.min(1, (progress - time) / duration));
+            const nextWordTime = Number(wordNodes[idx + 1]?.dataset.time);
+            const wordEndCandidates = [
+                time + duration,
+                Number.isFinite(nextWordTime) ? nextWordTime : null,
+                idx === wordNodes.length - 1 ? lineEnd : null,
+            ].filter((end): end is number => Number.isFinite(end) && end > time);
+            const effectiveEnd = wordEndCandidates.length
+                ? Math.min(...wordEndCandidates)
+                : time + duration;
+            const effectiveDuration = Math.max(80, effectiveEnd - time);
+            const percent = Math.max(0, Math.min(1, (progress - time) / effectiveDuration));
+            const eased = percent * percent * (3 - 2 * percent);
+            const lift = 0.05 + (-0.07 - 0.05) * eased;
+            const scale = 0.998 + (1.012 - 0.998) * eased;
+            const isActive = progress >= time && progress < effectiveEnd;
+            const glowLevelMs = 100;
+            const maxGlowLevel = 10;
+            const peakGlowLevel = Math.min(
+                maxGlowLevel,
+                Math.ceil(effectiveDuration / glowLevelMs),
+            );
+            const activeGlowLevel = Math.min(
+                peakGlowLevel,
+                Math.max(0, (progress - time) / glowLevelMs),
+            );
+            const activeGlow = activeGlowLevel / maxGlowLevel;
+            const peakGlow = peakGlowLevel / maxGlowLevel;
+            const releaseDuration = Math.max(700, peakGlow * 1000);
+            const releaseAge = progress - effectiveEnd;
+            const isReleasing = releaseAge >= 0 && releaseAge < releaseDuration;
+            const releaseProgress = Math.max(0, Math.min(1, releaseAge / releaseDuration));
+            const releaseEase = releaseProgress * releaseProgress * (3 - 2 * releaseProgress);
+            const glow = progress < time ? 0 : isActive ? activeGlow : peakGlow * (1 - releaseEase);
             wordNode.style.setProperty("--karaoke-progress", `${percent * 100}%`);
-            wordNode.classList.toggle("active", percent > 0 && percent < 1);
+            wordNode.style.setProperty("--karaoke-lift", `${lift.toFixed(3)}em`);
+            wordNode.style.setProperty("--karaoke-scale", `${scale.toFixed(3)}`);
+            wordNode.style.setProperty("--karaoke-glow", `${glow.toFixed(3)}`);
+            wordNode.classList.toggle("active", isActive);
             wordNode.classList.toggle("finished", percent >= 1);
+            wordNode.classList.toggle("glowing", isActive || isReleasing);
         });
     }
 
