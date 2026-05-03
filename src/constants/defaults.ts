@@ -3,6 +3,11 @@ import { Config } from "../types/fullscreen";
 export const DEFAULTS: Config = {
     tv: {
         lyricsDisplay: true,
+        thirdPartyLyrics: true,
+        showLyricsTranslation: true,
+        showLyricsRomanization: true,
+        showLyricsFurigana: true,
+        karaokeLyrics: true,
         lyricsAlignment: "right",
         lyricsSize: 30,
         autoHideLyrics: true,
@@ -42,6 +47,11 @@ export const DEFAULTS: Config = {
     },
     def: {
         lyricsDisplay: true,
+        thirdPartyLyrics: true,
+        showLyricsTranslation: true,
+        showLyricsRomanization: true,
+        showLyricsFurigana: true,
+        karaokeLyrics: true,
         lyricsAlignment: "right",
         lyricsSize: 30,
         autoHideLyrics: true,

@@ -59,9 +59,12 @@
         },
         "lyricsHeader": "歌词设置",
         "lyrics": "歌词",
-        "lyricsDescription": [
-            "**提示:** 默认使用 Spotify 自带的歌词。"
-        ],
+        "lyricsDescription": ["**提示:** 默认使用 Spotify 自带的歌词。"],
+        "thirdPartyLyrics": "使用网易云增强歌词",
+        "showLyricsTranslation": "显示歌词翻译",
+        "showLyricsRomanization": "显示罗马音歌词",
+        "showLyricsFurigana": "显示注音歌词",
+        "karaokeLyrics": "使用逐字歌词",
         "lyricsAlignment": {
             "setting": "歌词对齐方式",
             "left": "靠左",

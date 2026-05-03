@@ -12,6 +12,11 @@ export type Config = {
 
 export type Settings = {
     lyricsDisplay: boolean;
+    thirdPartyLyrics: boolean;
+    showLyricsTranslation: boolean;
+    showLyricsRomanization: boolean;
+    showLyricsFurigana: boolean;
+    karaokeLyrics: boolean;
     lyricsAlignment: "right" | "left" | "center";
     lyricsSize: number;
     autoHideLyrics: boolean;

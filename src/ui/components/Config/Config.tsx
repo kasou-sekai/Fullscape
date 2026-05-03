@@ -11,10 +11,7 @@ import { headerText, getSettingCard, createAdjust, getAboutSection } from "../..
 import SeekableProgressBar from "../ProgressBar/ProgressBar";
 import SeekableVolumeBar from "../VolumeBar/VolumeBar";
 import OverviewCard from "../OverviewPopup/OverviewCard";
-import {
-    modifyRotationSpeed,
-    animateColor,
-} from "../../../utils/animation";
+import { modifyRotationSpeed, animateColor } from "../../../utils/animation";
 import { Lyrics } from "../Lyrics/Lyrics";
 
 export class ConfigManager {
@@ -37,7 +34,7 @@ export class ConfigManager {
         openwithTV: () => void,
         updateBackground: (meta: any, fromResize?: boolean) => Promise<void>,
         updateUpNextShow: () => void,
-        updateMainColor: (imageURL: string, meta: Spicetify.Metadata) => Promise<void>
+        updateMainColor: (imageURL: string, meta: Spicetify.Metadata) => Promise<void>,
     ) {
         this.render = render;
         this.activate = activate;
@@ -66,10 +63,11 @@ export class ConfigManager {
         const container = document.createElement("div");
         container.innerHTML = `
         <div class="setting-button-row">
-          <button class="main-buttons-button main-button-primary" id="mode-switch">${CFM.getGlobal("tvMode")
-                ? translations[LOCALE].settings.switchToFullscreen
-                : translations[LOCALE].settings.switchToTV
-            }</button>
+          <button class="main-buttons-button main-button-primary" id="mode-switch">${
+              CFM.getGlobal("tvMode")
+                  ? translations[LOCALE].settings.switchToFullscreen
+                  : translations[LOCALE].settings.switchToTV
+          }</button>
           <button class="main-buttons-button main-button-primary" id="mode-exit">
             ${translations[LOCALE].settings.exit}
           </button>
@@ -118,8 +116,8 @@ export class ConfigManager {
         const settingCard = getSettingCard(
             `<select>
                 ${Object.keys(options)
-                .map((item) => `<option value="${item}" dir="auto">${options[item]}</option>`)
-                .join("\n")}
+                    .map((item) => `<option value="${item}" dir="auto">${options[item]}</option>`)
+                    .join("\n")}
             </select>`,
             title,
             key,
@@ -214,7 +212,7 @@ export class ConfigManager {
     }
 
     private static createLyricsDebugCard() {
-        const { status, lines } = Lyrics.getDebugInfo();
+        const { status, lines, thirdParty } = Lyrics.getDebugInfo();
         const card = document.createElement("div");
         card.classList.add("setting-card");
 
@@ -246,12 +244,72 @@ export class ConfigManager {
         box.style.fontSize = "12px";
         box.style.lineHeight = "1.45";
 
+        const thirdPartyLines = [
+            "第三方歌词",
+            `启用: ${thirdParty.enabled ? "是" : "否"}`,
+            `状态: ${thirdParty.status}`,
+            `原因: ${thirdParty.reason}`,
+            thirdParty.track
+                ? `当前曲目: ${thirdParty.track.title} - ${thirdParty.track.artists || "未知艺人"} (${Math.round(thirdParty.track.duration / 1000)}s)`
+                : "当前曲目: 无",
+            thirdParty.spotifyFirst
+                ? `Spotify 首句: [${this.formatLyricTime(thirdParty.spotifyFirst.time)}] ${thirdParty.spotifyFirst.text}`
+                : "Spotify 首句: 无",
+            "Spotify 预览:",
+            thirdParty.spotifyPreview.length
+                ? thirdParty.spotifyPreview
+                      .map((line) => `  [${this.formatLyricTime(line.time)}] ${line.text}`)
+                      .join("\n")
+                : "  无",
+            thirdParty.matchedFirst
+                ? `第三方首句: [${this.formatLyricTime(thirdParty.matchedFirst.time)}] ${thirdParty.matchedFirst.text}`
+                : "第三方首句: 无",
+            thirdParty.matchedSong ? `匹配歌曲: ${thirdParty.matchedSong}` : "匹配歌曲: 无",
+            `第三方主歌词包含: 翻译 ${thirdParty.merged.translation} / 罗马音 ${thirdParty.merged.romanization} / 注音 ${thirdParty.merged.furigana} / 逐字 ${thirdParty.merged.karaoke}`,
+            "",
+            "候选:",
+            thirdParty.candidates.length
+                ? thirdParty.candidates
+                      .map((candidate, idx) => {
+                          const counts = candidate.counts
+                              ? ` lrc=${candidate.counts.lrc}, trans=${candidate.counts.translation}, roma=${candidate.counts.romanization}, furi=${candidate.counts.furigana}, dynamic=${candidate.counts.dynamic}`
+                              : "";
+                          const first = candidate.first
+                              ? ` first=[${this.formatLyricTime(candidate.first.time)}] ${candidate.first.text}`
+                              : "";
+                          const preview = candidate.preview?.length
+                              ? `\n   预览:\n${candidate.preview
+                                    .map(
+                                        (line) =>
+                                            `     [${this.formatLyricTime(line.time)}] ${line.text}`,
+                                    )
+                                    .join("\n")}`
+                              : "";
+                          return `${idx + 1}. ${candidate.name} - ${candidate.artists || "未知艺人"} (${candidate.id}) plausible=${candidate.plausible} match=${candidate.match}${counts}\n   ${candidate.reason}${first}${preview}`;
+                      })
+                      .join("\n")
+                : "无",
+            "",
+            "当前渲染歌词:",
+        ];
+
         if (lines.length) {
-            box.textContent = lines
-                .map((line, idx) => `[${this.formatLyricTime(line.time)}] (${idx + 1}) ${line.text}`)
+            const renderedLines = lines
+                .map((line, idx) => {
+                    const flags = [
+                        line.translation ? "翻译" : "",
+                        line.romanization ? "罗马音" : "",
+                        line.furigana ? "注音" : "",
+                        line.words?.length ? `逐字(${line.words.length})` : "",
+                    ]
+                        .filter(Boolean)
+                        .join(", ");
+                    return `[${this.formatLyricTime(line.time)}] (${idx + 1}) ${line.text}${flags ? `  <${flags}>` : ""}`;
+                })
                 .join("\n");
+            box.textContent = `${thirdPartyLines.join("\n")}\n${renderedLines}`;
         } else {
-            box.textContent = "暂无歌词数据";
+            box.textContent = `${thirdPartyLines.join("\n")}\n暂无歌词数据`;
         }
 
         desc.append(box);
@@ -340,6 +398,20 @@ export class ConfigManager {
                 },
                 translations[LOCALE].settings.lyricsDescription.join("<br>"),
             ),
+            this.createToggle(translations[LOCALE].settings.thirdPartyLyrics, "thirdPartyLyrics"),
+            this.createToggle(
+                translations[LOCALE].settings.showLyricsTranslation,
+                "showLyricsTranslation",
+            ),
+            this.createToggle(
+                translations[LOCALE].settings.showLyricsRomanization,
+                "showLyricsRomanization",
+            ),
+            this.createToggle(
+                translations[LOCALE].settings.showLyricsFurigana,
+                "showLyricsFurigana",
+            ),
+            this.createToggle(translations[LOCALE].settings.karaokeLyrics, "karaokeLyrics"),
             this.createToggle(translations[LOCALE].settings.autoHideLyrics, "autoHideLyrics"),
             this.createOptions(
                 translations[LOCALE].settings.lyricsAlignment.setting,
@@ -360,7 +432,8 @@ export class ConfigManager {
                 1,
                 12,
                 99,
-                (value: number) => this.saveOption("lyricsSize", value as unknown as Settings["lyricsSize"]),
+                (value: number) =>
+                    this.saveOption("lyricsSize", value as unknown as Settings["lyricsSize"]),
                 translations[LOCALE].settings.lyricsSize.description,
             ),
             this.createLyricsDebugCard(),
@@ -459,7 +532,9 @@ export class ConfigManager {
                             <OverviewCard
                                 onExit={this.deactivate}
                                 onToggle={() => {
-                                    CFM.getGlobal("tvMode") ? this.openwithDef() : this.openwithTV();
+                                    CFM.getGlobal("tvMode")
+                                        ? this.openwithDef()
+                                        : this.openwithTV();
                                 }}
                             />,
                             DOM.container.querySelector("#fsd-overview-card-parent"),

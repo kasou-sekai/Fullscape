@@ -318,6 +318,56 @@
             color: var(--tertiary-color);
             white-space: pre-wrap;
         }
+        .rnp-lyrics-line-furigana,
+        .rnp-lyrics-line-romaji,
+        .rnp-lyrics-line-translated {
+            margin-top: calc(var(--lyrics-base-font-size) * var(--lyrics-font-scale, 1) * 0.15);
+            font-size: 0.62em;
+            line-height: 1.35;
+            opacity: 0.78;
+        }
+        .rnp-lyrics-line-translated {
+            font-size: 0.66em;
+            font-family: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC",
+                "Source Han Sans SC", sans-serif;
+            font-weight: 400;
+        }
+        .rnp-lyrics-line-furigana {
+            font-size: 0.58em;
+        }
+        .rnp-lyrics-line > .rnp-lyrics-line-karaoke {
+            line-height: inherit;
+            white-space: normal;
+            word-spacing: 0;
+            letter-spacing: 0;
+            word-break: normal;
+            overflow-wrap: normal;
+        }
+        .rnp-karaoke-word {
+            display: inline;
+            transition:
+                color 0.2s ease,
+                transform 0.2s ease;
+        }
+        .rnp-karaoke-word > span {
+            background: linear-gradient(
+                90deg,
+                var(--primary-color) 0%,
+                var(--primary-color) var(--karaoke-progress, 0%),
+                var(--tertiary-color) var(--karaoke-progress, 0%),
+                var(--tertiary-color) 100%
+            );
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+        }
+        .rnp-karaoke-word.active {
+            color: var(--primary-color);
+        }
+        .rnp-karaoke-word.finished > span {
+            background: none;
+            color: var(--primary-color);
+        }
         .rnp-lyrics-line.active {
             z-index: 2;
             opacity: 1;
@@ -330,6 +380,14 @@
                 0 0 20px rgba(var(--main-color), 0.12),
                 0 4px 16px rgba(var(--main-color), 0.1);
             animation: rnp-lyric-glow 3s ease-in-out infinite;
+        }
+        .rnp-lyrics-line.active .rnp-lyrics-line-furigana,
+        .rnp-lyrics-line.active .rnp-lyrics-line-romaji,
+        .rnp-lyrics-line.active .rnp-lyrics-line-translated {
+            color: var(--secondary-color);
+            font-weight: 500;
+            text-shadow: none;
+            animation: none;
         }
         @keyframes rnp-lyric-glow {
             0%,
@@ -360,7 +418,9 @@
             background-color: var(--primary-color);
             opacity: 0.22;
             border-radius: 999px;
-            transition: top 0.4s ease, opacity 0.25s ease;
+            transition:
+                top 0.4s ease,
+                opacity 0.25s ease;
         }
         .rnp-lyrics-scrollbar-thumb.no-scroll {
             opacity: 0;

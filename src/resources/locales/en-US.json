@@ -59,9 +59,12 @@
         },
         "lyricsHeader": "Lyrics Settings",
         "lyrics": "Lyrics",
-        "lyricsDescription": [
-            "**Tip:** Uses Spotify's built-in lyrics when available."
-        ],
+        "lyricsDescription": ["**Tip:** Uses Spotify's built-in lyrics when available."],
+        "thirdPartyLyrics": "Enhance Lyrics from NetEase",
+        "showLyricsTranslation": "Show Lyric Translation",
+        "showLyricsRomanization": "Show Romanized Lyrics",
+        "showLyricsFurigana": "Show Furigana Lyrics",
+        "karaokeLyrics": "Use Word-by-word Lyrics",
         "lyricsAlignment": {
             "setting": "Lyrics Alignment",
             "left": "Left",

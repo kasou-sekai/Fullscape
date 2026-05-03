@@ -1,7 +1,12 @@
 import { DOM } from "../../elements";
 import CFM from "../../../utils/config";
+import {
+    EnhancedLyricLine,
+    enhanceWithThirdPartyLyrics,
+    getThirdPartyLyricsDebug,
+} from "../../../services/third-party-lyrics";
 
-type LyricLine = { time: number | null; text: string };
+type LyricLine = EnhancedLyricLine;
 
 export class Lyrics {
     private static readonly REQUEST_TIMEOUT_MS = 12000;
@@ -65,6 +70,16 @@ export class Lyrics {
         try {
             const response = await this.getLyricsWithRetry(trackId, sequence);
             if (!this.isCurrentLoad(sequence)) return;
+            if (CFM.get("thirdPartyLyrics")) {
+                const thirdPartyLines = await enhanceWithThirdPartyLyrics(
+                    this.normalizeLines(response?.lyrics?.lines),
+                );
+                if (!this.isCurrentLoad(sequence)) return;
+                if (thirdPartyLines.length) {
+                    this.applyLines(thirdPartyLines);
+                    return;
+                }
+            }
             const lines = this.normalizeLines(response?.lyrics?.lines);
             if (!lines.length) {
                 this.renderStatus("Lyrics unavailable", true);
@@ -73,6 +88,14 @@ export class Lyrics {
             this.applyLines(lines);
         } catch (err) {
             if (!this.isCurrentLoad(sequence)) return;
+            if (CFM.get("thirdPartyLyrics")) {
+                const thirdPartyLines = await enhanceWithThirdPartyLyrics([]);
+                if (!this.isCurrentLoad(sequence)) return;
+                if (thirdPartyLines.length) {
+                    this.applyLines(thirdPartyLines);
+                    return;
+                }
+            }
             this.renderStatus("Lyrics unavailable", true);
         }
     }
@@ -150,9 +173,7 @@ export class Lyrics {
     }
 
     private static applyLines(lines: LyricLine[]) {
-        const timeValues = lines
-            .map((line) => line.time)
-            .filter((t): t is number => t !== null);
+        const timeValues = lines.map((line) => line.time).filter((t): t is number => t !== null);
         const lastTime = timeValues.length ? timeValues[timeValues.length - 1] : null;
         const hasNonZero = timeValues.some((t) => t > 0);
         this.isSynced = Boolean(timeValues.length && hasNonZero && (lastTime ?? 0) > 0);
@@ -173,7 +194,7 @@ export class Lyrics {
             .map(
                 (line, idx) =>
                     `<div class="rnp-lyrics-line" data-index="${idx}" data-time="${line.time ?? ""}">
-                        <div class="rnp-lyrics-line-original">${line.text}</div>
+                        ${this.renderLineContent(line)}
                     </div>`,
             )
             .join("");
@@ -187,8 +208,12 @@ export class Lyrics {
                 </div>
             </div>`;
         this.lyricsRoot = this.container.querySelector(".rnp-lyrics") as HTMLElement;
-        this.scrollbarThumb = this.container.querySelector(".rnp-lyrics-scrollbar-thumb") as HTMLElement;
-        this.lineNodes = Array.from(this.container.querySelectorAll<HTMLElement>(".rnp-lyrics-line"));
+        this.scrollbarThumb = this.container.querySelector(
+            ".rnp-lyrics-scrollbar-thumb",
+        ) as HTMLElement;
+        this.lineNodes = Array.from(
+            this.container.querySelectorAll<HTMLElement>(".rnp-lyrics-line"),
+        );
         if (!this.isSynced) {
             this.stopLoop();
             this.lineNodes.forEach((node, idx) => node.classList.toggle("active", idx === 0));
@@ -197,6 +222,42 @@ export class Lyrics {
         this.measureHeights();
         this.applyTransforms(true);
         this.setupResizeObserver();
+    }
+
+    private static renderLineContent(line: LyricLine) {
+        const showKaraoke = CFM.get("karaokeLyrics") && Boolean(line.words?.length);
+        const original = showKaraoke
+            ? `<div class="rnp-lyrics-line-karaoke">${line
+                  .words!.map(
+                      (word) =>
+                          `<span class="rnp-karaoke-word" data-time="${word.time}" data-duration="${word.duration}"><span>${this.escapeHtml(word.text)}</span></span>`,
+                  )
+                  .join("")}</div>`
+            : `<div class="rnp-lyrics-line-original">${this.escapeHtml(line.text)}</div>`;
+
+        const romanization =
+            CFM.get("showLyricsRomanization") && line.romanization
+                ? `<div class="rnp-lyrics-line-romaji">${this.escapeHtml(line.romanization)}</div>`
+                : "";
+        const furigana =
+            CFM.get("showLyricsFurigana") && line.furigana
+                ? `<div class="rnp-lyrics-line-furigana">${this.escapeHtml(line.furigana)}</div>`
+                : "";
+        const translation =
+            CFM.get("showLyricsTranslation") && line.translation
+                ? `<div class="rnp-lyrics-line-translated">${this.escapeHtml(line.translation)}</div>`
+                : "";
+
+        return `${original}${furigana}${romanization}${translation}`;
+    }
+
+    private static escapeHtml(text: string) {
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
     }
 
     private static startLoop() {
@@ -226,10 +287,38 @@ export class Lyrics {
             else break;
         }
 
-        if (nextIndex === this.activeIndex) return;
+        if (nextIndex === this.activeIndex) {
+            this.updateKaraokeProgress(progress);
+            return;
+        }
 
         this.activeIndex = nextIndex;
         this.applyTransforms();
+        this.updateKaraokeProgress(progress);
+    }
+
+    private static updateKaraokeProgress(progress: number) {
+        if (this.activeIndex < 0 || !CFM.get("karaokeLyrics")) return;
+        const activeLine = this.lineNodes[this.activeIndex];
+        if (!activeLine) return;
+
+        this.lineNodes.forEach((lineNode, idx) => {
+            if (idx === this.activeIndex) return;
+            lineNode.querySelectorAll<HTMLElement>(".rnp-karaoke-word").forEach((wordNode) => {
+                wordNode.style.setProperty("--karaoke-progress", "0%");
+                wordNode.classList.remove("active", "finished");
+            });
+        });
+
+        activeLine.querySelectorAll<HTMLElement>(".rnp-karaoke-word").forEach((wordNode) => {
+            const time = Number(wordNode.dataset.time);
+            const duration = Number(wordNode.dataset.duration);
+            if (!Number.isFinite(time) || !Number.isFinite(duration) || duration <= 0) return;
+            const percent = Math.max(0, Math.min(1, (progress - time) / duration));
+            wordNode.style.setProperty("--karaoke-progress", `${percent * 100}%`);
+            wordNode.classList.toggle("active", percent > 0 && percent < 1);
+            wordNode.classList.toggle("finished", percent >= 1);
+        });
     }
 
     private static applyTransforms(skipAnimation = false) {
@@ -239,8 +328,13 @@ export class Lyrics {
             this.measureHeights();
         }
         const hasActive = this.activeIndex >= 0;
-        const current = Math.max(0, Math.min(hasActive ? this.activeIndex : 0, this.lineNodes.length - 1));
-        this.lineNodes.forEach((node, idx) => node.classList.toggle("active", hasActive && idx === current));
+        const current = Math.max(
+            0,
+            Math.min(hasActive ? this.activeIndex : 0, this.lineNodes.length - 1),
+        );
+        this.lineNodes.forEach((node, idx) =>
+            node.classList.toggle("active", hasActive && idx === current),
+        );
 
         const fontSize = this.getFontSize();
         if (Math.abs(fontSize - this.lastMeasuredFontSize) > 0.5) {
@@ -262,7 +356,8 @@ export class Lyrics {
 
         const scaleByOffset = (offset: number) => Math.max(0.72, 1 - 0.12 * offset);
         const blurByOffset = (offset: number) => Math.min(4.5, offset * 0.9);
-        const opacityByOffset = (offset: number) => Math.max(0.32, 1 - Math.max(0, offset - 1) * 0.22);
+        const opacityByOffset = (offset: number) =>
+            Math.max(0.32, 1 - Math.max(0, offset - 1) * 0.22);
         const translateByOffset = (offset: number) => Math.max(0, baseIndent - offset * 6);
         const delayByOffset = (offset: number) => Math.min(6, offset) * 45;
 
@@ -355,7 +450,9 @@ export class Lyrics {
 
     private static measureHeights() {
         if (!this.lyricsRoot) return;
-        this.lineHeights = this.lineNodes.map((node) => node.offsetHeight || node.scrollHeight || 0);
+        this.lineHeights = this.lineNodes.map(
+            (node) => node.offsetHeight || node.scrollHeight || 0,
+        );
         this.containerHeight = this.lyricsRoot.clientHeight;
         this.lastMeasuredFontSize = this.getFontSize();
     }
@@ -391,13 +488,18 @@ export class Lyrics {
                 const text = `${line?.words ?? line?.text ?? line?.lyrics ?? ""}`.trim();
                 if (!text) return null;
                 const timeValue =
-                    line?.startTimeMs ?? line?.startTime ?? line?.time ?? line?.t ?? line?.offset ?? null;
+                    line?.startTimeMs ??
+                    line?.startTime ??
+                    line?.time ??
+                    line?.t ??
+                    line?.offset ??
+                    null;
                 const parsed =
                     typeof timeValue === "string"
                         ? Number.parseInt(timeValue, 10)
                         : typeof timeValue === "number"
-                            ? timeValue
-                            : null;
+                          ? timeValue
+                          : null;
                 return { text, time: Number.isFinite(parsed ?? NaN) ? parsed! : null };
             })
             .filter(Boolean) as LyricLine[];
@@ -408,6 +510,7 @@ export class Lyrics {
             status: this.lastStatus,
             isSynced: this.isSynced,
             lines: this.lastLines,
+            thirdParty: getThirdPartyLyricsDebug(),
         };
     }
 }
