@@ -331,7 +331,7 @@
             overflow-wrap: break-word;
         }
         .rnp-lyrics-line-original {
-            white-space: normal;
+            white-space: break-spaces;
         }
         .rnp-lyrics-line-furigana,
         .rnp-lyrics-line-romaji,
@@ -352,7 +352,7 @@
         }
         .rnp-lyrics-line > .rnp-lyrics-line-karaoke {
             line-height: 1.32;
-            white-space: normal;
+            white-space: break-spaces;
             word-spacing: 0;
             letter-spacing: 0;
             word-break: keep-all;
@@ -388,9 +388,9 @@
         .rnp-karaoke-word.glowing > span {
             text-shadow:
                 0 0 calc(7px + 16px * var(--karaoke-glow, 0))
-                    rgba(var(--main-color), calc(0.14 + 0.34 * var(--karaoke-glow, 0))),
+                    rgba(var(--main-color), calc(0.42 * var(--karaoke-glow, 0))),
                 0 0 calc(14px + 30px * var(--karaoke-glow, 0))
-                    rgba(var(--main-color), calc(0.08 + 0.24 * var(--karaoke-glow, 0)));
+                    rgba(var(--main-color), calc(0.28 * var(--karaoke-glow, 0)));
         }
         .rnp-karaoke-word.finished > span {
             background: none;
@@ -418,6 +418,11 @@
                 0 0 20px rgba(var(--main-color), 0.12),
                 0 4px 16px rgba(var(--main-color), 0.1);
             animation: rnp-lyric-glow 3s ease-in-out infinite;
+        }
+        .rnp-lyrics-line.active > .rnp-lyrics-line-karaoke {
+            color: var(--tertiary-color);
+            text-shadow: none;
+            animation: none;
         }
         .rnp-lyrics-line.active .rnp-lyrics-line-furigana,
         .rnp-lyrics-line.active .rnp-lyrics-line-romaji,

@@ -413,19 +413,20 @@ function parseDynamicLyrics(content: string, format: "yrc" | "klyric"): Enhanced
 }
 
 function appendLyricWord(words: LyricWord[], word: LyricWord) {
-    if (/^\s+$/.test(word.text)) {
+    if (isLyricWhitespace(word.text)) {
         const prev = words[words.length - 1];
         if (prev) {
-            prev.text += " ";
+            prev.text += word.text;
             prev.duration += word.duration;
         }
         return;
     }
 
-    const normalizedText = word.text.replace(/\s+/g, " ");
-    const prev = words[words.length - 1];
-    if (prev && normalizedText.trim() === "" && /\s$/.test(prev.text)) return;
-    words.push({ ...word, text: normalizedText });
+    words.push(word);
+}
+
+function isLyricWhitespace(text: string) {
+    return /^[\s\u1680\u2000-\u200a\u202f\u205f\u3000]+$/.test(text);
 }
 
 function buildThirdPartyLyrics(thirdParty: ThirdPartyLyrics): EnhancedLyricLine[] {

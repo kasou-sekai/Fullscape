@@ -228,10 +228,7 @@ export class Lyrics {
         const showKaraoke = CFM.get("karaokeLyrics") && Boolean(line.words?.length);
         const original = showKaraoke
             ? `<div class="rnp-lyrics-line-karaoke">${line
-                  .words!.map(
-                      (word) =>
-                          `<span class="rnp-karaoke-word" data-time="${word.time}" data-duration="${word.duration}"><span>${this.formatLyricText(word.text)}</span></span>`,
-                  )
+                  .words!.map((word) => this.renderKaraokeWord(word))
                   .join("")}</div>`
             : `<div class="rnp-lyrics-line-original">${this.formatLyricText(line.text)}</div>`;
 
@@ -249,6 +246,54 @@ export class Lyrics {
                 : "";
 
         return `${original}${furigana}${romanization}${translation}`;
+    }
+
+    private static renderKaraokeWord(word: NonNullable<LyricLine["words"]>[number]) {
+        const segments = this.splitKaraokeText(word.text);
+        if (segments.length <= 1) {
+            return this.renderKaraokeWordSegment(word.text, word.time, word.duration);
+        }
+
+        const weights = segments.map((segment) => this.getTextTimingWeight(segment));
+        const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+        let offset = 0;
+
+        return segments
+            .map((segment, idx) => {
+                const remaining = word.duration - offset;
+                const duration =
+                    idx === segments.length - 1
+                        ? remaining
+                        : (word.duration * weights[idx]) / totalWeight;
+                const html = this.renderKaraokeWordSegment(segment, word.time + offset, duration);
+                offset += duration;
+                return html;
+            })
+            .join("");
+    }
+
+    private static renderKaraokeWordSegment(text: string, time: number, duration: number) {
+        return `<span class="rnp-karaoke-word" data-time="${time}" data-duration="${duration}"><span>${this.formatLyricText(text)}</span></span>`;
+    }
+
+    private static splitKaraokeText(text: string) {
+        return (
+            text
+                .match(
+                    /.*?(?:[\t \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[,.;:!?，。！？、；：…~～\-‐‑‒–—―/\\|)\]）】」』》〉]+|$)/gu,
+                )
+                ?.filter(Boolean) ?? [text]
+        );
+    }
+
+    private static getTextTimingWeight(text: string) {
+        return Math.max(
+            1,
+            Array.from(text).filter(
+                (char) =>
+                    !/^[\t \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/.test(char),
+            ).length,
+        );
     }
 
     private static escapeHtml(text: string) {
