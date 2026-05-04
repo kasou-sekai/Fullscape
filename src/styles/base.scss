@@ -325,6 +325,17 @@
             overflow-wrap: break-word;
             text-wrap: pretty;
         }
+        .rnp-lyrics-line ruby {
+            ruby-align: center;
+            ruby-position: over;
+        }
+        .rnp-lyrics-line rt {
+            color: var(--secondary-color);
+            font-size: 0.42em;
+            font-weight: 500;
+            line-height: 1;
+            text-shadow: none;
+        }
         .rnp-lyrics-line-original,
         .rnp-lyrics-line-karaoke {
             word-break: normal;
@@ -381,6 +392,11 @@
             background-clip: text;
             -webkit-background-clip: text;
             color: transparent;
+        }
+        .rnp-karaoke-word > span rt {
+            color: var(--secondary-color);
+            background: none;
+            -webkit-text-fill-color: var(--secondary-color);
         }
         .rnp-karaoke-word.active {
             color: var(--primary-color);

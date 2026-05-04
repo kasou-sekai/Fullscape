@@ -452,14 +452,11 @@ function buildThirdPartyLyrics(thirdParty: ThirdPartyLyrics): EnhancedLyricLine[
             line.time,
             MERGE_TIME_TOLERANCE_MS,
         );
-        const furigana = findNearestLine(thirdParty.furigana, line.time, MERGE_TIME_TOLERANCE_MS);
-
         return {
             ...line,
             text: line.text || plain?.text || "",
             translation: translation?.text,
             romanization: romanization?.text,
-            furigana: furigana?.text,
         };
     });
 }

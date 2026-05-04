@@ -7,6 +7,18 @@ import {
 } from "../../../services/third-party-lyrics";
 
 type LyricLine = EnhancedLyricLine;
+type FuriganaContext = {
+    readings: string[];
+    index: number;
+};
+type JapaneseReadingPart = {
+    text: string;
+    type: "kanji" | "kana" | "other";
+};
+type FuriganaAlignment = {
+    kanjiReadings: Record<number, string>;
+    score: number;
+};
 
 export class Lyrics {
     private static readonly REQUEST_TIMEOUT_MS = 12000;
@@ -226,32 +238,44 @@ export class Lyrics {
 
     private static renderLineContent(line: LyricLine) {
         const showKaraoke = CFM.get("karaokeLyrics") && Boolean(line.words?.length);
+        const showFurigana = CFM.get("showLyricsFurigana");
+        const furiganaContext = this.createFuriganaContext(line.romanization);
         const original = showKaraoke
             ? `<div class="rnp-lyrics-line-karaoke">${line
-                  .words!.map((word) => this.renderKaraokeWord(word))
+                  .words!.map((word) => this.renderKaraokeWord(word, showFurigana, furiganaContext))
                   .join("")}</div>`
-            : `<div class="rnp-lyrics-line-original">${this.formatLyricText(line.text)}</div>`;
+            : `<div class="rnp-lyrics-line-original">${this.formatLyricText(
+                  line.text,
+                  showFurigana,
+                  furiganaContext,
+              )}</div>`;
 
         const romanization =
             CFM.get("showLyricsRomanization") && line.romanization
                 ? `<div class="rnp-lyrics-line-romaji">${this.escapeHtml(line.romanization)}</div>`
-                : "";
-        const furigana =
-            CFM.get("showLyricsFurigana") && line.furigana
-                ? `<div class="rnp-lyrics-line-furigana">${this.escapeHtml(line.furigana)}</div>`
                 : "";
         const translation =
             CFM.get("showLyricsTranslation") && line.translation
                 ? `<div class="rnp-lyrics-line-translated">${this.escapeHtml(line.translation)}</div>`
                 : "";
 
-        return `${original}${furigana}${romanization}${translation}`;
+        return `${original}${romanization}${translation}`;
     }
 
-    private static renderKaraokeWord(word: NonNullable<LyricLine["words"]>[number]) {
+    private static renderKaraokeWord(
+        word: NonNullable<LyricLine["words"]>[number],
+        showFurigana: boolean,
+        furiganaContext?: FuriganaContext | null,
+    ) {
         const segments = this.splitKaraokeText(word.text);
         if (segments.length <= 1) {
-            return this.renderKaraokeWordSegment(word.text, word.time, word.duration);
+            return this.renderKaraokeWordSegment(
+                word.text,
+                word.time,
+                word.duration,
+                showFurigana,
+                furiganaContext,
+            );
         }
 
         const weights = segments.map((segment) => this.getTextTimingWeight(segment));
@@ -265,15 +289,27 @@ export class Lyrics {
                     idx === segments.length - 1
                         ? remaining
                         : (word.duration * weights[idx]) / totalWeight;
-                const html = this.renderKaraokeWordSegment(segment, word.time + offset, duration);
+                const html = this.renderKaraokeWordSegment(
+                    segment,
+                    word.time + offset,
+                    duration,
+                    showFurigana,
+                    furiganaContext,
+                );
                 offset += duration;
                 return html;
             })
             .join("");
     }
 
-    private static renderKaraokeWordSegment(text: string, time: number, duration: number) {
-        return `<span class="rnp-karaoke-word" data-time="${time}" data-duration="${duration}"><span>${this.formatLyricText(text)}</span></span>`;
+    private static renderKaraokeWordSegment(
+        text: string,
+        time: number,
+        duration: number,
+        showFurigana: boolean,
+        furiganaContext?: FuriganaContext | null,
+    ) {
+        return `<span class="rnp-karaoke-word" data-time="${time}" data-duration="${duration}"><span>${this.formatLyricText(text, showFurigana, furiganaContext)}</span></span>`;
     }
 
     private static splitKaraokeText(text: string) {
@@ -305,10 +341,492 @@ export class Lyrics {
             .replace(/'/g, "&#039;");
     }
 
-    private static formatLyricText(text: string) {
-        return this.escapeHtml(text)
+    private static formatLyricText(
+        text: string,
+        showFurigana = false,
+        furiganaContext?: FuriganaContext | null,
+    ) {
+        return showFurigana
+            ? this.renderAutoFurigana(text, furiganaContext)
+            : this.stripInlineFurigana(text);
+    }
+
+    private static formatPlainLyricText(text: string) {
+        return this.insertLyricBreaks(this.escapeHtml(text));
+    }
+
+    private static insertLyricBreaks(escapedText: string) {
+        return escapedText
             .replace(/([\t \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+)/g, "$1<wbr>")
             .replace(/([,.;:!?，。！？、；：…~～\-‐‑‒–—―/\\|)\]）】」』》〉]+)/g, "$1<wbr>");
+    }
+
+    private static renderAutoFurigana(text: string, furiganaContext?: FuriganaContext | null) {
+        return this.replaceInlineFurigana(
+            text,
+            (base, reading) => {
+                this.consumeFuriganaReadingsForText(base, furiganaContext);
+                return this.renderRuby(base, reading);
+            },
+            (segment) => this.renderGeneratedFurigana(segment, furiganaContext),
+        );
+    }
+
+    private static stripInlineFurigana(text: string) {
+        return this.replaceInlineFurigana(text, (base) => this.formatPlainLyricText(base));
+    }
+
+    private static replaceInlineFurigana(
+        text: string,
+        render: (base: string, reading: string) => string,
+        renderPlain?: (plain: string) => string,
+    ) {
+        const renderPlainText =
+            renderPlain ?? ((plain: string) => this.formatPlainLyricText(plain));
+        const patterns = [
+            /｜([^《》]+?)《([ぁ-ゖァ-ヺーゝゞヽヾ]+?)》/gu,
+            /([一-龯々〆ヶ]+)《([ぁ-ゖァ-ヺーゝゞヽヾ]+?)》/gu,
+            /([一-龯々〆ヶ]+)[（(]([ぁ-ゖァ-ヺーゝゞヽヾ]+?)[）)]/gu,
+        ];
+        let output = "";
+        let cursor = 0;
+
+        while (cursor < text.length) {
+            let next: {
+                index: number;
+                length: number;
+                base: string;
+                reading: string;
+            } | null = null;
+
+            for (const pattern of patterns) {
+                pattern.lastIndex = cursor;
+                const match = pattern.exec(text);
+                if (!match) continue;
+                if (!next || match.index < next.index) {
+                    next = {
+                        index: match.index,
+                        length: match[0].length,
+                        base: match[1],
+                        reading: match[2],
+                    };
+                }
+            }
+
+            if (!next) {
+                output += renderPlainText(text.slice(cursor));
+                break;
+            }
+
+            output += renderPlainText(text.slice(cursor, next.index));
+            output += render(next.base, next.reading);
+            cursor = next.index + next.length;
+        }
+
+        return output;
+    }
+
+    private static renderGeneratedFurigana(text: string, furiganaContext?: FuriganaContext | null) {
+        let output = "";
+        const japaneseToken = /[一-龯々〆ヶぁ-ゖァ-ヺー]+/gu;
+        let cursor = 0;
+        let match: RegExpExecArray | null;
+
+        while ((match = japaneseToken.exec(text))) {
+            output += this.formatPlainLyricText(text.slice(cursor, match.index));
+            output += this.renderGeneratedFuriganaToken(match[0], furiganaContext);
+            cursor = match.index + match[0].length;
+        }
+
+        output += this.formatPlainLyricText(text.slice(cursor));
+        return output;
+    }
+
+    private static renderGeneratedFuriganaToken(
+        token: string,
+        furiganaContext?: FuriganaContext | null,
+    ) {
+        const reading = this.consumeFuriganaReadingsForText(token, furiganaContext);
+        if (!this.hasKanji(token)) return this.formatPlainLyricText(token);
+        if (reading) return this.renderTokenWithReading(token, reading);
+        return this.formatPlainLyricText(token);
+    }
+
+    private static createFuriganaContext(romanization?: string): FuriganaContext | null {
+        if (!romanization) return null;
+        const readings = romanization
+            .split(/[\s·・,.;:!?，。！？、；：~～\-‐‑‒–—―/\\|()[\]{}"“”‘’「」『』]+/u)
+            .map((part) => this.romanizationToHiragana(part))
+            .filter(Boolean);
+        return readings.length ? { readings, index: 0 } : null;
+    }
+
+    private static consumeFuriganaReadingsForText(text: string, context?: FuriganaContext | null) {
+        if (!context || context.index >= context.readings.length) return null;
+        const plainText = this.stripInlineFurigana(text).replace(/<wbr>/g, "");
+        const token = this.normalizeKana(
+            plainText.replace(/[^\p{Script=Hiragana}\p{Script=Katakana}一-龯々〆ヶ]/gu, ""),
+        );
+        if (!token) return null;
+
+        if (!this.hasKanji(token)) {
+            const consumed = this.consumeKanaToken(token, context);
+            return consumed ? "" : null;
+        }
+
+        const parts = this.splitJapaneseReadingParts(token);
+        if (!parts.some((part) => part.type === "kana")) return null;
+
+        const remaining = context.readings.length - context.index;
+        let best: { parts: number; reading: string; alignment: FuriganaAlignment } | null = null;
+
+        for (let count = 1; count <= remaining; count++) {
+            const reading = context.readings.slice(context.index, context.index + count).join("");
+            const alignment = this.alignTokenWithReading(parts, reading);
+            if (!alignment) continue;
+            if (
+                !best ||
+                alignment.score > best.alignment.score ||
+                (alignment.score === best.alignment.score && count > best.parts)
+            ) {
+                best = { parts: count, reading, alignment };
+            }
+        }
+
+        if (!best) return null;
+        context.index += best.parts;
+        return best.reading;
+    }
+
+    private static consumeKanaToken(token: string, context: FuriganaContext) {
+        const pronounced = this.pronouncedKana(token);
+        const remaining = context.readings.length - context.index;
+        for (let count = 1; count <= remaining; count++) {
+            const reading = context.readings.slice(context.index, context.index + count).join("");
+            if (reading !== pronounced) continue;
+            context.index += count;
+            return true;
+        }
+        return false;
+    }
+
+    private static renderTokenWithReading(token: string, reading: string) {
+        const parts = this.splitJapaneseReadingParts(token);
+        const alignment = this.alignTokenWithReading(parts, reading);
+        if (!alignment) return this.formatPlainLyricText(token);
+
+        return parts
+            .map((part, idx) => {
+                if (part.type === "kana") return this.formatPlainLyricText(part.text);
+                const rubyReading = alignment.kanjiReadings[idx];
+                return rubyReading
+                    ? this.renderRuby(part.text, rubyReading)
+                    : this.formatPlainLyricText(part.text);
+            })
+            .join("");
+    }
+
+    private static splitJapaneseReadingParts(text: string): JapaneseReadingPart[] {
+        const matches =
+            text.match(/[一-龯々〆ヶ]+|[ぁ-ゖァ-ヺー]+|[^一-龯々〆ヶぁ-ゖァ-ヺー]+/gu) ?? [];
+        return matches.map((part) => ({
+            text: part,
+            type: this.hasKanji(part)
+                ? "kanji"
+                : /^[ぁ-ゖァ-ヺー]+$/u.test(part)
+                  ? "kana"
+                  : "other",
+        }));
+    }
+
+    private static alignTokenWithReading(
+        parts: JapaneseReadingPart[],
+        reading: string,
+    ): FuriganaAlignment | null {
+        if (!reading) return null;
+        let cursor = 0;
+        const kanjiReadings: Record<number, string> = {};
+        let score = 0;
+
+        for (let idx = 0; idx < parts.length; idx++) {
+            const part = parts[idx];
+            if (part.type !== "kana") continue;
+
+            const previousKanjiIndex = this.findPreviousKanjiPartIndex(parts, idx);
+            const options = this.kanaPronunciationOptions(part.text);
+            const match = this.findEarliestKanaMatch(reading, options, cursor);
+            if (!match) return null;
+
+            if (previousKanjiIndex !== null) {
+                const inferred = reading.slice(cursor, match.index);
+                if (!inferred) return null;
+                kanjiReadings[previousKanjiIndex] = inferred;
+            } else if (match.index !== cursor) {
+                return null;
+            }
+
+            cursor = match.index + match.length;
+            score += 80;
+        }
+
+        const trailingKanjiIndex = this.findTrailingKanjiPartIndex(parts);
+        if (trailingKanjiIndex !== null) {
+            const inferred = reading.slice(cursor);
+            if (!inferred) return null;
+            kanjiReadings[trailingKanjiIndex] = inferred;
+            cursor = reading.length;
+            score += 60;
+        } else if (cursor !== reading.length) {
+            return null;
+        }
+
+        const annotatedLength = Object.values(kanjiReadings).reduce(
+            (sum, value) => sum + value.length,
+            0,
+        );
+        if (!annotatedLength) return null;
+        score += annotatedLength;
+        return { kanjiReadings, score };
+    }
+
+    private static findPreviousKanjiPartIndex(parts: JapaneseReadingPart[], kanaIndex: number) {
+        for (let idx = kanaIndex - 1; idx >= 0; idx--) {
+            if (parts[idx].type === "kanji") return idx;
+            if (parts[idx].type === "kana") return null;
+        }
+        return null;
+    }
+
+    private static findTrailingKanjiPartIndex(parts: JapaneseReadingPart[]) {
+        for (let idx = parts.length - 1; idx >= 0; idx--) {
+            if (parts[idx].type === "kanji") return idx;
+            if (parts[idx].type === "kana") return null;
+        }
+        return null;
+    }
+
+    private static findEarliestKanaMatch(reading: string, options: string[], start: number) {
+        let best: { index: number; length: number } | null = null;
+        for (const option of options) {
+            const index = reading.indexOf(option, start);
+            if (index === -1) continue;
+            if (
+                !best ||
+                index < best.index ||
+                (index === best.index && option.length > best.length)
+            ) {
+                best = { index, length: option.length };
+            }
+        }
+        return best;
+    }
+
+    private static romanizationToHiragana(text: string) {
+        const kanaText = this.normalizeKana(text);
+        if (/^[ぁ-ゖー]+$/u.test(kanaText)) return kanaText;
+
+        let romaji = text
+            .toLowerCase()
+            .replace(/ā/g, "aa")
+            .replace(/ī/g, "ii")
+            .replace(/ū/g, "uu")
+            .replace(/ē/g, "ee")
+            .replace(/[ōô]/g, "ou")
+            .normalize("NFKD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z']/g, "");
+        let output = "";
+
+        const table: Record<string, string> = {
+            kya: "きゃ",
+            kyu: "きゅ",
+            kyo: "きょ",
+            gya: "ぎゃ",
+            gyu: "ぎゅ",
+            gyo: "ぎょ",
+            sha: "しゃ",
+            shu: "しゅ",
+            sho: "しょ",
+            sya: "しゃ",
+            syu: "しゅ",
+            syo: "しょ",
+            ja: "じゃ",
+            ju: "じゅ",
+            jo: "じょ",
+            jya: "じゃ",
+            jyu: "じゅ",
+            jyo: "じょ",
+            cha: "ちゃ",
+            chu: "ちゅ",
+            cho: "ちょ",
+            cya: "ちゃ",
+            cyu: "ちゅ",
+            cyo: "ちょ",
+            nya: "にゃ",
+            nyu: "にゅ",
+            nyo: "にょ",
+            hya: "ひゃ",
+            hyu: "ひゅ",
+            hyo: "ひょ",
+            bya: "びゃ",
+            byu: "びゅ",
+            byo: "びょ",
+            pya: "ぴゃ",
+            pyu: "ぴゅ",
+            pyo: "ぴょ",
+            mya: "みゃ",
+            myu: "みゅ",
+            myo: "みょ",
+            rya: "りゃ",
+            ryu: "りゅ",
+            ryo: "りょ",
+            fa: "ふぁ",
+            fi: "ふぃ",
+            fe: "ふぇ",
+            fo: "ふぉ",
+            va: "ゔぁ",
+            vi: "ゔぃ",
+            vu: "ゔ",
+            ve: "ゔぇ",
+            vo: "ゔぉ",
+            shi: "し",
+            chi: "ち",
+            tsu: "つ",
+            fu: "ふ",
+            ji: "じ",
+            a: "あ",
+            i: "い",
+            u: "う",
+            e: "え",
+            o: "お",
+            ka: "か",
+            ki: "き",
+            ku: "く",
+            ke: "け",
+            ko: "こ",
+            ga: "が",
+            gi: "ぎ",
+            gu: "ぐ",
+            ge: "げ",
+            go: "ご",
+            sa: "さ",
+            si: "し",
+            su: "す",
+            se: "せ",
+            so: "そ",
+            za: "ざ",
+            zi: "じ",
+            zu: "ず",
+            ze: "ぜ",
+            zo: "ぞ",
+            ta: "た",
+            ti: "ち",
+            tu: "つ",
+            te: "て",
+            to: "と",
+            da: "だ",
+            di: "ぢ",
+            du: "づ",
+            de: "で",
+            do: "ど",
+            na: "な",
+            ni: "に",
+            nu: "ぬ",
+            ne: "ね",
+            no: "の",
+            ha: "は",
+            hi: "ひ",
+            hu: "ふ",
+            he: "へ",
+            ho: "ほ",
+            ba: "ば",
+            bi: "び",
+            bu: "ぶ",
+            be: "べ",
+            bo: "ぼ",
+            pa: "ぱ",
+            pi: "ぴ",
+            pu: "ぷ",
+            pe: "ぺ",
+            po: "ぽ",
+            ma: "ま",
+            mi: "み",
+            mu: "む",
+            me: "め",
+            mo: "も",
+            ya: "や",
+            yu: "ゆ",
+            yo: "よ",
+            ra: "ら",
+            ri: "り",
+            ru: "る",
+            re: "れ",
+            ro: "ろ",
+            wa: "わ",
+            wi: "うぃ",
+            we: "うぇ",
+            wo: "を",
+        };
+
+        while (romaji) {
+            if (/^([bcdfghjklmpqrstvwxyz])\1/.test(romaji) && !romaji.startsWith("nn")) {
+                output += "っ";
+                romaji = romaji.slice(1);
+                continue;
+            }
+            if (romaji.startsWith("n'") || /^n($|[^aeiouy])/.test(romaji)) {
+                output += "ん";
+                romaji = romaji.startsWith("n'") ? romaji.slice(2) : romaji.slice(1);
+                continue;
+            }
+
+            let matched = false;
+            for (const length of [3, 2, 1]) {
+                const key = romaji.slice(0, length);
+                const kana = table[key];
+                if (!kana) continue;
+                output += kana;
+                romaji = romaji.slice(length);
+                matched = true;
+                break;
+            }
+            if (!matched) romaji = romaji.slice(1);
+        }
+
+        return output;
+    }
+
+    private static normalizeKana(text: string) {
+        return Array.from(text.normalize("NFKC"))
+            .map((char) => {
+                const code = char.charCodeAt(0);
+                if (code >= 0x30a1 && code <= 0x30f6) {
+                    return String.fromCharCode(code - 0x60);
+                }
+                return char;
+            })
+            .join("");
+    }
+
+    private static pronouncedKana(text: string) {
+        return this.normalizeKana(text)
+            .replace(/は/g, "わ")
+            .replace(/へ/g, "え")
+            .replace(/を/g, "お");
+    }
+
+    private static kanaPronunciationOptions(text: string) {
+        const normalized = this.normalizeKana(text);
+        const pronounced = this.pronouncedKana(normalized);
+        return normalized === pronounced ? [normalized] : [normalized, pronounced];
+    }
+
+    private static renderRuby(base: string, reading: string) {
+        return `<ruby><rb>${this.formatPlainLyricText(base)}</rb><rt>${this.escapeHtml(reading)}</rt></ruby>`;
+    }
+
+    private static hasKanji(text: string) {
+        return /[一-龯々〆ヶ]/u.test(text);
     }
 
     private static startLoop() {
