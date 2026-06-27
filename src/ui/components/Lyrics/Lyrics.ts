@@ -1,12 +1,26 @@
 import { DOM } from "../../elements";
 import CFM from "../../../utils/config";
 import {
-    EnhancedLyricLine,
     enhanceWithThirdPartyLyrics,
     getThirdPartyLyricsDebug,
+    publishThirdPartyLyricsDebug,
 } from "../../../services/third-party-lyrics";
+import type {
+    EnhancedLyricLine,
+    ThirdPartyLyricsDebug,
+    TrackInfo,
+} from "../../../services/third-party-lyrics";
+import {
+    getCachedLyrics,
+    getCachedLyricsDebug,
+    setCachedLyrics,
+} from "../../../services/lyrics-cache";
+import type { LyricsCacheKind } from "../../../services/lyrics-cache";
 
 type LyricLine = EnhancedLyricLine;
+type LyricsTrack = TrackInfo & {
+    uri: string;
+};
 type FuriganaContext = {
     readings: string[];
     index: number;
@@ -23,6 +37,9 @@ type FuriganaAlignment = {
 export class Lyrics {
     private static readonly REQUEST_TIMEOUT_MS = 12000;
     private static readonly RETRY_DELAYS_MS = [0, 900, 1800, 3200];
+    private static readonly PREFETCH_WINDOW_MS = 10000;
+    private static readonly spotifyRequests = new Map<string, Promise<LyricLine[]>>();
+    private static readonly enhancedRequests = new Map<string, Promise<LyricLine[]>>();
     private static container: HTMLElement | null = null;
     private static lyricsRoot: HTMLElement | null = null;
     private static scrollbarThumb: HTMLElement | null = null;
@@ -72,57 +89,136 @@ export class Lyrics {
             this.renderStatus("Lyrics unavailable", true);
             return;
         }
-        this.lastStatus = "loading";
-        this.renderStatus("Loading lyrics…", false);
-        const trackId = trackUri?.split(":").pop();
-        if (!trackId) {
-            this.renderStatus("Lyrics unavailable", true);
+        const track = this.getCurrentTrack(trackUri);
+        const cachedLines = this.getPreparedLyricsFromCache(track);
+        if (cachedLines !== null) {
+            if (cachedLines.length) this.applyLines(cachedLines);
+            else this.renderStatus("Lyrics unavailable", true);
             return;
         }
+        this.lastStatus = "loading";
+        this.renderStatus("Loading lyrics…", false);
         try {
-            const response = await this.getLyricsWithRetry(trackId, sequence);
+            const lines = await this.getPreparedLyrics(track, true);
             if (!this.isCurrentLoad(sequence)) return;
-            if (CFM.get("thirdPartyLyrics")) {
-                const thirdPartyLines = await enhanceWithThirdPartyLyrics(
-                    this.normalizeLines(response?.lyrics?.lines),
-                );
-                if (!this.isCurrentLoad(sequence)) return;
-                if (thirdPartyLines.length) {
-                    this.applyLines(thirdPartyLines);
-                    return;
-                }
-            }
-            const lines = this.normalizeLines(response?.lyrics?.lines);
             if (!lines.length) {
                 this.renderStatus("Lyrics unavailable", true);
                 return;
             }
             this.applyLines(lines);
-        } catch (err) {
+        } catch {
             if (!this.isCurrentLoad(sequence)) return;
-            if (CFM.get("thirdPartyLyrics")) {
-                const thirdPartyLines = await enhanceWithThirdPartyLyrics([]);
-                if (!this.isCurrentLoad(sequence)) return;
-                if (thirdPartyLines.length) {
-                    this.applyLines(thirdPartyLines);
-                    return;
-                }
-            }
             this.renderStatus("Lyrics unavailable", true);
         }
     }
 
+    static prefetchNextLyrics() {
+        if (!CFM.get("lyricsDisplay")) return;
+        const duration = Spicetify.Player.data?.duration ?? Spicetify.Player.getDuration();
+        if (!duration || duration <= 0) return;
+        const remaining = duration - Spicetify.Player.getProgress();
+        if (remaining > this.PREFETCH_WINDOW_MS) return;
+        if (Spicetify.Player.getRepeat() === 2) return;
+
+        const nextTrack = this.getNextTrack();
+        const currentUri = Spicetify.Player.data?.item?.uri;
+        if (!nextTrack || nextTrack.uri === currentUri) return;
+        void this.getPreparedLyrics(nextTrack, false).catch((err) => {
+            console.debug("Unable to prefetch next track lyrics", err);
+        });
+    }
+
     // ---- internal helpers ----
 
-    private static async getLyricsWithRetry(trackId: string, sequence: number) {
+    private static getPreparedLyricsFromCache(track: LyricsTrack) {
+        const kind: LyricsCacheKind = CFM.get("thirdPartyLyrics") ? "enhanced" : "spotify";
+        const cached = getCachedLyrics(track.uri, kind);
+        if (cached !== null && kind === "enhanced") {
+            this.publishCachedDebug(track.uri);
+        }
+        return cached;
+    }
+
+    private static async getPreparedLyrics(track: LyricsTrack, publishDebug: boolean) {
+        const thirdPartyEnabled = Boolean(CFM.get("thirdPartyLyrics"));
+        const kind: LyricsCacheKind = thirdPartyEnabled ? "enhanced" : "spotify";
+        const cached = getCachedLyrics(track.uri, kind);
+        if (cached !== null) {
+            if (publishDebug && kind === "enhanced") this.publishCachedDebug(track.uri);
+            return cached;
+        }
+
+        const spotifyLines = await this.getSpotifyLyrics(track);
+        if (
+            !thirdPartyEnabled ||
+            !track.title ||
+            !track.duration ||
+            (!track.artists && !track.album)
+        ) {
+            return spotifyLines;
+        }
+
+        const enhancedCached = getCachedLyrics(track.uri, "enhanced");
+        if (enhancedCached !== null) {
+            if (publishDebug) this.publishCachedDebug(track.uri);
+            return enhancedCached;
+        }
+        const pending = this.enhancedRequests.get(track.uri);
+        if (pending) {
+            const lines = await pending;
+            if (publishDebug) this.publishCachedDebug(track.uri);
+            return lines;
+        }
+
+        let debugSnapshot: ThirdPartyLyricsDebug | undefined;
+        const request = enhanceWithThirdPartyLyrics(spotifyLines, track, publishDebug, (debug) => {
+            debugSnapshot = debug;
+        })
+            .then((lines) => {
+                setCachedLyrics(track.uri, "enhanced", lines, debugSnapshot);
+                return lines;
+            })
+            .finally(() => {
+                this.enhancedRequests.delete(track.uri);
+            });
+        this.enhancedRequests.set(track.uri, request);
+        return request;
+    }
+
+    private static publishCachedDebug(trackUri: string) {
+        const debug = getCachedLyricsDebug(trackUri);
+        if (debug) publishThirdPartyLyricsDebug(debug, true);
+    }
+
+    private static async getSpotifyLyrics(track: LyricsTrack) {
+        const cached = getCachedLyrics(track.uri, "spotify");
+        if (cached !== null) return cached;
+        const pending = this.spotifyRequests.get(track.uri);
+        if (pending) return pending;
+
+        const trackId = track.uri.split(":").pop();
+        if (!trackId) return [];
+        const request = this.getLyricsWithRetry(trackId)
+            .then((response) => this.normalizeLines(response?.lyrics?.lines))
+            .catch(() => [])
+            .then((lines) => {
+                setCachedLyrics(track.uri, "spotify", lines);
+                return lines;
+            })
+            .finally(() => {
+                this.spotifyRequests.delete(track.uri);
+            });
+        this.spotifyRequests.set(track.uri, request);
+        return request;
+    }
+
+    private static async getLyricsWithRetry(trackId: string) {
         const url = `https://spclient.wg.spotify.com/color-lyrics/v2/track/${trackId}?format=json&market=from_token`;
         let lastError: unknown;
 
         for (let attempt = 0; attempt < this.RETRY_DELAYS_MS.length; attempt++) {
-            if (!this.isCurrentLoad(sequence)) throw new Error("Lyrics load superseded");
             const delay = this.RETRY_DELAYS_MS[attempt];
             if (delay) await this.sleep(delay);
-            if (!this.isCurrentLoad(sequence)) throw new Error("Lyrics load superseded");
 
             try {
                 return await this.withTimeout(
@@ -135,6 +231,55 @@ export class Lyrics {
         }
 
         throw lastError;
+    }
+
+    private static getCurrentTrack(uri: string): LyricsTrack {
+        const metadata = (Spicetify.Player.data?.item?.metadata ?? {}) as Partial<
+            Record<string, string>
+        >;
+        return this.createTrack(
+            uri,
+            metadata,
+            Spicetify.Player.data?.duration ?? Number(metadata.duration ?? 0),
+        );
+    }
+
+    private static getNextTrack(): LyricsTrack | null {
+        const queued = Spicetify.Queue?.nextTracks?.[0];
+        if (!queued) return null;
+        const contextTrack = queued.contextTrack ?? queued;
+        const metadata = contextTrack.metadata ?? queued.metadata ?? {};
+        const uri =
+            contextTrack.uri ??
+            contextTrack.link ??
+            queued.uri ??
+            metadata.uri ??
+            metadata.track_uri;
+        if (!uri || typeof uri !== "string") return null;
+        const duration = Number(contextTrack.duration ?? queued.duration ?? metadata.duration ?? 0);
+        return this.createTrack(uri, metadata, duration);
+    }
+
+    private static createTrack(
+        uri: string,
+        metadata: Partial<Record<string, unknown>>,
+        duration: number,
+    ): LyricsTrack {
+        const title = `${metadata.title ?? ""}`.trim();
+        const artists = Object.keys(metadata)
+            .filter((key) => key.startsWith("artist_name"))
+            .sort()
+            .map((key) => metadata[key])
+            .filter(Boolean)
+            .join(", ");
+        const album = `${metadata.album_title ?? metadata.album_name ?? ""}`.trim();
+        return {
+            uri,
+            title,
+            artists,
+            album,
+            duration: Number.isFinite(duration) ? duration : 0,
+        };
     }
 
     private static withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {

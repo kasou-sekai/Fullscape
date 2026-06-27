@@ -21,6 +21,8 @@ type NetEaseSong = {
     duration?: number;
     ar?: { name: string }[];
     artists?: { name: string }[];
+    al?: { name?: string };
+    album?: { name?: string };
 };
 
 type NetEaseLyricsResponse = {
@@ -36,9 +38,10 @@ type NetEaseLyricsResponse = {
     yrc?: { lyric?: string };
 };
 
-type TrackInfo = {
+export type TrackInfo = {
     title: string;
     artists: string;
+    album: string;
     duration: number;
 };
 
@@ -71,6 +74,7 @@ export type ThirdPartyLyricsDebug = {
         id: number;
         name: string;
         artists: string;
+        album: string;
         plausible: boolean;
         first?: EnhancedLyricLine | null;
         preview?: EnhancedLyricLine[];
@@ -98,16 +102,29 @@ export function getThirdPartyLyricsDebug() {
     return lastDebug;
 }
 
+export function publishThirdPartyLyricsDebug(debug: ThirdPartyLyricsDebug, fromCache = false) {
+    lastDebug =
+        fromCache && !debug.reason.startsWith("本地缓存：")
+            ? { ...debug, reason: `本地缓存：${debug.reason}` }
+            : debug;
+}
+
 export async function enhanceWithThirdPartyLyrics(
     spotifyLines: EnhancedLyricLine[],
+    trackOverride?: TrackInfo,
+    publishDebug = true,
+    captureDebug?: (debug: ThirdPartyLyricsDebug) => void,
 ): Promise<EnhancedLyricLine[]> {
-    const track = getCurrentTrackInfo();
+    const track = trackOverride ?? getCurrentTrackInfo();
     if (!track) {
-        lastDebug = createDebug("skipped", "缺少当前曲目信息", false);
+        const debug = createDebug("skipped", "缺少当前曲目信息", false);
+        if (publishDebug) lastDebug = debug;
+        captureDebug?.(debug);
         return spotifyLines;
     }
 
-    lastDebug = createDebug("searching", "正在搜索网易云候选歌词", true, track, spotifyLines);
+    let debug = createDebug("searching", "正在搜索网易云候选歌词", true, track, spotifyLines);
+    if (publishDebug) lastDebug = debug;
 
     try {
         const songs = await searchNetEase(track);
@@ -116,16 +133,27 @@ export async function enhanceWithThirdPartyLyrics(
                 id: song.id,
                 name: song.name,
                 artists: getSongArtists(song),
-                plausible: isPlausibleSong(song, track),
+                album: getSongAlbum(song),
+                plausible: false,
                 match: false,
                 reason: "",
             };
-            lastDebug.candidates.push(candidateDebug);
+            debug.candidates.push(candidateDebug);
 
-            if (!candidateDebug.plausible) {
-                candidateDebug.reason = "标题/艺人/时长初筛未通过";
+            if (!isBaseTitleMatch(song.name, track.title)) {
+                candidateDebug.reason = `纯歌名不匹配：${getBaseTrackTitle(song.name)} ≠ ${getBaseTrackTitle(track.title)}`;
                 continue;
             }
+
+            const durationResult = getDurationMatchResult(song, track);
+            if (!durationResult.match) {
+                candidateDebug.reason = durationResult.reason;
+                continue;
+            }
+            candidateDebug.plausible = true;
+            const preliminaryReason = `纯歌名匹配；${durationResult.reason}`;
+            candidateDebug.reason = preliminaryReason;
+
             const rawLyrics = await fetchNetEaseLyrics(song.id);
             const parsed = parseNetEaseLyrics(rawLyrics);
             candidateDebug.counts = {
@@ -136,7 +164,7 @@ export async function enhanceWithThirdPartyLyrics(
                 dynamic: parsed.dynamicLines.length,
             };
             if (!parsed.lines.length && !parsed.dynamicLines.length) {
-                candidateDebug.reason = "候选没有可解析的原文歌词";
+                candidateDebug.reason = `${preliminaryReason}；候选没有可解析的原文歌词`;
                 continue;
             }
 
@@ -144,36 +172,46 @@ export async function enhanceWithThirdPartyLyrics(
             candidateDebug.first = firstMeaningfulLine(candidateLines) ?? null;
             candidateDebug.preview = previewMeaningfulLines(candidateLines);
             const matchResult = getLyricsMatchResult(spotifyLines, candidateLines);
-            candidateDebug.match = matchResult.match;
-            candidateDebug.reason = matchResult.reason;
+            candidateDebug.reason = `${preliminaryReason}；${matchResult.reason}`;
+            if (!matchResult.match) continue;
 
-            if (matchResult.match) {
+            const identityResult = getArtistOrAlbumMatchResult(song, track);
+            candidateDebug.match = identityResult.match;
+            candidateDebug.reason = `${preliminaryReason}；${matchResult.reason}；${identityResult.reason}`;
+
+            if (identityResult.match) {
                 const merged = buildThirdPartyLyrics(parsed);
-                lastDebug = {
-                    ...lastDebug,
+                debug = {
+                    ...debug,
                     status: "matched",
                     reason: "已匹配，当前使用第三方歌词作为主歌词",
                     matchedSong: `${song.name} - ${getSongArtists(song)}`,
                     matchedFirst: candidateDebug.first,
                     merged: countMergedFeatures(merged),
                 };
+                if (publishDebug) lastDebug = debug;
+                captureDebug?.(debug);
                 return merged;
             }
         }
-        lastDebug = {
-            ...lastDebug,
+        debug = {
+            ...debug,
             status: "not-matched",
-            reason: songs.length ? "没有候选通过第一句歌词匹配" : "网易云未返回候选歌曲",
+            reason: songs.length
+                ? "没有候选依次通过纯歌名、时长、首句及歌手/专辑匹配"
+                : "网易云未返回候选歌曲",
         };
     } catch (err) {
-        lastDebug = {
-            ...lastDebug,
+        debug = {
+            ...debug,
             status: "error",
             reason: err instanceof Error ? err.message : String(err),
         };
         console.warn("Failed to enhance lyrics from third-party provider", err);
     }
 
+    if (publishDebug) lastDebug = debug;
+    captureDebug?.(debug);
     return spotifyLines;
 }
 
@@ -214,13 +252,14 @@ function getCurrentTrackInfo(): TrackInfo | null {
         .filter(Boolean)
         .join(", ");
 
+    const album = `${meta?.album_title ?? ""}`.trim();
     const duration = Spicetify.Player.data?.duration ?? Number(meta?.duration ?? 0);
-    return { title, artists, duration };
+    return { title, artists, album, duration };
 }
 
 async function searchNetEase(track: TrackInfo): Promise<NetEaseSong[]> {
     const params = new URLSearchParams({
-        s: `${trimSearchTitle(track.title)} ${track.artists}`.trim(),
+        s: `${getBaseTrackTitle(track.title)} ${track.artists}`.trim(),
         type: "1",
         limit: "8",
         offset: "0",
@@ -466,7 +505,7 @@ function getLyricsMatchResult(
     thirdPartyLines: EnhancedLyricLine[],
 ) {
     if (!hasSyncedLyrics(spotifyLines)) {
-        return { match: true, reason: "Spotify 无同步歌词，候选已通过曲名/艺人/时长初筛" };
+        return { match: true, reason: "Spotify 无同步歌词，跳过首句比较" };
     }
     const spotifyFirst = firstSpotifyLine(spotifyLines);
     const thirdPartyFirst = firstMeaningfulLine(thirdPartyLines);
@@ -550,19 +589,46 @@ function normalizeLyricText(text: string) {
         .trim();
 }
 
-function isPlausibleSong(song: NetEaseSong, track: TrackInfo) {
-    const duration = song.dt ?? song.duration ?? 0;
-    if (duration && track.duration && Math.abs(duration - track.duration) > 12000) return false;
+function isBaseTitleMatch(candidateTitle: string, trackTitle: string) {
+    const candidate = normalizeBaseTitle(candidateTitle);
+    const current = normalizeBaseTitle(trackTitle);
+    return Boolean(candidate && current && candidate === current);
+}
 
-    const titleMatches = isLooseTextMatch(song.name, track.title);
-    const artistNames = getSongArtists(song);
-    const artistMatches =
-        !track.artists || !artistNames || isLooseTextMatch(artistNames, track.artists);
-    return titleMatches && artistMatches;
+function getDurationMatchResult(song: NetEaseSong, track: TrackInfo) {
+    const candidateDuration = song.dt ?? song.duration ?? 0;
+    if (!candidateDuration || !track.duration) {
+        return { match: false, reason: "缺少歌曲时长，无法匹配" };
+    }
+    const difference = Math.abs(candidateDuration - track.duration);
+    return difference <= 12000
+        ? { match: true, reason: `时长匹配，差值 ${difference}ms` }
+        : { match: false, reason: `歌曲时长不匹配，差值 ${difference}ms` };
+}
+
+function getArtistOrAlbumMatchResult(song: NetEaseSong, track: TrackInfo) {
+    const candidateArtists = getSongArtists(song);
+    if (candidateArtists && track.artists && isLooseTextMatch(candidateArtists, track.artists)) {
+        return { match: true, reason: "歌手匹配" };
+    }
+
+    const candidateAlbum = getSongAlbum(song);
+    if (candidateAlbum && track.album && isLooseTextMatch(candidateAlbum, track.album)) {
+        return { match: true, reason: "歌手不匹配，但专辑名称匹配" };
+    }
+
+    return {
+        match: false,
+        reason: `歌手和专辑均不匹配：歌手=${candidateArtists || "无"}，专辑=${candidateAlbum || "无"}`,
+    };
 }
 
 function getSongArtists(song: NetEaseSong) {
     return (song.ar ?? song.artists ?? []).map((artist) => artist.name).join(", ");
+}
+
+function getSongAlbum(song: NetEaseSong) {
+    return `${song.al?.name ?? song.album?.name ?? ""}`.trim();
 }
 
 function countMergedFeatures(lines: EnhancedLyricLine[]) {
@@ -575,22 +641,19 @@ function countMergedFeatures(lines: EnhancedLyricLine[]) {
 }
 
 function isLooseTextMatch(a: string, b: string) {
-    const first = normalizeSearchText(a);
-    const second = normalizeSearchText(b);
-    return first.includes(second) || second.includes(first);
+    const first = normalizeLyricText(a);
+    const second = normalizeLyricText(b);
+    return Boolean(first && second && (first.includes(second) || second.includes(first)));
 }
 
-function normalizeSearchText(text: string) {
-    return normalizeLyricText(trimSearchTitle(text));
+function normalizeBaseTitle(text: string) {
+    return normalizeLyricText(getBaseTrackTitle(text));
 }
 
-function trimSearchTitle(title: string) {
+export function getBaseTrackTitle(title: string) {
     return title
-        .replace(/\s*[-–—]\s*(remaster(?:ed)?|live|mono|stereo|explicit|radio edit).*$/i, "")
-        .replace(
-            /\s*\((?:feat\.?|with|from|remaster(?:ed)?|live|mono|stereo|explicit|radio edit)[^)]*\)/gi,
-            "",
-        )
+        .replace(/\s*[\[(]?\s*(?:feat(?:uring)?|ft)\.?\s+.*$/i, "")
+        .replace(/\s+[-–—]\s*.*$/u, "")
         .trim();
 }
 

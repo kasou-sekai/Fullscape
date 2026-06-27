@@ -57,8 +57,7 @@ export const VersionedChangelog = {
   **⭐NEW:** add a new background choice option  - "Animated Album Art" which contains a beautiful animation of color blobs.
   Inspired by [this repo for lyrics](https://github.com/surfbryce/beautiful-lyrics) and Apple music background animation. 
   <br>
-  Try it out today by modifying the settings and let me know what you think on [GitHub](https://github.com/daksh2k/Spicetify-stuff)!
-  Star this project and help it to reach more people! [![Github Stars badge](https://img.shields.io/github/stars/daksh2k/spicetify-stuff?style=social)](https://github.com/daksh2k/spicetify-stuff)
+  Try it out today by modifying the settings.
   
   *PS: It's still experimental, may be a little resource intensive.*
 

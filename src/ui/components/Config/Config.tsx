@@ -250,7 +250,7 @@ export class ConfigManager {
             `状态: ${thirdParty.status}`,
             `原因: ${thirdParty.reason}`,
             thirdParty.track
-                ? `当前曲目: ${thirdParty.track.title} - ${thirdParty.track.artists || "未知艺人"} (${Math.round(thirdParty.track.duration / 1000)}s)`
+                ? `当前曲目: ${thirdParty.track.title} - ${thirdParty.track.artists || "未知艺人"} / ${thirdParty.track.album || "未知专辑"} (${Math.round(thirdParty.track.duration / 1000)}s)`
                 : "当前曲目: 无",
             thirdParty.spotifyFirst
                 ? `Spotify 首句: [${this.formatLyricTime(thirdParty.spotifyFirst.time)}] ${thirdParty.spotifyFirst.text}`
@@ -285,7 +285,7 @@ export class ConfigManager {
                                     )
                                     .join("\n")}`
                               : "";
-                          return `${idx + 1}. ${candidate.name} - ${candidate.artists || "未知艺人"} (${candidate.id}) plausible=${candidate.plausible} match=${candidate.match}${counts}\n   ${candidate.reason}${first}${preview}`;
+                          return `${idx + 1}. ${candidate.name} - ${candidate.artists || "未知艺人"} / ${candidate.album || "未知专辑"} (${candidate.id}) plausible=${candidate.plausible} match=${candidate.match}${counts}\n   ${candidate.reason}${first}${preview}`;
                       })
                       .join("\n")
                 : "无",
