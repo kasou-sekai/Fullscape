@@ -11,6 +11,7 @@ import type {
     TrackInfo,
 } from "../../../services/third-party-lyrics";
 import {
+    deleteCachedLyrics,
     getCachedLyrics,
     getCachedLyricsDebug,
     setCachedLyrics,
@@ -50,6 +51,7 @@ type KaraokeWordRenderState = {
 export class Lyrics {
     private static readonly REQUEST_TIMEOUT_MS = 12000;
     private static readonly RETRY_DELAYS_MS = [0, 900, 1800, 3200];
+    private static readonly REFETCH_DELAYS_MS = [15000, 45000, 120000];
     private static readonly PREFETCH_WINDOW_MS = 10000;
     private static readonly spotifyRequests = new Map<string, Promise<LyricLine[]>>();
     private static readonly enhancedRequests = new Map<string, Promise<LyricLine[]>>();
@@ -76,6 +78,9 @@ export class Lyrics {
     private static lastStatus: "synced" | "unsynced" | "unavailable" | "loading" = "unavailable";
     private static lastLines: LyricLine[] = [];
     private static loadSequence = 0;
+    private static currentTrackUri: string | null = null;
+    private static refetchAttempt = 0;
+    private static refetchTimer: ReturnType<typeof setTimeout> | null = null;
 
     static attach(container: HTMLElement) {
         this.container = container;
@@ -100,6 +105,8 @@ export class Lyrics {
         this.isSynced = false;
         this.lastStatus = "unavailable";
         this.lastLines = [];
+        this.currentTrackUri = null;
+        this.clearRefetch();
         this.loadSequence += 1;
     }
 
@@ -107,17 +114,42 @@ export class Lyrics {
         DOM.container.classList.toggle("lyrics-hide-force");
     }
 
-    static async loadLyrics(trackUri?: string) {
+    static async refreshCurrentLyrics() {
+        const trackUri = Spicetify.Player.data?.item?.uri;
+        if (!trackUri) return false;
+        await this.loadLyrics(trackUri, "all");
+        return this.lastStatus === "synced" || this.lastStatus === "unsynced";
+    }
+
+    static async loadLyrics(trackUri?: string, force: "none" | "enhanced" | "all" = "none") {
+        if (trackUri !== this.currentTrackUri) {
+            this.clearRefetch();
+            this.refetchAttempt = 0;
+            this.currentTrackUri = trackUri ?? null;
+        }
         const sequence = ++this.loadSequence;
         if (!CFM.get("lyricsDisplay") || !trackUri) {
             this.renderStatus("Lyrics unavailable", true);
             return;
         }
+        if (force !== "none") {
+            deleteCachedLyrics(trackUri, force === "enhanced" ? "enhanced" : undefined);
+        }
         const track = this.getCurrentTrack(trackUri);
         const cachedLines = this.getPreparedLyricsFromCache(track);
         if (cachedLines !== null) {
             if (cachedLines.length) this.applyLines(cachedLines);
-            else this.renderStatus("Lyrics unavailable", true);
+            else {
+                this.renderStatus("Lyrics unavailable", true);
+                this.scheduleRefetch(trackUri, "all");
+            }
+            if (
+                cachedLines.length &&
+                CFM.get("thirdPartyLyrics") &&
+                getThirdPartyLyricsDebug().status === "error"
+            ) {
+                this.scheduleRefetch(trackUri, "enhanced");
+            }
             return;
         }
         this.lastStatus = "loading";
@@ -127,12 +159,23 @@ export class Lyrics {
             if (!this.isCurrentLoad(sequence)) return;
             if (!lines.length) {
                 this.renderStatus("Lyrics unavailable", true);
+                this.scheduleRefetch(trackUri, "all");
                 return;
             }
             this.applyLines(lines);
+            if (
+                CFM.get("thirdPartyLyrics") &&
+                getThirdPartyLyricsDebug().status === "error"
+            ) {
+                this.scheduleRefetch(trackUri, "enhanced");
+            } else {
+                this.clearRefetch();
+                this.refetchAttempt = 0;
+            }
         } catch {
             if (!this.isCurrentLoad(sequence)) return;
             this.renderStatus("Lyrics unavailable", true);
+            this.scheduleRefetch(trackUri, "all");
         }
     }
 
@@ -199,7 +242,9 @@ export class Lyrics {
             debugSnapshot = debug;
         })
             .then((lines) => {
-                setCachedLyrics(track.uri, "enhanced", lines, debugSnapshot);
+                if (debugSnapshot?.status !== "error") {
+                    setCachedLyrics(track.uri, "enhanced", lines, debugSnapshot);
+                }
                 return lines;
             })
             .finally(() => {
@@ -329,6 +374,28 @@ export class Lyrics {
         return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
+    private static scheduleRefetch(trackUri: string, force: "enhanced" | "all") {
+        if (this.refetchTimer || this.refetchAttempt >= this.REFETCH_DELAYS_MS.length) return;
+        const delay = this.REFETCH_DELAYS_MS[this.refetchAttempt++];
+        this.refetchTimer = setTimeout(() => {
+            this.refetchTimer = null;
+            if (
+                this.currentTrackUri !== trackUri ||
+                Spicetify.Player.data?.item?.uri !== trackUri
+            ) {
+                return;
+            }
+            void this.loadLyrics(trackUri, force);
+        }, delay);
+    }
+
+    private static clearRefetch() {
+        if (this.refetchTimer) {
+            clearTimeout(this.refetchTimer);
+            this.refetchTimer = null;
+        }
+    }
+
     private static isCurrentLoad(sequence: number) {
         return sequence === this.loadSequence;
     }
@@ -421,9 +488,11 @@ export class Lyrics {
         const furiganaContext = this.createFuriganaContext(line.romanization);
         const words = line.words ?? [];
         const original = showKaraoke
-            ? `<div class="rnp-lyrics-line-karaoke">${words
-                  .map((word) => this.renderKaraokeWord(word, showFurigana, furiganaContext))
-                  .join("")}</div>`
+            ? `<div class="rnp-lyrics-line-karaoke">${this.renderKaraokeLine(
+                  words,
+                  showFurigana,
+                  furiganaContext,
+              )}</div>`
             : `<div class="rnp-lyrics-line-original">${this.formatLyricText(
                   line.text,
                   showFurigana,
@@ -442,44 +511,62 @@ export class Lyrics {
         return `${original}${romanization}${translation}`;
     }
 
-    private static renderKaraokeWord(
-        word: NonNullable<LyricLine["words"]>[number],
+    private static renderKaraokeLine(
+        words: NonNullable<LyricLine["words"]>,
         showFurigana: boolean,
         furiganaContext?: FuriganaContext | null,
     ) {
-        const segments = this.splitKaraokeText(word.text);
-        if (segments.length <= 1) {
-            return this.renderKaraokeWordSegment(
-                word.text,
-                word.time,
-                word.duration,
-                showFurigana,
-                furiganaContext,
-            );
-        }
-
-        const weights = segments.map((segment) => this.getTextTimingWeight(segment));
-        const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || 1;
-        let offset = 0;
-
-        return segments
-            .map((segment, idx) => {
-                const remaining = word.duration - offset;
-                const duration =
-                    idx === segments.length - 1
-                        ? remaining
-                        : (word.duration * weights[idx]) / totalWeight;
-                const html = this.renderKaraokeWordSegment(
-                    segment,
-                    word.time + offset,
-                    duration,
+        const groups: string[] = [];
+        let group = "";
+        words.forEach((word) => {
+            const segments = this.splitTimedKaraokeWord(word);
+            segments.forEach((segment) => {
+                group += this.renderKaraokeWordSegment(
+                    segment.text,
+                    segment.time,
+                    segment.duration,
                     showFurigana,
                     furiganaContext,
                 );
-                offset += duration;
-                return html;
-            })
-            .join("");
+                if (!this.hasPreferredBreakAtEnd(segment.text)) return;
+                groups.push(group);
+                group = "";
+            });
+        });
+        if (group) groups.push(group);
+        return groups
+            .map(
+                (content) =>
+                    `<span class="rnp-lyrics-break-segment rnp-karaoke-break-segment">${content}</span>`,
+            )
+            .join("<wbr>");
+    }
+
+    private static splitTimedKaraokeWord(word: NonNullable<LyricLine["words"]>[number]) {
+        const segments = this.splitLyricTextAtPreferredBreaks(word.text);
+        const weights = segments.map((segment) => this.getTextTimingWeight(segment));
+        const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+        let offset = 0;
+        return segments.map((text, idx) => {
+            const remaining = Math.max(0, word.duration - offset);
+            const duration =
+                idx === segments.length - 1
+                    ? remaining
+                    : (word.duration * weights[idx]) / totalWeight;
+            const segment = {
+                text,
+                time: word.time + offset,
+                duration,
+            };
+            offset += duration;
+            return segment;
+        });
+    }
+
+    private static hasPreferredBreakAtEnd(text: string) {
+        return /(?:[\p{White_Space}\u200b\ufeff]|[,.;:!?，。！？、；：…~～\-‐‑‒–—―/\\|)\]）】」』》〉])$/u.test(
+            text,
+        );
     }
 
     private static renderKaraokeWordSegment(
@@ -492,11 +579,11 @@ export class Lyrics {
         return `<span class="rnp-karaoke-word" data-time="${time}" data-duration="${duration}"><span>${this.formatLyricText(text, showFurigana, furiganaContext)}</span></span>`;
     }
 
-    private static splitKaraokeText(text: string) {
+    private static splitLyricTextAtPreferredBreaks(text: string) {
         return (
             text
                 .match(
-                    /.*?(?:[\t \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+|[,.;:!?，。！？、；：…~～\-‐‑‒–—―/\\|)\]）】」』》〉]+|$)/gu,
+                    /.*?(?:[\p{White_Space}\u200b\ufeff]+|[,.;:!?，。！？、；：…~～\-‐‑‒–—―/\\|)\]）】」』》〉]+|$)/gu,
                 )
                 ?.filter(Boolean) ?? [text]
         );
@@ -505,10 +592,8 @@ export class Lyrics {
     private static getTextTimingWeight(text: string) {
         return Math.max(
             1,
-            Array.from(text).filter(
-                (char) =>
-                    !/^[\t \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+$/.test(char),
-            ).length,
+            Array.from(text).filter((char) => !/^[\p{White_Space}\u200b\ufeff]+$/u.test(char))
+                .length,
         );
     }
 
@@ -532,13 +617,12 @@ export class Lyrics {
     }
 
     private static formatPlainLyricText(text: string) {
-        return this.insertLyricBreaks(this.escapeHtml(text));
-    }
-
-    private static insertLyricBreaks(escapedText: string) {
-        return escapedText
-            .replace(/([\t \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+)/g, "$1<wbr>")
-            .replace(/([,.;:!?，。！？、；：…~～\-‐‑‒–—―/\\|)\]）】」』》〉]+)/g, "$1<wbr>");
+        return this.splitLyricTextAtPreferredBreaks(text)
+            .map(
+                (segment) =>
+                    `<span class="rnp-lyrics-break-segment">${this.escapeHtml(segment)}</span>`,
+            )
+            .join("<wbr>");
     }
 
     private static renderAutoFurigana(text: string, furiganaContext?: FuriganaContext | null) {

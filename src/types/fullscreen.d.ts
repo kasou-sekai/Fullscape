@@ -41,7 +41,6 @@ export type Settings = {
     extraControls: "never" | "mousemove" | "always";
     upnextDisplay: "always" | "never" | "smart";
     contextDisplay: "never" | "mousemove" | "always";
-    volumeDisplay: "always" | "never" | "smart";
     overviewDisplay: boolean;
     themedButtons: boolean;
     themedIcons: boolean;

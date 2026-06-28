@@ -4,12 +4,17 @@ import { DOM } from "../../elements";
 import Utils from "../../../utils/utils";
 import ICONS from "../../../constants";
 import { Settings, Config } from "../../../types/fullscreen";
+import {
+    createOverflowScrollAnimation,
+    getOverflowScrollTiming,
+} from "../../../utils/overflow-scroll";
 
 export class UpNext {
     static upnextTimer: ReturnType<typeof setTimeout>;
     static upNextShown = false;
     private static readonly visibleTransform = "translateX(0px)";
     private static readonly hiddenTransform = "translateX(calc(100% + 40px))";
+    private static scrollAnimation: Animation | null = null;
 
     static async updateUpNextInfo() {
         const LOCALE = CFM.getGlobal("locale") as Config["locale"];
@@ -97,11 +102,7 @@ export class UpNext {
         DOM.fsd_myUp.style.opacity = "1";
         DOM.fsd_myUp.style.pointerEvents = "auto";
         this.upNextShown = true;
-        if (DOM.fsd_second_span.offsetWidth > DOM.fsd_next_tit_art.offsetWidth - 2) {
-            this.setupScrollingAnimation();
-        } else {
-            this.resetUpNextAnimation();
-        }
+        this.setupScrollingAnimation();
     }
 
     static hideUpNext() {
@@ -113,25 +114,25 @@ export class UpNext {
     }
 
     static setupScrollingAnimation() {
-        DOM.fsd_first_span.style.paddingRight = "0px";
-        DOM.fsd_second_span.innerText = "";
-
-        const animTime = Math.max(
-            (DOM.fsd_first_span.offsetWidth - DOM.fsd_next_tit_art.offsetWidth - 2) / 0.035,
-            1700,
+        this.resetUpNextAnimation();
+        const overflow = Math.ceil(
+            DOM.fsd_first_span.offsetWidth - DOM.fsd_next_tit_art.clientWidth,
         );
+        if (overflow <= 1 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
-        DOM.fsd_myUp.style.setProperty(
-            "--translate_width_fsd",
-            `-${DOM.fsd_first_span.offsetWidth - DOM.fsd_next_tit_art.offsetWidth + 5}px`,
+        this.scrollAnimation = createOverflowScrollAnimation(
+            DOM.fsd_next_tit_art_inner,
+            overflow,
+            getOverflowScrollTiming(overflow),
         );
-
-        DOM.fsd_next_tit_art_inner.style.animation = `fsd_translate ${animTime}ms linear 800ms infinite`;
     }
 
     static resetUpNextAnimation() {
+        this.scrollAnimation?.cancel();
+        this.scrollAnimation = null;
         DOM.fsd_first_span.style.paddingRight = "0px";
         DOM.fsd_next_tit_art_inner.style.animation = "none";
+        DOM.fsd_next_tit_art_inner.style.removeProperty("transform");
         DOM.fsd_second_span.innerText = "";
     }
 

@@ -65,6 +65,14 @@
         "showLyricsRomanization": "显示罗马音歌词",
         "showLyricsFurigana": "显示注音歌词",
         "karaokeLyrics": "使用逐字歌词",
+        "refreshLyrics": {
+            "setting": "重新获取歌词",
+            "button": "立即刷新",
+            "loading": "正在获取…",
+            "done": "已更新",
+            "failed": "获取失败",
+            "description": "清除当前歌曲的歌词缓存并立即重新获取。"
+        },
         "lyricsAlignment": {
             "setting": "歌词对齐方式",
             "left": "靠左",

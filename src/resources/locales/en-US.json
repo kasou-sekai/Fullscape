@@ -65,6 +65,14 @@
         "showLyricsRomanization": "Show Romanized Lyrics",
         "showLyricsFurigana": "Show Furigana Lyrics",
         "karaokeLyrics": "Use Word-by-word Lyrics",
+        "refreshLyrics": {
+            "setting": "Refresh Lyrics",
+            "button": "Refresh",
+            "loading": "Refreshing…",
+            "done": "Updated",
+            "failed": "Unavailable",
+            "description": "Clear the current track's lyric cache and fetch it again immediately."
+        },
         "lyricsAlignment": {
             "setting": "Lyrics Alignment",
             "left": "Left",

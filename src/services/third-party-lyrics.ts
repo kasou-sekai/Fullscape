@@ -95,6 +95,7 @@ const NETEASE_LYRIC_URL = "https://music.163.com/api/song/lyric";
 const REQUEST_TIMEOUT_MS = 6000;
 const FIRST_LINE_TIME_TOLERANCE_MS = 2500;
 const MERGE_TIME_TOLERANCE_MS = 1500;
+const UNTIMED_DECORATION_MAX_DURATION_MS = 20;
 
 let lastDebug: ThirdPartyLyricsDebug = createDebug("idle", "尚未请求第三方歌词", false);
 
@@ -440,12 +441,13 @@ function parseDynamicLyrics(content: string, format: "yrc" | "klyric"): Enhanced
         }
 
         const cleanText = text.trim();
-        if (!cleanText || !words.length) continue;
+        const timedWords = mergeUntimedDecorations(words);
+        if (!cleanText || !timedWords.length) continue;
         lines.push({
             time: lineStart,
             duration: lineDuration,
             text: cleanText,
-            words,
+            words: timedWords,
         });
     }
     return lines.sort((a, b) => (a.time ?? 0) - (b.time ?? 0));
@@ -465,7 +467,42 @@ function appendLyricWord(words: LyricWord[], word: LyricWord) {
 }
 
 function isLyricWhitespace(text: string) {
-    return /^[\s\u1680\u2000-\u200a\u202f\u205f\u3000]+$/.test(text);
+    return /^[\p{White_Space}\u200b\ufeff]+$/u.test(text);
+}
+
+function mergeUntimedDecorations(words: LyricWord[]) {
+    const merged: LyricWord[] = [];
+    let leadingDecoration = "";
+    words.forEach((word) => {
+        if (
+            word.duration <= UNTIMED_DECORATION_MAX_DURATION_MS &&
+            isLyricDecoration(word.text)
+        ) {
+            const previous = merged[merged.length - 1];
+            if (previous) previous.text += word.text;
+            else leadingDecoration += word.text;
+            return;
+        }
+
+        const nextWord = {
+            ...word,
+            text: `${leadingDecoration}${word.text}`,
+        };
+        leadingDecoration = "";
+        merged.push(nextWord);
+    });
+
+    if (leadingDecoration && merged.length) {
+        merged[merged.length - 1].text += leadingDecoration;
+    }
+    return merged;
+}
+
+function isLyricDecoration(text: string) {
+    return (
+        Boolean(text) &&
+        /^[\p{P}\p{S}\p{White_Space}\u200b\ufeff]+$/u.test(text)
+    );
 }
 
 function buildThirdPartyLyrics(thirdParty: ThirdPartyLyrics): EnhancedLyricLine[] {
@@ -477,27 +514,217 @@ function buildThirdPartyLyrics(thirdParty: ThirdPartyLyrics): EnhancedLyricLine[
     );
     const renderLines =
         firstEffectiveIndex > 0 ? primaryLines.slice(firstEffectiveIndex) : primaryLines;
+    const plainLines = alignOriginalLines(renderLines, thirdParty.lines);
+    const translationsByPlainLine = alignTimedLines(
+        thirdParty.lines,
+        thirdParty.translations,
+        MERGE_TIME_TOLERANCE_MS,
+    );
+    const romanizationsByPlainLine = alignTimedLines(
+        thirdParty.lines,
+        thirdParty.romanizations,
+        MERGE_TIME_TOLERANCE_MS,
+    );
+    const directTranslations = alignTimedLines(
+        renderLines,
+        thirdParty.translations,
+        MERGE_TIME_TOLERANCE_MS,
+    );
+    const directRomanizations = alignTimedLines(
+        renderLines,
+        thirdParty.romanizations,
+        MERGE_TIME_TOLERANCE_MS,
+    );
 
-    return renderLines.map((line) => {
+    return renderLines.map((line, index) => {
         if (line.time === null) return line;
-        const plain = findNearestLine(thirdParty.lines, line.time, MERGE_TIME_TOLERANCE_MS);
-        const translation = findNearestLine(
-            thirdParty.translations,
-            line.time,
-            MERGE_TIME_TOLERANCE_MS,
-        );
-        const romanization = findNearestLine(
-            thirdParty.romanizations,
-            line.time,
-            MERGE_TIME_TOLERANCE_MS,
-        );
+        const plain = plainLines[index];
+        const plainIndex = plain ? thirdParty.lines.indexOf(plain) : -1;
+        const translation =
+            (plainIndex >= 0 ? translationsByPlainLine[plainIndex] : null) ??
+            directTranslations[index];
+        const romanization =
+            (plainIndex >= 0 ? romanizationsByPlainLine[plainIndex] : null) ??
+            directRomanizations[index];
+        const synchronizedLine = synchronizeDynamicPunctuation(line, plain?.text);
         return {
-            ...line,
-            text: line.text || plain?.text || "",
+            ...synchronizedLine,
+            text: synchronizedLine.text || plain?.text || "",
             translation: translation?.text,
             romanization: romanization?.text,
         };
     });
+}
+
+function alignOriginalLines(primary: EnhancedLyricLine[], originals: EnhancedLyricLine[]) {
+    const aligned: Array<EnhancedLyricLine | null> = new Array(primary.length).fill(null);
+    let originalCursor = 0;
+
+    primary.forEach((line, lineIndex) => {
+        if (line.time === null) return;
+        let bestIndex = -1;
+        let bestDiff = Infinity;
+        for (let index = originalCursor; index < originals.length; index++) {
+            const candidate = originals[index];
+            if (candidate.time === null) continue;
+            const diff = Math.abs(candidate.time - line.time);
+            if (
+                diff <= MERGE_TIME_TOLERANCE_MS &&
+                isCompatibleText(line.text, candidate.text) &&
+                diff < bestDiff
+            ) {
+                bestIndex = index;
+                bestDiff = diff;
+            }
+            if (candidate.time > line.time + MERGE_TIME_TOLERANCE_MS) break;
+        }
+
+        if (bestIndex < 0) {
+            for (let index = originalCursor; index < originals.length; index++) {
+                const candidate = originals[index];
+                if (candidate.time === null) continue;
+                const diff = Math.abs(candidate.time - line.time);
+                if (diff < bestDiff && diff <= MERGE_TIME_TOLERANCE_MS) {
+                    bestIndex = index;
+                    bestDiff = diff;
+                }
+                if (candidate.time > line.time + MERGE_TIME_TOLERANCE_MS) break;
+            }
+        }
+
+        if (bestIndex < 0) return;
+        aligned[lineIndex] = originals[bestIndex];
+        originalCursor = bestIndex + 1;
+    });
+
+    return aligned;
+}
+
+function alignTimedLines(
+    targets: EnhancedLyricLine[],
+    sources: EnhancedLyricLine[],
+    tolerance: number,
+) {
+    const aligned: Array<EnhancedLyricLine | null> = new Array(targets.length).fill(null);
+    const targetCount = targets.length;
+    const sourceCount = sources.length;
+    const matches = Array.from({ length: targetCount + 1 }, () =>
+        new Array<number>(sourceCount + 1).fill(0),
+    );
+    const costs = Array.from({ length: targetCount + 1 }, () =>
+        new Array<number>(sourceCount + 1).fill(0),
+    );
+    const choices = Array.from({ length: targetCount }, () =>
+        new Array<"target" | "source" | "match">(sourceCount).fill("target"),
+    );
+
+    for (let targetIndex = targetCount - 1; targetIndex >= 0; targetIndex--) {
+        for (let sourceIndex = sourceCount - 1; sourceIndex >= 0; sourceIndex--) {
+            const options: Array<{
+                choice: "target" | "source" | "match";
+                matches: number;
+                cost: number;
+            }> = [
+                {
+                    choice: "target",
+                    matches: matches[targetIndex + 1][sourceIndex],
+                    cost: costs[targetIndex + 1][sourceIndex],
+                },
+                {
+                    choice: "source",
+                    matches: matches[targetIndex][sourceIndex + 1],
+                    cost: costs[targetIndex][sourceIndex + 1],
+                },
+            ];
+            const targetTime = targets[targetIndex].time;
+            const sourceTime = sources[sourceIndex].time;
+            if (targetTime !== null && sourceTime !== null) {
+                const diff = Math.abs(targetTime - sourceTime);
+                if (diff <= tolerance) {
+                    options.push({
+                        choice: "match",
+                        matches: matches[targetIndex + 1][sourceIndex + 1] + 1,
+                        cost: costs[targetIndex + 1][sourceIndex + 1] + diff,
+                    });
+                }
+            }
+            const best = options.reduce((current, option) => {
+                if (option.matches !== current.matches) {
+                    return option.matches > current.matches ? option : current;
+                }
+                return option.cost < current.cost ? option : current;
+            });
+            matches[targetIndex][sourceIndex] = best.matches;
+            costs[targetIndex][sourceIndex] = best.cost;
+            choices[targetIndex][sourceIndex] = best.choice;
+        }
+    }
+
+    let targetIndex = 0;
+    let sourceIndex = 0;
+    while (targetIndex < targetCount && sourceIndex < sourceCount) {
+        const choice = choices[targetIndex][sourceIndex];
+        if (choice === "match") {
+            aligned[targetIndex] = sources[sourceIndex];
+            targetIndex += 1;
+            sourceIndex += 1;
+        } else if (choice === "source") {
+            sourceIndex += 1;
+        } else {
+            targetIndex += 1;
+        }
+    }
+    return aligned;
+}
+
+function synchronizeDynamicPunctuation(line: EnhancedLyricLine, plainText?: string) {
+    if (!plainText || !line.words?.length) return line;
+    const lineWords = line.words;
+    const dynamicText = lineWords.map((word) => word.text).join("");
+    if (
+        normalizeTimedText(dynamicText) !== normalizeTimedText(plainText) ||
+        countSupplementalCharacters(plainText) <= countSupplementalCharacters(dynamicText)
+    ) {
+        return line;
+    }
+
+    const targetCharacters = Array.from(plainText);
+    let targetIndex = 0;
+    const words = lineWords.map((word, wordIndex) => {
+        const meaningfulCount = Array.from(normalizeTimedText(word.text)).length;
+        let consumedMeaningful = 0;
+        let text = "";
+        while (targetIndex < targetCharacters.length && consumedMeaningful < meaningfulCount) {
+            const character = targetCharacters[targetIndex++];
+            text += character;
+            if (normalizeTimedText(character)) consumedMeaningful += 1;
+        }
+        while (
+            targetIndex < targetCharacters.length &&
+            !normalizeTimedText(targetCharacters[targetIndex])
+        ) {
+            text += targetCharacters[targetIndex++];
+        }
+        if (wordIndex === lineWords.length - 1 && targetIndex < targetCharacters.length) {
+            text += targetCharacters.slice(targetIndex).join("");
+            targetIndex = targetCharacters.length;
+        }
+        return { ...word, text: text || word.text };
+    });
+
+    if (targetIndex !== targetCharacters.length) return line;
+    return { ...line, text: plainText, words };
+}
+
+function normalizeTimedText(text: string) {
+    return text
+        .normalize("NFKC")
+        .toLocaleLowerCase()
+        .replace(/[\p{P}\p{S}\p{Separator}\p{White_Space}\u200b\ufeff]/gu, "");
+}
+
+function countSupplementalCharacters(text: string) {
+    return Array.from(text).filter((character) => !normalizeTimedText(character)).length;
 }
 
 function getLyricsMatchResult(
@@ -552,21 +779,6 @@ function isMeaningfulLyric(text: string) {
     return !/^(作词|作曲|编曲|制作人|监制|出品|录音|混音|母带|词版权|曲版权|录音作品|联合出品|人声|吉他|贝斯|鼓|弦乐|和声|OP|SP|纯音乐|instrumental)/i.test(
         text.trim(),
     );
-}
-
-function findNearestLine(lines: EnhancedLyricLine[], time: number | null, tolerance: number) {
-    if (time === null) return null;
-    let nearest: EnhancedLyricLine | null = null;
-    let nearestDiff = Infinity;
-    for (const line of lines) {
-        if (line.time === null) continue;
-        const diff = Math.abs(line.time - time);
-        if (diff < nearestDiff) {
-            nearest = line;
-            nearestDiff = diff;
-        }
-    }
-    return nearest && nearestDiff <= tolerance ? nearest : null;
 }
 
 function isCompatibleText(a: string, b: string) {
@@ -647,7 +859,7 @@ function isLooseTextMatch(a: string, b: string) {
 }
 
 function normalizeBaseTitle(text: string) {
-    return normalizeLyricText(getBaseTrackTitle(text));
+    return normalizeLyricText(getBaseTrackTitle(text.normalize("NFKC")));
 }
 
 export function getBaseTrackTitle(title: string) {

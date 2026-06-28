@@ -233,30 +233,6 @@
         text-overflow: ellipsis;
         overflow: hidden;
     }
-    @keyframes fsd_cssmarquee {
-        0% {
-            transform: translateX(0%);
-        }
-        18% {
-            transform: translateX(0%);
-        }
-        100% {
-            transform: translateX(var(--translate_width_fsd));
-        }
-    }
-    @keyframes fsd_translate {
-        0%,
-        10% {
-            transform: translateX(0%);
-        }
-        50%,
-        55% {
-            transform: translateX(var(--translate_width_fsd));
-        }
-        100% {
-            transform: translateX(0%);
-        }
-    }
     #fad-lyrics-container {
         transition: transform var(--transition-duration) var(--transition-function);
         position: absolute;
@@ -337,13 +313,17 @@
             line-height: 1;
             text-shadow: none;
         }
-        .rnp-lyrics-line-original,
-        .rnp-lyrics-line-karaoke {
-            word-break: normal;
-            overflow-wrap: break-word;
-        }
-        .rnp-lyrics-line-original {
+        .rnp-lyrics-line > .rnp-lyrics-line-original {
             white-space: break-spaces;
+            word-break: keep-all;
+            overflow-wrap: normal;
+        }
+        .rnp-lyrics-break-segment {
+            display: inline-block;
+            max-width: 100%;
+            white-space: break-spaces;
+            word-break: auto-phrase;
+            overflow-wrap: break-word;
         }
         .rnp-lyrics-line-furigana,
         .rnp-lyrics-line-romaji,
@@ -369,6 +349,9 @@
             letter-spacing: 0;
             word-break: keep-all;
             overflow-wrap: break-word;
+        }
+        .rnp-karaoke-break-segment {
+            white-space: break-spaces;
         }
         .rnp-karaoke-word {
             display: inline-block;
@@ -602,10 +585,6 @@
         white-space: nowrap;
         will-change: transform;
     }
-    #fsd-title-text-track.is-overflowing,
-    #fsd-secondary-meta-track.is-overflowing {
-        animation: fsd_translate var(--meta-scroll-duration) linear 800ms infinite;
-    }
     #fsd-artist,
     #fsd-album {
         display: flex;
@@ -707,12 +686,9 @@
         transition: background-image var(--fs-transition) linear;
     }
     @media (prefers-reduced-motion: reduce) {
-        #fsd-title-text-track.is-overflowing,
-        #fsd-secondary-meta-track.is-overflowing {
-            animation: none;
-            max-width: 100%;
-            overflow: hidden;
-            text-overflow: ellipsis;
+        #fsd-title-text-track,
+        #fsd-secondary-meta-track {
+            will-change: auto;
         }
     }
 }

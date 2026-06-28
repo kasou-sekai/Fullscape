@@ -23,8 +23,6 @@ export const getHtmlContent = () => {
 </div>`
          : ""
  }
-<div id="fsd-volume-parent"></div>
-
 ${CFM.get("lyricsDisplay") ? `<div id="fad-lyrics-container"></div>` : ""}
 <div id="fsd-foreground">
     <div id="fsd-art">

@@ -67,6 +67,19 @@ export function setCachedLyrics(
     persistStore();
 }
 
+export function deleteCachedLyrics(trackUri: string, kind?: LyricsCacheKind) {
+    const cache = getStore();
+    const kinds: LyricsCacheKind[] = kind ? [kind] : ["spotify", "enhanced"];
+    let changed = false;
+    kinds.forEach((cacheKind) => {
+        const key = getCacheKey(trackUri, cacheKind);
+        if (!(key in cache.entries)) return;
+        delete cache.entries[key];
+        changed = true;
+    });
+    if (changed) persistStore();
+}
+
 function getStore(): LyricsCacheStore {
     if (store) return store;
     try {

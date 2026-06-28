@@ -9,7 +9,6 @@ import { DOM } from "../../elements";
 import { settingsStyles } from "../../../styles/settings";
 import { headerText, getSettingCard, createAdjust, getAboutSection } from "../../../utils/setting";
 import SeekableProgressBar from "../ProgressBar/ProgressBar";
-import SeekableVolumeBar from "../VolumeBar/VolumeBar";
 import { modifyRotationSpeed, animateColor } from "../../../utils/animation";
 import { Lyrics } from "../Lyrics/Lyrics";
 
@@ -225,7 +224,7 @@ export class ConfigManager {
     private static createLyricsDebugCard() {
         const { status, lines, thirdParty } = Lyrics.getDebugInfo();
         const card = document.createElement("div");
-        card.classList.add("setting-card");
+        card.classList.add("setting-card", "lyrics-debug-card");
 
         const container = document.createElement("div");
         container.classList.add("setting-container");
@@ -326,6 +325,37 @@ export class ConfigManager {
         desc.append(box);
         container.append(header, desc);
         card.append(container);
+        return card;
+    }
+
+    private static createLyricsRefreshCard(LOCALE: string) {
+        const strings = translations[LOCALE].settings.refreshLyrics;
+        const card = getSettingCard(
+            `<button class="main-buttons-button main-button-secondary lyrics-refresh-button">${strings.button}</button>`,
+            strings.setting,
+            "lyricsDisplay",
+            strings.description,
+        );
+        const button = card.querySelector<HTMLButtonElement>(".lyrics-refresh-button");
+        if (!button) return card;
+
+        button.onclick = async () => {
+            button.disabled = true;
+            button.textContent = strings.loading;
+            const refreshed = await Lyrics.refreshCurrentLyrics().catch(() => false);
+            button.textContent = refreshed ? strings.done : strings.failed;
+            const debugCard = this.configContainer.querySelector(".lyrics-debug-card");
+            if (debugCard) {
+                const updatedDebugCard = this.createLyricsDebugCard();
+                updatedDebugCard.classList.add("lyrics-debug-card");
+                debugCard.replaceWith(updatedDebugCard);
+            }
+            window.setTimeout(() => {
+                if (!button.isConnected) return;
+                button.disabled = false;
+                button.textContent = strings.button;
+            }, 1500);
+        };
         return card;
     }
 
@@ -445,6 +475,7 @@ export class ConfigManager {
                     this.saveOption("lyricsSize", value as unknown as Settings["lyricsSize"]),
                 translations[LOCALE].settings.lyricsSize.description,
             ),
+            this.createLyricsRefreshCard(LOCALE),
             this.createLyricsDebugCard(),
             headerText(translations[LOCALE].settings.generalHeader),
             this.createOptions(
@@ -507,29 +538,6 @@ export class ConfigManager {
                 CFM.get("upnextDisplay") as Settings["upnextDisplay"],
                 "upnextDisplay",
                 (value: string) => this.saveOption("upnextDisplay", value),
-            ),
-            this.createOptions(
-                translations[LOCALE].settings.volumeDisplay.setting,
-                {
-                    always: translations[LOCALE].settings.volumeDisplay.always,
-                    never: translations[LOCALE].settings.volumeDisplay.never,
-                    smart: translations[LOCALE].settings.volumeDisplay.smart,
-                },
-                CFM.get("volumeDisplay") as Settings["volumeDisplay"],
-                "volumeDisplay",
-                (value: string) => {
-                    CFM.set("volumeDisplay", value as Settings["volumeDisplay"]);
-                    if (value !== "never") {
-                        ReactDOM.render(
-                            <SeekableVolumeBar state={value} />,
-                            DOM.container.querySelector("#fsd-volume-parent"),
-                        );
-                    } else {
-                        const root = DOM.container.querySelector("#fsd-volume-parent");
-                        if (root) ReactDOM.unmountComponentAtNode(root);
-                    }
-                },
-                translations[LOCALE].settings.volumeDisplay.description.join("\n"),
             ),
             headerText(
                 translations[LOCALE].settings.backgroundHeader,

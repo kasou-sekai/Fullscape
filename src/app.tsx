@@ -10,13 +10,13 @@ import translations from "./resources/strings";
 import ICONS, { CLASSES_TO_ADD } from "./constants";
 import HtmlSelectors from "./utils/selectors";
 import { Config, Settings } from "./types/fullscreen";
+import { createOverflowScrollAnimation, getOverflowScrollTiming } from "./utils/overflow-scroll";
 
 import showWhatsNew from "./services/whats-new";
 import { getHtmlContent } from "./services/html-creator";
 import { initMoustrapRecord } from "./services/mousetrap-record";
 
 import SeekableProgressBar from "./ui/components/ProgressBar/ProgressBar";
-import SeekableVolumeBar from "./ui/components/VolumeBar/VolumeBar";
 
 import { DOM } from "./ui/elements";
 import { ConfigManager } from "./ui/components/Config/Config";
@@ -96,11 +96,23 @@ async function main() {
     const updateUpNextShow = UpNext.updateUpNextShow.bind(UpNext);
     const hidePlayerControls = PlayerControls.hidePlayerControls.bind(PlayerControls);
     let metadataFrameId: number | null = null;
+    let metadataAnimations: Animation[] = [];
+
+    function cancelMetadataAnimations() {
+        metadataAnimations.forEach((animation) => animation.cancel());
+        metadataAnimations = [];
+        DOM.container
+            .querySelectorAll<HTMLElement>("#fsd-title-text-track, #fsd-secondary-meta-track")
+            .forEach((track) => {
+                track.style.removeProperty("transform");
+            });
+    }
 
     function updateMetadataOverflow() {
         if (metadataFrameId !== null) cancelAnimationFrame(metadataFrameId);
         metadataFrameId = requestAnimationFrame(() => {
             metadataFrameId = null;
+            cancelMetadataAnimations();
             const targets = [
                 {
                     viewport: DOM.container.querySelector<HTMLElement>("#fsd-title-text-viewport"),
@@ -119,30 +131,26 @@ async function main() {
                 } => Boolean(target.viewport && target.track),
             );
 
-            targets.forEach(({ track }) => {
-                track.classList.remove("is-overflowing");
-                track.style.animation = "none";
-                track.style.removeProperty("--translate_width_fsd");
-                track.style.removeProperty("--meta-scroll-duration");
-            });
-
-            // Force the previous animations to reset before both tracks restart together.
-            void DOM.container.offsetWidth;
-
             const measurements = targets.map((target) => ({
                 ...target,
                 overflow: Math.ceil(target.track.scrollWidth - target.viewport.clientWidth),
             }));
             const maxOverflow = Math.max(0, ...measurements.map(({ overflow }) => overflow));
-            if (maxOverflow <= 1) return;
+            if (maxOverflow <= 1 || window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+                return;
 
-            const animationDuration = Math.max(maxOverflow / 0.035, 1700);
+            const timing = getOverflowScrollTiming(maxOverflow);
+            const timelineTime = document.timeline.currentTime;
+            const synchronizedStartTime =
+                typeof timelineTime === "number" ? timelineTime : performance.now();
+
             measurements.forEach(({ track, overflow }) => {
-                track.style.removeProperty("animation");
                 if (overflow <= 1) return;
-                track.style.setProperty("--translate_width_fsd", `-${overflow + 5}px`);
-                track.style.setProperty("--meta-scroll-duration", `${animationDuration}ms`);
-                track.classList.add("is-overflowing");
+                const animation = createOverflowScrollAnimation(track, overflow, timing);
+                metadataAnimations.push(animation);
+            });
+            metadataAnimations.forEach((animation) => {
+                animation.startTime = synchronizedStartTime;
             });
         });
     }
@@ -216,6 +224,7 @@ async function main() {
             cancelAnimationFrame(metadataFrameId);
             metadataFrameId = null;
         }
+        cancelMetadataAnimations();
         Background.stop();
 
         handleMouseMoveDeactivation();
@@ -493,12 +502,6 @@ async function main() {
             Spicetify.Platform.PlayerAPI._events.addListener("queue_update", updateUpNext);
             Spicetify.Platform.PlayerAPI._events.addListener("update", updateUpNextShow);
         }
-        if (CFM.get("volumeDisplay") !== "never") {
-            ReactDOM.render(
-                <SeekableVolumeBar state={CFM.get("volumeDisplay") as Settings["volumeDisplay"]} />,
-                DOM.container.querySelector("#fsd-volume-parent"),
-            );
-        }
         if (CFM.get("icons")) {
             updatePlayingIcon({ data: { is_paused: !Spicetify.Player.isPlaying() } });
             Spicetify.Player.addEventListener("onplaypause", updatePlayingIcon);
@@ -564,17 +567,14 @@ async function main() {
             cancelAnimationFrame(metadataFrameId);
             metadataFrameId = null;
         }
+        cancelMetadataAnimations();
         if (CFM.get("upnextDisplay") !== "never") {
             UpNext.upNextShown = false;
             Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", updateUpNext);
             Spicetify.Platform.PlayerAPI._events.removeListener("update", updateUpNextShow);
         }
-        [
-            DOM.container.querySelector("#fsd-volume-parent"),
-            DOM.container.querySelector("#fsd-progress-parent"),
-        ].forEach((root) => {
-            if (root) ReactDOM.unmountComponentAtNode(root);
-        });
+        const progressRoot = DOM.container.querySelector("#fsd-progress-parent");
+        if (progressRoot) ReactDOM.unmountComponentAtNode(progressRoot);
         if (CFM.get("icons")) {
             Spicetify.Player.removeEventListener("onplaypause", updatePlayingIcon);
         }
