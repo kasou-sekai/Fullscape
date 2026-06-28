@@ -251,7 +251,9 @@
             box-sizing: border-box;
         }
         .rnp-lyrics {
-            width: calc(100% - 6px);
+            --lyrics-left-bleed: 48px;
+            left: calc(-1 * var(--lyrics-left-bleed));
+            width: calc(100% - 6px + var(--lyrics-left-bleed));
             height: 100%;
             position: relative;
             overflow: hidden;
@@ -273,14 +275,18 @@
                 rgba(0, 0, 0, 1) 94%,
                 rgba(0, 0, 0, 0) 100%
             );
+            scrollbar-width: none;
+            &::-webkit-scrollbar {
+                display: none;
+            }
         }
         .rnp-lyrics-line {
             position: absolute;
-            left: 0;
+            left: var(--lyrics-left-bleed);
             transform-origin: left center;
             line-height: 1.55;
-            width: calc(100% - 60px);
-            max-width: calc(100% - 60px);
+            width: calc(100% - 60px - var(--lyrics-left-bleed));
+            max-width: calc(100% - 60px - var(--lyrics-left-bleed));
             box-sizing: border-box;
             will-change: transform, filter, opacity;
             transition:
@@ -447,31 +453,6 @@
                     0 5px 18px rgba(var(--main-color), 0.12);
             }
         }
-        .rnp-lyrics-scrollbar {
-            position: absolute;
-            right: 4px;
-            top: 0;
-            height: 100%;
-            width: 6px;
-        }
-        .rnp-lyrics-scrollbar-thumb {
-            position: absolute;
-            right: 0;
-            width: 100%;
-            background-color: var(--primary-color);
-            opacity: 0.22;
-            border-radius: 999px;
-            transition:
-                top 0.4s ease,
-                opacity 0.25s ease;
-        }
-        .rnp-lyrics-scrollbar-thumb.no-scroll {
-            opacity: 0;
-            pointer-events: none;
-        }
-        &:not(:hover) .rnp-lyrics-scrollbar-thumb {
-            opacity: 0;
-        }
         .lyrics-status {
             margin: auto;
             width: 100%;
@@ -498,11 +479,8 @@
             opacity: 1 !important;
             filter: none !important;
             transition: none !important;
-            max-width: calc(100% - 60px);
+            max-width: calc(100% - 60px - var(--lyrics-left-bleed));
             margin: 0 0 calc(var(--lyrics-base-font-size) * var(--lyrics-font-scale, 1) * 0.25);
-        }
-        .rnp-lyrics-scrollbar {
-            display: none;
         }
     }
     &.lyrics-unavailable,

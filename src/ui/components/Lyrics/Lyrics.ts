@@ -57,7 +57,6 @@ export class Lyrics {
     private static readonly enhancedRequests = new Map<string, Promise<LyricLine[]>>();
     private static container: HTMLElement | null = null;
     private static lyricsRoot: HTMLElement | null = null;
-    private static scrollbarThumb: HTMLElement | null = null;
     private static lineNodes: HTMLElement[] = [];
     private static timedLines: TimedLyricLine[] = [];
     private static karaokeWordsByLine: KaraokeWordRenderState[][] = [];
@@ -99,7 +98,6 @@ export class Lyrics {
         this.activeIndex = -1;
         this.stopResizeObserver();
         this.lastMeasuredFontSize = 0;
-        this.scrollbarThumb = null;
         this.lyricsRoot = null;
         this.container = null;
         this.isSynced = false;
@@ -414,7 +412,6 @@ export class Lyrics {
         this.activeIndex = -1;
         this.lastMeasuredFontSize = 0;
         this.lyricsRoot = null;
-        this.scrollbarThumb = null;
         this.lastLines = [];
         this.isSynced = false;
         this.lastStatus = unavailable ? "unavailable" : "loading";
@@ -459,14 +456,8 @@ export class Lyrics {
                 <div class="rnp-lyrics">
                     ${body}
                 </div>
-                <div class="rnp-lyrics-scrollbar">
-                    <div class="rnp-lyrics-scrollbar-thumb"></div>
-                </div>
             </div>`;
         this.lyricsRoot = this.container.querySelector(".rnp-lyrics") as HTMLElement;
-        this.scrollbarThumb = this.container.querySelector(
-            ".rnp-lyrics-scrollbar-thumb",
-        ) as HTMLElement;
         this.lineNodes = Array.from(
             this.container.querySelectorAll<HTMLElement>(".rnp-lyrics-line"),
         );
@@ -1520,19 +1511,6 @@ export class Lyrics {
             node.style.opacity = `${t.opacity}`;
             node.style.filter = t.blur ? `blur(${t.blur}px)` : "none";
         });
-
-        this.updateScrollbar(hasActive ? current : 0, containerHeight);
-    }
-
-    private static updateScrollbar(current: number, containerHeight: number) {
-        if (!this.scrollbarThumb) return;
-        const total = Math.max(1, this.lines.length);
-        const thumbHeight = Math.max(containerHeight / total, 28);
-        const track = containerHeight - thumbHeight;
-        const perStep = total > 1 ? track / (total - 1) : 0;
-        this.scrollbarThumb.style.height = `${thumbHeight}px`;
-        this.scrollbarThumb.style.top = `${Math.max(0, Math.min(track, perStep * current))}px`;
-        this.scrollbarThumb.classList.toggle("no-scroll", total <= 1);
     }
 
     private static measureHeights() {
