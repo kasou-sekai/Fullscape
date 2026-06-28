@@ -18,7 +18,15 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
 
     const [visibility, setVisibility] = React.useState(true);
 
-    const progressTimer = React.useRef(null) as React.MutableRefObject<NodeJS.Timeout | null>;
+    const progressTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const progressRef = React.useRef(curProgress);
+    const durationRef = React.useRef(curDuration);
+    const changingProgressRef = React.useRef(changingProgress);
+    const secondaryPrefRef = React.useRef(secondaryPref);
+    progressRef.current = curProgress;
+    durationRef.current = curDuration;
+    changingProgressRef.current = changingProgress;
+    secondaryPrefRef.current = secondaryPref;
 
     const onMouseDown = (evt: MouseEvent) => {
         if (evt.button == 0) {
@@ -33,23 +41,30 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
                 },
             };
             const newPercentage = newData.data.positionCoord / sliderWidth;
-            setProgress(newPercentage * curDuration);
-
+            const progress = newPercentage * durationRef.current;
+            progressRef.current = progress;
+            setProgress(progress);
+            changingProgressRef.current = newData;
             setChangingProgress(newData);
         }
     };
 
     const onMouseMove = (evt: MouseEvent) => {
-        if (changingProgress.isChanging && changingProgress.data) {
-            const moveX = evt.clientX - changingProgress.data.beginClient;
-            const sliderWidth = changingProgress.data.sliderDimen;
-            const newPosX = Math.min(Math.max(changingProgress.data.begin + moveX, 0), sliderWidth);
+        const changing = changingProgressRef.current;
+        if (changing.isChanging && changing.data) {
+            const moveX = evt.clientX - changing.data.beginClient;
+            const sliderWidth = changing.data.sliderDimen;
+            const newPosX = Math.min(Math.max(changing.data.begin + moveX, 0), sliderWidth);
             const newPercentage = newPosX / sliderWidth;
-            setProgress(newPercentage * curDuration);
-            setChangingProgress({
+            const progress = newPercentage * durationRef.current;
+            const nextChanging = {
                 isChanging: true,
-                data: { ...changingProgress.data, positionCoord: newPosX },
-            });
+                data: { ...changing.data, positionCoord: newPosX },
+            };
+            progressRef.current = progress;
+            changingProgressRef.current = nextChanging;
+            setProgress(progress);
+            setChangingProgress(nextChanging);
         }
         if (state === "mousemove") {
             hideProgressBar();
@@ -57,9 +72,11 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
     };
 
     const onMouseUp = (evt: MouseEvent) => {
-        if (evt.button == 0 && changingProgress.isChanging) {
-            Spicetify.Player.seek(curProgress);
-            setChangingProgress({ isChanging: false, data: null });
+        if (evt.button == 0 && changingProgressRef.current.isChanging) {
+            Spicetify.Player.seek(progressRef.current);
+            const stopped = { isChanging: false, data: null };
+            changingProgressRef.current = stopped;
+            setChangingProgress(stopped);
         }
     };
 
@@ -88,9 +105,10 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
     const updateProgress = () => {
         const progress = Spicetify.Player.getProgress();
         if (
-            !changingProgress.isChanging &&
-            (Spicetify.Player.isPlaying() || curProgress !== progress)
+            !changingProgressRef.current.isChanging &&
+            (Spicetify.Player.isPlaying() || progressRef.current !== progress)
         ) {
+            progressRef.current = progress;
             setProgress(progress);
         }
     };
@@ -98,12 +116,16 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updateDuration = (meta: any) => {
         setProgress(0);
+        progressRef.current = 0;
+        durationRef.current = meta.data.duration;
         setDuration(meta.data.duration);
     };
 
     const updateSecondaryPref = () => {
-        setSecondaryPref(!secondaryPref);
-        CFM.set("showRemainingTime", !secondaryPref);
+        const nextValue = !secondaryPrefRef.current;
+        secondaryPrefRef.current = nextValue;
+        setSecondaryPref(nextValue);
+        CFM.set("showRemainingTime", nextValue);
     };
     const getSecondaryTime = () => {
         if (secondaryPref) {
@@ -127,10 +149,11 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
         return () => {
             // console.log("Progress Effect cleared");
             clearInterval(updateInterval);
+            if (progressTimer.current) clearTimeout(progressTimer.current);
             Spicetify.Player.removeEventListener("songchange", updateDuration);
             resetDragListener();
         };
-    }, [changingProgress, state]);
+    }, [state]);
 
     return (
         <div id="fsd-progress-container" style={{ opacity: visibility ? 1 : 0 }}>

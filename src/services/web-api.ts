@@ -1,7 +1,8 @@
-import { Cache, Colors, TokenType } from "../types/fullscreen";
+import { Colors } from "../types/fullscreen";
 import Utils from "../utils/utils";
 
-const colorsCache: Cache[] = [];
+const colorsCache = new Map<string, Colors>();
+const MAX_COLOR_CACHE_ENTRIES = 20;
 
 class WebAPI {
     static getToken() {
@@ -9,19 +10,19 @@ class WebAPI {
     }
 
     static async getTrackInfo(id: string) {
-        return fetch(`https://api.spotify.com/v1/tracks/${id}`, {
+        return this.fetchJson(`https://api.spotify.com/v1/tracks/${encodeURIComponent(id)}`, {
             headers: {
-                Authorization: `Bearer ${await WebAPI.getToken()}`,
+                Authorization: `Bearer ${WebAPI.getToken()}`,
             },
-        }).then((res) => res.json());
+        });
     }
 
     static async getAlbumInfo(id: string) {
-        return fetch(`https://api.spotify.com/v1/albums/${id}`, {
+        return this.fetchJson(`https://api.spotify.com/v1/albums/${encodeURIComponent(id)}`, {
             headers: {
-                Authorization: `Bearer ${await WebAPI.getToken()}`,
+                Authorization: `Bearer ${WebAPI.getToken()}`,
             },
-        }).then((res) => res.json());
+        });
     }
 
     static async getPlaylistInfo(uri: string) {
@@ -29,59 +30,51 @@ class WebAPI {
     }
 
     static async getArtistInfo(id: string) {
-        return fetch(
-            `https://api-partner.spotify.com/pathfinder/v1/query?operationName=queryArtistOverview&variables=%7B%22uri%22%3A%22spotify%3Aartist%3A${id}%22%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%22d66221ea13998b2f81883c5187d174c8646e4041d67f5b1e103bc262d447e3a0%22%7D%7D`,
+        const variables = encodeURIComponent(JSON.stringify({ uri: `spotify:artist:${id}` }));
+        return this.fetchJson(
+            `https://api-partner.spotify.com/pathfinder/v1/query?operationName=queryArtistOverview&variables=${variables}&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%22d66221ea13998b2f81883c5187d174c8646e4041d67f5b1e103bc262d447e3a0%22%7D%7D`,
             {
                 headers: {
-                    Authorization: `Bearer ${await WebAPI.getToken()}`,
+                    Authorization: `Bearer ${WebAPI.getToken()}`,
                 },
             },
-        )
-            .then((res) => res.json())
-            .then((res) => res.data.artist);
+        ).then((res) => res.data.artist);
     }
 
     static async searchArt(name: string) {
-        return fetch(`https://api.spotify.com/v1/search?q="${name}"&type=artist&limit=2`, {
+        const params = new URLSearchParams({ q: name, type: "artist", limit: "2" });
+        return this.fetchJson(`https://api.spotify.com/v1/search?${params}`, {
             headers: {
-                Authorization: `Bearer ${await WebAPI.getToken()}`,
+                Authorization: `Bearer ${WebAPI.getToken()}`,
             },
-        }).then((res) => res.json());
+        });
     }
 
-    static async colorExtractorLegacy(uri: string) {
-        const presentInCache = colorsCache.filter((obj) => obj.uri === uri);
-        if (presentInCache.length > 0) return presentInCache[0].colors;
-        const body = await Spicetify.CosmosAsync.get(
-            `https://spclient.wg.spotify.com/colorextractor/v1/extract-presets?uri=${uri}&format=json`,
-        );
-        if (body.entries && body.entries.length) {
-            const list: Colors = {};
-            for (const color of body.entries[0].color_swatches) {
-                list[color.preset] = `#${color.color.toString(16).padStart(6, "0")}`;
-            }
-            if (colorsCache.length > 20) colorsCache.shift();
-            colorsCache.push({ uri, colors: list });
-            return list;
+    private static async fetchJson(url: string, init: RequestInit) {
+        const response = await fetch(url, init);
+        if (!response.ok) {
+            throw new Error(`Spotify request failed (${response.status})`);
         }
-        throw "No colors returned.";
+        return response.json();
     }
 
     static async colorExtractor(uri: string) {
-        const presentInCache = colorsCache.filter((obj) => obj.uri === uri);
-        if (presentInCache.length > 0) return presentInCache[0].colors;
+        const cached = colorsCache.get(uri);
+        if (cached) return cached;
         const body = await Spicetify.extractColorPreset(uri);
         if (body && body.length) {
             const colorMap = body[0];
             const list: Colors = {};
-            if (colorMap.isFallback) throw "No colors returned.";
+            if (colorMap.isFallback) throw new Error("No colors returned.");
             list["VIBRANT"] = Utils.rgbToHex(colorMap.colorLight.rgb);
             list["DARK_VIBRANT"] = Utils.rgbToHex(colorMap.colorDark.rgb);
-            if (colorsCache.length > 20) colorsCache.shift();
-            colorsCache.push({ uri, colors: list });
+            if (colorsCache.size >= MAX_COLOR_CACHE_ENTRIES) {
+                colorsCache.delete(colorsCache.keys().next().value);
+            }
+            colorsCache.set(uri, list);
             return list;
         }
-        throw "No colors returned.";
+        throw new Error("No colors returned.");
     }
 }
 

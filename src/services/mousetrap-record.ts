@@ -65,7 +65,7 @@ export function initMoustrapRecord(Mousetrap) {
                 _recordCurrentCombo();
             }
 
-            for (i = 0; i < modifiers.length; ++i) {
+            for (let i = 0; i < modifiers.length; ++i) {
                 _recordKey(modifiers[i]);
             }
             _recordKey(character);

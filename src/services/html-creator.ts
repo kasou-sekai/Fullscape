@@ -1,7 +1,7 @@
 import ICONS from "../constants";
 import CFM from "../utils/config";
 
-export const getHtmlContent = (areLyricsForceHidden: boolean) => {
+export const getHtmlContent = () => {
     return `
         <canvas id="fsd-background"></canvas>
   ${

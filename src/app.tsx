@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
-import ReactDOM from "react-dom";
 import React from "react";
+import ReactDOM from "react-dom";
 
 import Utils from "./utils/utils";
 import CFM from "./utils/config";
-import { modifyIsAnimationRunning } from "./utils/animation";
 
 import translations from "./resources/strings";
 import ICONS, { CLASSES_TO_ADD } from "./constants";
@@ -95,6 +94,14 @@ async function main() {
         DOM.container?.style.setProperty("--lyrics-font-scale", `${scale}`);
     }
 
+    const updatePlayerControls = PlayerControls.updatePlayerControls.bind(PlayerControls);
+    const updateExtraControls = ExtraControls.updateExtraControls.bind(ExtraControls);
+    const updateUpNext = UpNext.updateUpNext.bind(UpNext);
+    const updateUpNextShow = UpNext.updateUpNextShow.bind(UpNext);
+    const hideContext = Context.hideContext.bind(Context);
+    const hideExtraControls = ExtraControls.hideExtraControls.bind(ExtraControls);
+    const hidePlayerControls = PlayerControls.hidePlayerControls.bind(PlayerControls);
+
     function render() {
         DOM.container.classList.toggle("lyrics-active", Boolean(CFM.get("lyricsDisplay")));
         Utils.toggleQueuePanel(DOM.queue, false);
@@ -116,34 +123,13 @@ async function main() {
         applyLyricsScale();
 
         Spicetify.Player.removeEventListener("songchange", updateInfo);
-        Spicetify.Player.removeEventListener(
-            "onplaypause",
-            PlayerControls.updatePlayerControls.bind(PlayerControls),
-        );
+        Spicetify.Player.removeEventListener("onplaypause", updatePlayerControls);
         Spicetify.Player.removeEventListener("onplaypause", updatePlayingIcon);
         document.removeEventListener("fullscreenchange", fullScreenListener);
-        Spicetify.Platform.PlayerAPI._events.removeListener(
-            "update",
-            ExtraControls.updateExtraControls.bind(ExtraControls),
-        );
+        Spicetify.Platform.PlayerAPI._events.removeListener("update", updateExtraControls);
 
-        // Disconnect heart observer if it exists (handled in ExtraControls but we might need a reference here or move it completely)
-        // ExtraControls handles its own observer logic if we move it there?
-        // Actually ExtraControls.updateExtraControls uses DOM elements.
-        // The observer was local in app.tsx. Let's check ExtraControls.
-        // ExtraControls has static updateExtraControls.
-        // We need to handle the observer in activate/deactivate or make it static in ExtraControls.
-        // Let's assume we handle it in activate/deactivate using ExtraControls methods if possible or just keep it here if it's simple.
-        // But we moved updateHeart to ExtraControls.
-
-        Spicetify.Platform.PlayerAPI._events.removeListener(
-            "queue_update",
-            UpNext.updateUpNext.bind(UpNext),
-        );
-        Spicetify.Platform.PlayerAPI._events.removeListener(
-            "update",
-            UpNext.updateUpNextShow.bind(UpNext),
-        );
+        Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", updateUpNext);
+        Spicetify.Platform.PlayerAPI._events.removeListener("update", updateUpNextShow);
         Spicetify.Player.removeEventListener("onprogress", handleLyricsProgress);
         Spicetify.Platform.PlayerAPI._events.removeListener(
             "queue_update",
@@ -152,25 +138,27 @@ async function main() {
         window.removeEventListener("resize", resizeEvents);
         UpNext.upNextShown = false;
 
-        modifyIsAnimationRunning(false);
+        cancelResize();
+        Background.stop();
 
         handleMouseMoveDeactivation();
 
-        DOM.style.innerHTML = `
+        const transitionTime = Number(CFM.get("backAnimationTime"));
+        DOM.style.textContent = `
         #full-screen-display {
             --lyrics-alignment: left;
             --right-margin-lyrics: 0px;
             --icons-display: ${CFM.get("icons") ? "inline-block" : "none"};
-            --fs-transition: ${CFM.get("backAnimationTime")}s;
+            --fs-transition: ${
+                Number.isFinite(transitionTime) ? Math.min(10, Math.max(0, transitionTime)) : 0
+            }s;
        }
        `;
 
         if (CFM.get("lyricsDisplay")) {
             Lyrics.teardown();
         }
-        DOM.container.innerHTML = getHtmlContent(
-            DOM.container.classList.contains("lyrics-hide-force"),
-        );
+        DOM.container.innerHTML = getHtmlContent();
 
         DOM.back = DOM.container.querySelector("canvas")!;
         DOM.back.width = window.innerWidth;
@@ -270,7 +258,12 @@ async function main() {
     }
 
     function handleNavigation(navigateUri: string) {
-        const formattedUri = navigateUri.replace("spotify", "").replaceAll(":", "/");
+        if (!/^spotify:[a-z][a-z0-9-]*(?::[^:/?#\s]+)+$/i.test(navigateUri)) return;
+        const formattedUri = `/${navigateUri
+            .split(":")
+            .slice(1)
+            .map((part) => encodeURIComponent(part))
+            .join("/")}`;
         deactivate();
         setTimeout(() => {
             Spicetify.Platform.History.push(formattedUri);
@@ -280,8 +273,11 @@ async function main() {
     /**
      * Update song details like title, artists, album etc.
      */
+    let infoSequence = 0;
     async function updateInfo() {
+        const sequence = ++infoSequence;
         const meta = Spicetify.Player.data.item?.metadata;
+        if (!meta) return;
 
         if (CFM.get("lyricsDisplay")) {
             loadCurrentLyrics();
@@ -298,15 +294,15 @@ async function main() {
 
         // prepare artist
         let artistData: string[][];
-        const artistNameList = Object.keys(meta!)
+        const artistNameList = Object.keys(meta)
             .filter((key) => key.startsWith("artist_name"))
             .sort() as Array<keyof typeof meta>;
 
-        const artistUriList = Object.keys(meta!)
+        const artistUriList = Object.keys(meta)
             .filter((key) => key.startsWith("artist_uri"))
             .sort() as Array<keyof typeof meta>;
 
-        artistData = artistNameList.map((key, index) => [meta![key], meta![artistUriList[index]]]);
+        artistData = artistNameList.map((key, index) => [meta[key], meta[artistUriList[index]]]);
 
         // prepare album
         let albumText: string,
@@ -319,32 +315,34 @@ async function main() {
             const albumURI = meta?.album_uri;
             if (albumURI?.startsWith("spotify:album:") && CFM.get("showAlbum") === "date") {
                 Utils.getAlbumReleaseDate(albumURI, LOCALE).then((releaseDate) => {
+                    if (sequence !== infoSequence) return;
                     albumText += releaseDate;
                     if (updatedAlbum) DOM.album.innerText = albumText || "";
                 });
             }
         }
 
-        Background.updateBackground(meta!);
+        void Background.updateBackground(meta);
 
         // prepare cover image
         DOM.coverImg.src = meta?.image_xlarge_url;
 
         // update all the things on cover load
         DOM.coverImg.onload = () => {
+            if (sequence !== infoSequence) return;
             DOM.cover.style.backgroundImage = `url("${DOM.coverImg.src}")`;
             DOM.title.innerText = songName || "";
             DOM.title.setAttribute("uri", Spicetify.Player.data?.item?.uri || "");
 
             // combine artist in a list with each span and separated by comma
-            DOM.artist.innerHTML = `${artistData
-                .map((artist) => `<span uri=${artist[1]}>${artist[0]}</span>`)
-                .join(", ")}`;
-
-            DOM.artist.querySelectorAll("span").forEach((span) => {
-                span.onclick = () => {
-                    handleNavigation(span.getAttribute("uri")!);
-                };
+            DOM.artist.replaceChildren();
+            artistData.forEach(([name, uri], index) => {
+                if (index > 0) DOM.artist.append(document.createTextNode(", "));
+                const artist = document.createElement("span");
+                artist.textContent = name ?? "";
+                if (uri) artist.dataset.uri = uri;
+                artist.onclick = () => handleNavigation(artist.dataset.uri ?? "");
+                DOM.artist.append(artist);
             });
 
             if (DOM.album) {
@@ -356,6 +354,7 @@ async function main() {
 
         // Placeholder
         DOM.coverImg.onerror = () => {
+            if (sequence !== infoSequence || DOM.coverImg.src === ICONS.OFFLINE_SVG) return;
             console.error("Check your Internet! Unable to load Image");
             DOM.coverImg.src = ICONS.OFFLINE_SVG;
         };
@@ -371,7 +370,7 @@ async function main() {
         }
     }
 
-    let curTimer: NodeJS.Timeout;
+    let curTimer: ReturnType<typeof setTimeout>;
 
     function hideCursor() {
         if (curTimer) {
@@ -385,36 +384,24 @@ async function main() {
         DOM.container.addEventListener("mousemove", hideCursor);
         hideCursor();
         if (CFM.get("contextDisplay") === "mousemove") {
-            DOM.container.addEventListener("mousemove", Context.hideContext.bind(Context));
+            DOM.container.addEventListener("mousemove", hideContext);
             Context.hideContext();
         }
         if (CFM.get("extraControls") === "mousemove") {
-            DOM.container.addEventListener(
-                "mousemove",
-                ExtraControls.hideExtraControls.bind(ExtraControls),
-            );
+            DOM.container.addEventListener("mousemove", hideExtraControls);
             ExtraControls.hideExtraControls();
         }
         if (CFM.get("playerControls") === "mousemove") {
-            DOM.container.addEventListener(
-                "mousemove",
-                PlayerControls.hidePlayerControls.bind(PlayerControls),
-            );
+            DOM.container.addEventListener("mousemove", hidePlayerControls);
             PlayerControls.hidePlayerControls();
         }
     }
 
     function handleMouseMoveDeactivation() {
         DOM.container.removeEventListener("mousemove", hideCursor);
-        DOM.container.removeEventListener("mousemove", Context.hideContext.bind(Context));
-        DOM.container.removeEventListener(
-            "mousemove",
-            ExtraControls.hideExtraControls.bind(ExtraControls),
-        );
-        DOM.container.removeEventListener(
-            "mousemove",
-            PlayerControls.hidePlayerControls.bind(PlayerControls),
-        );
+        DOM.container.removeEventListener("mousemove", hideContext);
+        DOM.container.removeEventListener("mousemove", hideExtraControls);
+        DOM.container.removeEventListener("mousemove", hidePlayerControls);
 
         if (curTimer) clearTimeout(curTimer);
         if (Context.ctxTimer) clearTimeout(Context.ctxTimer);
@@ -434,8 +421,7 @@ async function main() {
 
     const loadCurrentLyrics = () => {
         if (!CFM.get("lyricsDisplay")) return;
-        const meta = Spicetify.Player.data.item?.metadata;
-        const uri = Spicetify.Player.data.item?.uri ?? meta?.uri ?? meta?.track_uri;
+        const uri = Spicetify.Player.data.item?.uri;
         if (uri) Lyrics.loadLyrics(uri);
         Lyrics.prefetchNextLyrics();
     };
@@ -443,14 +429,17 @@ async function main() {
     const handleLyricsProgress = () => Lyrics.prefetchNextLyrics();
     const handleLyricsQueueUpdate = () => Lyrics.prefetchNextLyrics();
 
-    const heartObserver = new MutationObserver(ExtraControls.updateHeart.bind(ExtraControls));
+    const heartObserver = new MutationObserver(() => ExtraControls.updateHeart());
+    let activationSequence = 0;
 
     async function activate() {
+        const sequence = ++activationSequence;
         Utils.toggleQueuePanel(DOM.queue, true);
         document.body.classList.add(...CLASSES_TO_ADD);
-        if (CFM.get("enableFullscreen")) await Utils.fullScreenOn()?.catch((err) => {});
-        else await Utils.fullScreenOff()?.catch((err) => {});
+        if (CFM.get("enableFullscreen")) await Utils.fullScreenOn()?.catch(() => undefined);
+        else await Utils.fullScreenOff()?.catch(() => undefined);
         setTimeout(() => {
+            if (sequence !== activationSequence || !Utils.isModeActivated()) return;
             updateInfo();
             window.addEventListener("resize", resizeEvents);
             resizeEvents();
@@ -469,14 +458,8 @@ async function main() {
         DOM.back.ondblclick = deactivate;
         if (CFM.get("upnextDisplay") !== "never") {
             UpNext.updateUpNextShow();
-            Spicetify.Platform.PlayerAPI._events.addListener(
-                "queue_update",
-                UpNext.updateUpNext.bind(UpNext),
-            );
-            Spicetify.Platform.PlayerAPI._events.addListener(
-                "update",
-                UpNext.updateUpNextShow.bind(UpNext),
-            );
+            Spicetify.Platform.PlayerAPI._events.addListener("queue_update", updateUpNext);
+            Spicetify.Platform.PlayerAPI._events.addListener("update", updateUpNextShow);
         }
         if (CFM.get("volumeDisplay") !== "never") {
             ReactDOM.render(
@@ -501,7 +484,8 @@ async function main() {
                 <OverviewCard
                     onExit={deactivate}
                     onToggle={() => {
-                        CFM.getGlobal("tvMode") ? openwithDef() : openwithTV();
+                        if (CFM.getGlobal("tvMode")) openwithDef();
+                        else openwithTV();
                     }}
                 />,
                 DOM.container.querySelector("#fsd-overview-card-parent"),
@@ -511,10 +495,7 @@ async function main() {
             PlayerControls.updatePlayerControls({
                 data: { is_paused: !Spicetify.Player.isPlaying() },
             });
-            Spicetify.Player.addEventListener(
-                "onplaypause",
-                PlayerControls.updatePlayerControls.bind(PlayerControls),
-            );
+            Spicetify.Player.addEventListener("onplaypause", updatePlayerControls);
         }
         if (CFM.get("extraControls") !== "never") {
             ExtraControls.updateExtraControls(null);
@@ -522,10 +503,7 @@ async function main() {
                 attributes: true,
                 attributeFilter: ["aria-checked"],
             });
-            Spicetify.Platform.PlayerAPI._events.addListener(
-                "update",
-                ExtraControls.updateExtraControls.bind(ExtraControls),
-            );
+            Spicetify.Platform.PlayerAPI._events.addListener("update", updateExtraControls);
         }
         document.querySelector(".Root__top-container")?.append(DOM.style, DOM.container);
         if (CFM.get("lyricsDisplay")) {
@@ -533,7 +511,9 @@ async function main() {
             Lyrics.teardown();
             Lyrics.attach(DOM.lyrics);
             loadCurrentLyrics();
-            setTimeout(loadCurrentLyrics, 400);
+            setTimeout(() => {
+                if (sequence === activationSequence && Utils.isModeActivated()) loadCurrentLyrics();
+            }, 400);
             Spicetify.Player.addEventListener("onprogress", handleLyricsProgress);
             Spicetify.Platform.PlayerAPI._events.addListener(
                 "queue_update",
@@ -555,33 +535,31 @@ async function main() {
     }
 
     async function deactivate() {
+        activationSequence += 1;
+        infoSequence += 1;
         Utils.toggleQueuePanel(DOM.queue, false);
-        modifyIsAnimationRunning(false);
+        Background.stop();
         Spicetify.Player.removeEventListener("songchange", updateInfo);
         handleMouseMoveDeactivation();
         window.removeEventListener("resize", resizeEvents);
+        cancelResize();
         if (CFM.get("upnextDisplay") !== "never") {
             UpNext.upNextShown = false;
-            Spicetify.Platform.PlayerAPI._events.removeListener(
-                "queue_update",
-                UpNext.updateUpNext.bind(UpNext),
-            );
-            Spicetify.Platform.PlayerAPI._events.removeListener(
-                "update",
-                UpNext.updateUpNextShow.bind(UpNext),
-            );
+            Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", updateUpNext);
+            Spicetify.Platform.PlayerAPI._events.removeListener("update", updateUpNextShow);
         }
-        ReactDOM.unmountComponentAtNode(DOM.container.querySelector("#fsd-volume-parent")!);
-        ReactDOM.unmountComponentAtNode(DOM.container.querySelector("#fsd-progress-parent")!);
-        ReactDOM.unmountComponentAtNode(DOM.container.querySelector("#fsd-overview-card-parent")!);
+        [
+            DOM.container.querySelector("#fsd-volume-parent"),
+            DOM.container.querySelector("#fsd-progress-parent"),
+            DOM.container.querySelector("#fsd-overview-card-parent"),
+        ].forEach((root) => {
+            if (root) ReactDOM.unmountComponentAtNode(root);
+        });
         if (CFM.get("icons")) {
             Spicetify.Player.removeEventListener("onplaypause", updatePlayingIcon);
         }
         if (CFM.get("playerControls") !== "never") {
-            Spicetify.Player.removeEventListener(
-                "onplaypause",
-                PlayerControls.updatePlayerControls.bind(PlayerControls),
-            );
+            Spicetify.Player.removeEventListener("onplaypause", updatePlayerControls);
         }
         if (CFM.get("lyricsDisplay")) {
             Spicetify.Player.removeEventListener("onprogress", handleLyricsProgress);
@@ -593,15 +571,12 @@ async function main() {
         }
         if (CFM.get("extraControls") !== "never") {
             heartObserver.disconnect();
-            Spicetify.Platform.PlayerAPI._events.removeListener(
-                "update",
-                ExtraControls.updateExtraControls.bind(ExtraControls),
-            );
+            Spicetify.Platform.PlayerAPI._events.removeListener("update", updateExtraControls);
         }
         document.body.classList.remove(...CLASSES_TO_ADD);
         UpNext.upNextShown = false;
         if (CFM.get("enableFullscreen")) {
-            await Utils.fullScreenOff()?.catch((err) => {});
+            await Utils.fullScreenOff()?.catch(() => undefined);
         }
         const popup = document.querySelector("body > generic-modal");
         if (popup) popup.remove();
@@ -628,9 +603,24 @@ async function main() {
         }
     }
 
+    let resizeFrameId: number | null = null;
+    function cancelResize() {
+        if (resizeFrameId === null) return;
+        cancelAnimationFrame(resizeFrameId);
+        resizeFrameId = null;
+    }
+
     function resizeEvents() {
+        if (resizeFrameId !== null) cancelAnimationFrame(resizeFrameId);
+        resizeFrameId = requestAnimationFrame(() => {
+            resizeFrameId = null;
+            applyResize();
+        });
+    }
+
+    function applyResize() {
         if (CFM.get("upnextDisplay") !== "never") UpNext.updateUpNext();
-        Background.updateBackground(Spicetify.Player.data.item?.metadata, true);
+        void Background.updateBackground(Spicetify.Player.data.item?.metadata, true);
         DOM.container.classList.toggle(
             "vertical-mode",
             (CFM.get("verticalMonitorSupport") as Settings["verticalMonitorSupport"]) &&
@@ -658,11 +648,12 @@ async function main() {
 
     const extraBar = HtmlSelectors.getExtraBarSelector() as HTMLElement;
     if (CFM.getGlobal("fsHideOriginal")) {
+        const lastExtraBarItem = extraBar?.lastElementChild as HTMLElement | null;
         if (
-            (extraBar.lastChild as HTMLElement).classList.contains("control-button") ||
-            (extraBar.lastChild as HTMLElement)?.title == "Full screen"
+            lastExtraBarItem?.classList.contains("control-button") ||
+            lastExtraBarItem?.title === "Full screen"
         )
-            extraBar?.lastChild?.remove();
+            lastExtraBarItem.remove();
     }
     if (CFM.getGlobal("activationTypes") != "keys") {
         if (CFM.getGlobal("buttonActivation") !== "tv") {

@@ -6,7 +6,7 @@ import ICONS from "../../../constants";
 import { Settings, Config } from "../../../types/fullscreen";
 
 export class UpNext {
-    static upnextTimer: NodeJS.Timeout;
+    static upnextTimer: ReturnType<typeof setTimeout>;
     static upNextShown = false;
     private static readonly visibleTransform = "translateX(0px)";
     private static readonly hiddenTransform = "translateX(calc(100% + 40px))";

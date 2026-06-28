@@ -60,11 +60,6 @@ export type Settings = {
     overviewCardPinned: boolean;
 };
 
-export type Cache = {
-    uri: string;
-    colors: Colors;
-};
-
 export type Colors = Record<string, string>;
 
 export type SeekbarProps = {
@@ -77,12 +72,6 @@ export type MouseData = {
     positionCoord: number;
     beginClient: number;
     sliderDimen: number;
-};
-
-export type TokenType = {
-    accessToken: string;
-    accessTokenExpirationTimestampMs: number;
-    isAnonymous: boolean;
 };
 
 export type LyricsEvent = {

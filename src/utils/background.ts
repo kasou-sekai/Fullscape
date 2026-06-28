@@ -14,9 +14,16 @@ import {
 import { ExtraControls } from "../ui/components/ExtraControls/ExtraControls";
 
 export class Background {
-    static async updateBackground(meta: Partial<Record<string, unknown>>, fromResize = false) {
-        const previousImg = DOM.backgroundImg.cloneNode() as HTMLImageElement;
+    private static updateSequence = 0;
 
+    static stop() {
+        this.updateSequence += 1;
+        modifyIsAnimationRunning(false);
+    }
+
+    static async updateBackground(meta: Partial<Record<string, unknown>> = {}, fromResize = false) {
+        const sequence = ++this.updateSequence;
+        const previousImg = DOM.backgroundImg.cloneNode() as HTMLImageElement;
         const settingValue = CFM.get("backgroundChoice") as Settings["backgroundChoice"];
 
         DOM.back.classList.toggle("animated", settingValue === "animated_album");
@@ -27,63 +34,111 @@ export class Background {
                 const nextColor = await Utils.getNextColor(
                     CFM.get("coloredBackChoice") as Settings["coloredBackChoice"],
                 );
-                this.updateMainColor(
-                    Spicetify.Player.data.item?.metadata.image_xlarge_url,
+                if (sequence !== this.updateSequence) return;
+                const imageUrl = Spicetify.Player.data.item?.metadata.image_xlarge_url;
+                void this.updateMainColor(
+                    imageUrl,
                     meta as Partial<Record<string, string>>,
+                    sequence,
                 );
-                this.updateThemeColor(Spicetify.Player.data.item?.metadata.image_xlarge_url);
-                animateColor(nextColor, DOM.back);
+                void this.updateThemeColor(imageUrl, sequence);
+                animateColor(nextColor, DOM.back, fromResize);
                 break;
             }
-            case "static_color":
-                this.updateMainColor(
-                    Spicetify.Player.data.item?.metadata.image_xlarge_url,
+            case "static_color": {
+                const imageUrl = Spicetify.Player.data.item?.metadata.image_xlarge_url;
+                void this.updateMainColor(
+                    imageUrl,
+                    meta as Partial<Record<string, string>>,
+                    sequence,
+                );
+                void this.updateThemeColor(imageUrl, sequence);
+                animateColor(
+                    CFM.get("staticBackChoice") as Settings["staticBackChoice"],
+                    DOM.back,
+                    fromResize,
+                );
+                break;
+            }
+            case "artist_art": {
+                const imageUrl = await Utils.getImageAndLoad(
                     meta as Partial<Record<string, string>>,
                 );
-                this.updateThemeColor(Spicetify.Player.data.item?.metadata.image_xlarge_url);
-                animateColor(CFM.get("staticBackChoice") as Settings["staticBackChoice"], DOM.back);
-                break;
-            case "artist_art":
-                DOM.backgroundImg.src = await Utils.getImageAndLoad(
+                if (sequence !== this.updateSequence) return;
+                this.loadBackgroundImage(
+                    imageUrl,
+                    previousImg,
                     meta as Partial<Record<string, string>>,
+                    sequence,
+                    fromResize,
+                    false,
                 );
-                this.updateMainColor(DOM.backgroundImg.src, meta as Partial<Record<string, string>>);
-                this.updateThemeColor(DOM.backgroundImg.src);
-                DOM.backgroundImg.onload = () => {
-                    animateCanvas(previousImg, DOM.backgroundImg, DOM.back, fromResize);
-                };
                 break;
+            }
             case "animated_album": {
-                DOM.backgroundImg.src = meta?.image_xlarge_url as string;
-                DOM.backgroundImg.onload = () => {
-                    this.updateMainColor(
-                        Spicetify.Player.data.item?.metadata.image_xlarge_url,
-                        meta as Partial<Record<string, string>>,
-                    );
-                    this.updateThemeColor(Spicetify.Player.data.item?.metadata?.image_xlarge_url);
-                    animatedRotatedCanvas(DOM.back, DOM.backgroundImg);
-                };
-
+                this.loadBackgroundImage(
+                    meta?.image_xlarge_url as string,
+                    previousImg,
+                    meta as Partial<Record<string, string>>,
+                    sequence,
+                    fromResize,
+                    true,
+                );
                 break;
             }
             case "album_art":
             default:
-                DOM.backgroundImg.src = meta?.image_xlarge_url as string;
-                DOM.backgroundImg.onload = () => {
-                    this.updateMainColor(
-                        Spicetify.Player.data.item?.metadata.image_xlarge_url,
-                        meta as Partial<Record<string, string>>,
-                    );
-                    this.updateThemeColor(Spicetify.Player.data.item?.metadata?.image_xlarge_url);
-                    animateCanvas(previousImg, DOM.backgroundImg, DOM.back, fromResize);
-                };
+                this.loadBackgroundImage(
+                    meta?.image_xlarge_url as string,
+                    previousImg,
+                    meta as Partial<Record<string, string>>,
+                    sequence,
+                    fromResize,
+                    false,
+                );
                 break;
         }
     }
 
-    static async updateMainColor(imageURL: string, meta: Spicetify.Metadata) {
+    private static loadBackgroundImage(
+        imageUrl: string,
+        previousImg: HTMLImageElement,
+        meta: Spicetify.Metadata,
+        sequence: number,
+        fromResize: boolean,
+        animated: boolean,
+    ) {
+        if (!imageUrl) return;
+        const render = () => {
+            if (sequence !== this.updateSequence) return;
+            if (!fromResize) {
+                void this.updateMainColor(imageUrl, meta, sequence);
+                void this.updateThemeColor(imageUrl, sequence);
+            }
+            if (animated) animatedRotatedCanvas(DOM.back, DOM.backgroundImg);
+            else animateCanvas(previousImg, DOM.backgroundImg, DOM.back, fromResize);
+        };
+
+        DOM.backgroundImg.onload = render;
+        DOM.backgroundImg.onerror = () => {
+            if (sequence === this.updateSequence)
+                console.warn("Unable to load the selected background image.");
+        };
+        if (fromResize && DOM.backgroundImg.complete && DOM.backgroundImg.naturalWidth > 0) {
+            render();
+        } else {
+            DOM.backgroundImg.src = imageUrl;
+        }
+    }
+
+    static async updateMainColor(
+        imageURL: string,
+        meta: Spicetify.Metadata,
+        sequence = this.updateSequence,
+    ) {
         switch (CFM.get("invertColors")) {
             case "always":
+                if (sequence !== this.updateSequence) return;
                 DOM.container.style.setProperty("--main-color", "0,0,0");
                 DOM.container.style.setProperty("--contrast-color", "255,255,255");
                 break;
@@ -100,6 +155,7 @@ export class Background {
                 } else {
                     [mainColor, contrastColor] = await ColorExtractor.getMainColor(imageURL);
                 }
+                if (sequence !== this.updateSequence) return;
                 DOM.container.style.setProperty("--main-color", mainColor);
                 DOM.container.style.setProperty("--contrast-color", contrastColor);
                 if (CFM.get("extraControls") !== "never") {
@@ -110,6 +166,7 @@ export class Background {
             }
             case "never":
             default:
+                if (sequence !== this.updateSequence) return;
                 DOM.container.style.setProperty("--main-color", "255,255,255");
                 DOM.container.style.setProperty("--contrast-color", "0,0,0");
                 break;
@@ -117,7 +174,7 @@ export class Background {
     }
 
     //Set main theme color for the display
-    static async updateThemeColor(imageURL: string) {
+    static async updateThemeColor(imageURL: string, sequence = this.updateSequence) {
         if (
             !(
                 CFM.get("backgroundChoice") == "dynamic_color" &&
@@ -128,9 +185,11 @@ export class Background {
             DOM.container.classList.toggle("themed-buttons", Boolean(CFM.get("themedButtons")));
             DOM.container.classList.toggle("themed-icons", Boolean(CFM.get("themedIcons")));
             let themeVibrantColor;
-            const artColors = await WebAPI.colorExtractor(imageURL).catch((err) =>
-                console.warn(err),
-            );
+            const artColors = await WebAPI.colorExtractor(imageURL).catch((err) => {
+                console.warn(err);
+                return undefined;
+            });
+            if (sequence !== this.updateSequence) return;
             if (!artColors?.VIBRANT) themeVibrantColor = "175,175,175";
             else themeVibrantColor = Utils.hexToRgb(artColors.VIBRANT);
             DOM.container.style.setProperty("--theme-color", themeVibrantColor);

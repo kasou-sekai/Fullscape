@@ -1,8 +1,10 @@
+import type { ReactElement } from "react";
 import ReactDOM from "react-dom";
 import { version } from "../../package.json";
 import changelog, { VersionedChangelog } from "../constants/changelog";
 import semverGt from "semver/functions/gt";
 import { marked } from "marked";
+import { sanitizeHtml } from "../utils/sanitize-html";
 
 export default function showWhatsNew(forcedShow = false) {
     const [title, content] = getChangelogContent(forcedShow);
@@ -29,16 +31,16 @@ function getChangelogContent(forcedShow = false) {
                 })
                 .join("\n\n"),
             { gfm: true, breaks: true },
-        );
+        ) as string;
     } else {
         title = `New in Full Screen v${version}`;
-        content = marked.parse(changelog, { gfm: true, breaks: true });
+        content = marked.parse(changelog, { gfm: true, breaks: true }) as string;
     }
     return [title, content];
 }
 
 interface ModalContent extends Omit<Spicetify.PopupModal.Content, "content"> {
-    content: JSX.Element | string;
+    content: ReactElement | string;
 }
 
 /**
@@ -69,7 +71,7 @@ async function showWhatsNewModal(
             Spicetify.LocalStorage.set(LS_KEY, currentVersion);
             showModal();
         }
-    } catch (err) {
+    } catch {
         Spicetify.LocalStorage.set(LS_KEY, currentVersion);
     }
 
@@ -88,12 +90,12 @@ async function showWhatsNewModal(
 
 function wrapHTMLElement(htmlElement: string): Element {
     const [wrapper, style] = getWhatsNewElements();
-    wrapper.innerHTML = htmlElement;
+    wrapper.innerHTML = sanitizeHtml(htmlElement);
     wrapper.append(style);
     return wrapper;
 }
 
-function wrapReactElement(reactElement: JSX.Element): Element {
+function wrapReactElement(reactElement: ReactElement): Element {
     const [wrapper, style] = getWhatsNewElements();
     ReactDOM.render(reactElement, wrapper);
     wrapper.appendChild(style);

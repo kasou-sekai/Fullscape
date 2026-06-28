@@ -5,29 +5,35 @@ import Utils from "../../../utils/utils";
 import { Config } from "../../../types/fullscreen";
 
 export class Context {
-    static ctxTimer: NodeJS.Timeout;
+    static ctxTimer: ReturnType<typeof setTimeout>;
+    private static updateSequence = 0;
 
     static async updateContext() {
+        const sequence = ++this.updateSequence;
         const LOCALE = CFM.getGlobal("locale") as Config["locale"];
-        const ctxDetails = await Utils.getContext(translations[LOCALE]).catch((err) =>
-            console.error(err),
-        );
-        DOM.ctx_source.classList.toggle("ctx-no-name", !ctxDetails!.ctxName);
+        const strings = translations[LOCALE] ?? translations["en-US"];
+        const ctxDetails = await Utils.getContext(strings).catch((err) => {
+            console.error(err);
+            return null;
+        });
+        if (!ctxDetails || sequence !== this.updateSequence || !DOM.ctx_source?.isConnected) return;
+        DOM.ctx_source.classList.toggle("ctx-no-name", !ctxDetails.ctxName);
 
         //Set default icon if no icon is returned
-        if (!ctxDetails!.ctxIcon) ctxDetails!.ctxIcon = Spicetify.SVGIcons.spotify;
-        DOM.ctx_icon.innerHTML = /^<path/.test(ctxDetails!.ctxIcon)
-            ? `<svg width="48" height="48" viewBox="0 0 16 16" fill="currentColor">${ctxDetails!.ctxIcon
-            }</svg>`
-            : ctxDetails!.ctxIcon;
+        if (!ctxDetails.ctxIcon) ctxDetails.ctxIcon = Spicetify.SVGIcons.spotify;
+        DOM.ctx_icon.innerHTML = /^<path/.test(ctxDetails.ctxIcon)
+            ? `<svg width="48" height="48" viewBox="0 0 16 16" fill="currentColor">${
+                  ctxDetails.ctxIcon
+              }</svg>`
+            : ctxDetails.ctxIcon;
 
         //Only change the DOM if context is changed
         if (
-            DOM.ctx_source.innerText.toLowerCase() !== `${ctxDetails!.ctxSource}`.toLowerCase() ||
-            DOM.ctx_name.innerText.toLowerCase() !== ctxDetails!.ctxName.toLowerCase()
+            DOM.ctx_source.innerText.toLowerCase() !== `${ctxDetails.ctxSource}`.toLowerCase() ||
+            DOM.ctx_name.innerText.toLowerCase() !== ctxDetails.ctxName.toLowerCase()
         ) {
-            DOM.ctx_source.innerText = `${ctxDetails!.ctxSource}`;
-            DOM.ctx_name.innerText = ctxDetails!.ctxName;
+            DOM.ctx_source.innerText = `${ctxDetails.ctxSource}`;
+            DOM.ctx_name.innerText = ctxDetails.ctxName;
             if (CFM.get("contextDisplay") === "mousemove") this.hideContext();
         }
     }

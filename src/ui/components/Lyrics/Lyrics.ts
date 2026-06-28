@@ -33,6 +33,19 @@ type FuriganaAlignment = {
     kanjiReadings: Record<number, string>;
     score: number;
 };
+type TimedLyricLine = {
+    index: number;
+    time: number;
+};
+type KaraokeWordRenderState = {
+    node: HTMLElement;
+    time: number;
+    effectiveEnd: number;
+    effectiveDuration: number;
+    peakGlow: number;
+    releaseDuration: number;
+    animations: Animation[];
+};
 
 export class Lyrics {
     private static readonly REQUEST_TIMEOUT_MS = 12000;
@@ -44,11 +57,19 @@ export class Lyrics {
     private static lyricsRoot: HTMLElement | null = null;
     private static scrollbarThumb: HTMLElement | null = null;
     private static lineNodes: HTMLElement[] = [];
+    private static timedLines: TimedLyricLine[] = [];
+    private static karaokeWordsByLine: KaraokeWordRenderState[][] = [];
+    private static playbackBoundaries: number[] = [];
     private static lineHeights: number[] = [];
     private static containerHeight = 0;
     private static lines: LyricLine[] = [];
     private static activeIndex = -1;
-    private static rafId: number | null = null;
+    private static updateTimer: ReturnType<typeof setTimeout> | null = null;
+    private static karaokeAnimationLine = -1;
+    private static karaokeAnimationsPlaying = false;
+    private static karaokePropertiesRegistered = false;
+    private static lastKaraokeProgress: number | null = null;
+    private static lastKaraokeClockTime = 0;
     private static resizeObserver: ResizeObserver | null = null;
     private static lastMeasuredFontSize = 0;
     private static isSynced = false;
@@ -61,10 +82,13 @@ export class Lyrics {
     }
 
     static teardown() {
-        if (this.rafId) cancelAnimationFrame(this.rafId);
-        this.rafId = null;
+        this.stopLoop();
+        this.cancelKaraokeAnimations();
         this.lines = [];
         this.lineNodes = [];
+        this.timedLines = [];
+        this.karaokeWordsByLine = [];
+        this.playbackBoundaries = [];
         this.lineHeights = [];
         this.containerHeight = 0;
         this.activeIndex = -1;
@@ -312,8 +336,12 @@ export class Lyrics {
     private static renderStatus(text: string, unavailable: boolean) {
         if (!this.container) return;
         this.stopResizeObserver();
+        this.cancelKaraokeAnimations();
         this.lines = [];
         this.lineNodes = [];
+        this.timedLines = [];
+        this.karaokeWordsByLine = [];
+        this.playbackBoundaries = [];
         this.lineHeights = [];
         this.containerHeight = 0;
         this.activeIndex = -1;
@@ -326,7 +354,7 @@ export class Lyrics {
         if (unavailable) DOM.container.classList.add("lyrics-unavailable");
         else DOM.container.classList.remove("lyrics-unavailable");
         this.stopLoop();
-        this.container.innerHTML = `<div class="lyrics-wrapper"><div class="lyrics-status">${text}</div></div>`;
+        this.container.innerHTML = `<div class="lyrics-wrapper"><div class="lyrics-status">${this.escapeHtml(text)}</div></div>`;
     }
 
     private static applyLines(lines: LyricLine[]) {
@@ -336,6 +364,9 @@ export class Lyrics {
         this.isSynced = Boolean(timeValues.length && hasNonZero && (lastTime ?? 0) > 0);
         this.stopLoop();
         this.lines = lines;
+        this.timedLines = lines.flatMap((line, index) =>
+            line.time === null ? [] : [{ index, time: line.time }],
+        );
         this.lastLines = lines;
         this.lastStatus = this.isSynced ? "synced" : "unsynced";
         this.activeIndex = this.isSynced ? -1 : 0;
@@ -347,6 +378,7 @@ export class Lyrics {
 
     private static renderLines() {
         if (!this.container) return;
+        this.cancelKaraokeAnimations();
         const body = this.lines
             .map(
                 (line, idx) =>
@@ -371,6 +403,8 @@ export class Lyrics {
         this.lineNodes = Array.from(
             this.container.querySelectorAll<HTMLElement>(".rnp-lyrics-line"),
         );
+        this.buildKaraokeWordCache();
+        this.buildPlaybackBoundaries();
         if (!this.isSynced) {
             this.stopLoop();
             this.lineNodes.forEach((node, idx) => node.classList.toggle("active", idx === 0));
@@ -382,12 +416,13 @@ export class Lyrics {
     }
 
     private static renderLineContent(line: LyricLine) {
-        const showKaraoke = CFM.get("karaokeLyrics") && Boolean(line.words?.length);
-        const showFurigana = CFM.get("showLyricsFurigana");
+        const showKaraoke = Boolean(CFM.get("karaokeLyrics")) && Boolean(line.words?.length);
+        const showFurigana = Boolean(CFM.get("showLyricsFurigana"));
         const furiganaContext = this.createFuriganaContext(line.romanization);
+        const words = line.words ?? [];
         const original = showKaraoke
-            ? `<div class="rnp-lyrics-line-karaoke">${line
-                  .words!.map((word) => this.renderKaraokeWord(word, showFurigana, furiganaContext))
+            ? `<div class="rnp-lyrics-line-karaoke">${words
+                  .map((word) => this.renderKaraokeWord(word, showFurigana, furiganaContext))
                   .join("")}</div>`
             : `<div class="rnp-lyrics-line-original">${this.formatLyricText(
                   line.text,
@@ -674,14 +709,16 @@ export class Lyrics {
     private static splitJapaneseReadingParts(text: string): JapaneseReadingPart[] {
         const matches =
             text.match(/[一-龯々〆ヶ]+|[ぁ-ゖァ-ヺー]+|[^一-龯々〆ヶぁ-ゖァ-ヺー]+/gu) ?? [];
-        return matches.map((part) => ({
-            text: part,
-            type: this.hasKanji(part)
-                ? "kanji"
-                : /^[ぁ-ゖァ-ヺー]+$/u.test(part)
-                  ? "kana"
-                  : "other",
-        }));
+        return matches.map(
+            (part): JapaneseReadingPart => ({
+                text: part,
+                type: this.hasKanji(part)
+                    ? "kanji"
+                    : /^[ぁ-ゖァ-ヺー]+$/u.test(part)
+                      ? "kana"
+                      : "other",
+            }),
+        );
     }
 
     private static alignTokenWithReading(
@@ -977,112 +1014,314 @@ export class Lyrics {
     private static startLoop() {
         this.stopLoop();
         const tick = () => {
-            this.updateActive();
-            this.rafId = requestAnimationFrame(tick);
+            if (!this.container || !this.isSynced) return;
+            const progress = Spicetify.Player?.getProgress?.() ?? 0;
+            this.updateActive(progress);
+            const delay = Spicetify.Player.isPlaying() ? this.getNextPlaybackDelay(progress) : 250;
+            this.updateTimer = setTimeout(tick, delay);
         };
-        this.rafId = requestAnimationFrame(tick);
+        tick();
     }
 
     private static stopLoop() {
-        if (this.rafId) cancelAnimationFrame(this.rafId);
-        this.rafId = null;
+        if (this.updateTimer) clearTimeout(this.updateTimer);
+        this.updateTimer = null;
     }
 
-    private static updateActive() {
+    private static updateActive(progress: number) {
         if (!this.isSynced) return;
         if (!this.container || !this.lines.length) return;
-        const progress = Spicetify.Player?.getProgress?.() ?? 0;
-        let nextIndex = -1;
-
-        for (let i = 0; i < this.lines.length; i++) {
-            const t = this.lines[i].time;
-            if (t === null) continue;
-            if (t <= progress) nextIndex = i;
-            else break;
-        }
+        const nextIndex = this.findActiveLineIndex(progress);
 
         if (nextIndex === this.activeIndex) {
             this.updateKaraokeProgress(progress);
             return;
         }
 
+        const previousIndex = this.activeIndex;
         this.activeIndex = nextIndex;
+        if (previousIndex !== nextIndex) this.resetKaraokeLine(previousIndex);
         this.applyTransforms();
         this.updateKaraokeProgress(progress);
     }
 
     private static updateKaraokeProgress(progress: number) {
         if (this.activeIndex < 0 || !CFM.get("karaokeLyrics")) return;
-        const activeLine = this.lineNodes[this.activeIndex];
-        if (!activeLine) return;
+        const words = this.karaokeWordsByLine[this.activeIndex];
+        if (!words?.length) return;
+        const isPlaying = Boolean(Spicetify.Player.isPlaying());
+        const now = performance.now();
+        const elapsed = this.lastKaraokeClockTime ? now - this.lastKaraokeClockTime : 0;
+        const progressDelta =
+            this.lastKaraokeProgress === null ? 0 : progress - this.lastKaraokeProgress;
+        const expectedDelta = this.karaokeAnimationsPlaying ? elapsed : 0;
+        const playbackJumped =
+            this.lastKaraokeProgress !== null && Math.abs(progressDelta - expectedDelta) > 120;
+        if (this.karaokeAnimationLine !== this.activeIndex) {
+            this.scheduleKaraokeLine(progress, isPlaying);
+        } else {
+            this.syncKaraokeAnimationClock(progress, isPlaying, playbackJumped);
+        }
+        this.updateKaraokeWordClasses(words, progress);
+        this.lastKaraokeProgress = progress;
+        this.lastKaraokeClockTime = now;
+    }
 
-        this.lineNodes.forEach((lineNode, idx) => {
-            if (idx === this.activeIndex) return;
-            lineNode.querySelectorAll<HTMLElement>(".rnp-karaoke-word").forEach((wordNode) => {
-                wordNode.style.setProperty("--karaoke-progress", "0%");
-                wordNode.style.setProperty("--karaoke-lift", "0em");
-                wordNode.style.setProperty("--karaoke-scale", "1");
-                wordNode.style.setProperty("--karaoke-glow", "0");
-                wordNode.classList.remove("active", "finished", "glowing");
+    private static findActiveLineIndex(progress: number) {
+        let low = 0;
+        let high = this.timedLines.length - 1;
+        let activeIndex = -1;
+        while (low <= high) {
+            const middle = (low + high) >> 1;
+            const line = this.timedLines[middle];
+            if (line.time <= progress) {
+                activeIndex = line.index;
+                low = middle + 1;
+            } else {
+                high = middle - 1;
+            }
+        }
+        return activeIndex;
+    }
+
+    private static buildKaraokeWordCache() {
+        this.karaokeWordsByLine = this.lineNodes.map((lineNode, lineIndex) => {
+            const currentLine = this.lines[lineIndex];
+            const nextLine = this.lines[lineIndex + 1];
+            const lineEndCandidates = [
+                currentLine?.time !== null && currentLine?.duration
+                    ? currentLine.time + currentLine.duration
+                    : null,
+                nextLine?.time ?? null,
+            ].filter((time): time is number => Number.isFinite(time));
+            const lineEnd = lineEndCandidates.length ? Math.min(...lineEndCandidates) : null;
+            const nodes = Array.from(lineNode.querySelectorAll<HTMLElement>(".rnp-karaoke-word"));
+
+            return nodes.flatMap((node, wordIndex) => {
+                const time = Number(node.dataset.time);
+                const duration = Number(node.dataset.duration);
+                if (!Number.isFinite(time) || !Number.isFinite(duration) || duration <= 0) {
+                    return [];
+                }
+                const nextWordTime = Number(nodes[wordIndex + 1]?.dataset.time);
+                const endCandidates = [
+                    time + duration,
+                    Number.isFinite(nextWordTime) ? nextWordTime : null,
+                    wordIndex === nodes.length - 1 ? lineEnd : null,
+                ].filter((end): end is number => Number.isFinite(end) && end > time);
+                const effectiveEnd = endCandidates.length
+                    ? Math.min(...endCandidates)
+                    : time + duration;
+                const effectiveDuration = Math.max(80, effectiveEnd - time);
+                const peakGlow = Math.min(1, Math.ceil(effectiveDuration / 100) / 10);
+
+                return [
+                    {
+                        node,
+                        time,
+                        effectiveEnd,
+                        effectiveDuration,
+                        peakGlow,
+                        releaseDuration: Math.max(700, peakGlow * 1000),
+                        animations: [],
+                    },
+                ];
             });
         });
+    }
 
-        const currentLine = this.lines[this.activeIndex];
-        const nextLine = this.lines[this.activeIndex + 1];
-        const lineEndCandidates = [
-            currentLine?.time !== null && currentLine?.duration
-                ? currentLine.time + currentLine.duration
-                : null,
-            nextLine?.time ?? null,
-        ].filter((time): time is number => Number.isFinite(time));
-        const lineEnd = lineEndCandidates.length ? Math.min(...lineEndCandidates) : null;
-        const wordNodes = Array.from(activeLine.querySelectorAll<HTMLElement>(".rnp-karaoke-word"));
+    private static buildPlaybackBoundaries() {
+        const boundaries = this.timedLines.map((line) => line.time);
+        this.karaokeWordsByLine.forEach((words) => {
+            words.forEach((word) => {
+                boundaries.push(
+                    word.time,
+                    word.effectiveEnd,
+                    word.effectiveEnd + word.releaseDuration,
+                );
+            });
+        });
+        this.playbackBoundaries = Array.from(new Set(boundaries))
+            .filter((time) => Number.isFinite(time) && time >= 0)
+            .sort((a, b) => a - b);
+    }
 
-        wordNodes.forEach((wordNode, idx) => {
-            const time = Number(wordNode.dataset.time);
-            const duration = Number(wordNode.dataset.duration);
-            if (!Number.isFinite(time) || !Number.isFinite(duration) || duration <= 0) return;
-            const nextWordTime = Number(wordNodes[idx + 1]?.dataset.time);
-            const wordEndCandidates = [
-                time + duration,
-                Number.isFinite(nextWordTime) ? nextWordTime : null,
-                idx === wordNodes.length - 1 ? lineEnd : null,
-            ].filter((end): end is number => Number.isFinite(end) && end > time);
-            const effectiveEnd = wordEndCandidates.length
-                ? Math.min(...wordEndCandidates)
-                : time + duration;
-            const effectiveDuration = Math.max(80, effectiveEnd - time);
-            const percent = Math.max(0, Math.min(1, (progress - time) / effectiveDuration));
-            const eased = percent * percent * (3 - 2 * percent);
+    private static getNextPlaybackDelay(progress: number) {
+        let low = 0;
+        let high = this.playbackBoundaries.length - 1;
+        let nextBoundary: number | null = null;
+        while (low <= high) {
+            const middle = (low + high) >> 1;
+            const boundary = this.playbackBoundaries[middle];
+            if (boundary > progress + 2) {
+                nextBoundary = boundary;
+                high = middle - 1;
+            } else {
+                low = middle + 1;
+            }
+        }
+        if (nextBoundary === null) return 250;
+        return Math.max(12, Math.min(250, nextBoundary - progress));
+    }
+
+    private static resetKaraokeLine(lineIndex: number) {
+        if (lineIndex < 0) return;
+        this.karaokeWordsByLine[lineIndex]?.forEach((word) => {
+            word.animations.forEach((animation) => animation.cancel());
+            word.animations = [];
+            word.node.classList.remove("active", "finished", "glowing");
+            word.node.style.removeProperty("--karaoke-progress");
+            word.node.style.removeProperty("--karaoke-lift");
+            word.node.style.removeProperty("--karaoke-scale");
+            word.node.style.removeProperty("--karaoke-glow");
+        });
+        if (this.karaokeAnimationLine === lineIndex) {
+            this.karaokeAnimationLine = -1;
+            this.karaokeAnimationsPlaying = false;
+        }
+    }
+
+    private static scheduleKaraokeLine(progress: number, isPlaying: boolean) {
+        this.cancelKaraokeAnimations();
+        const words = this.karaokeWordsByLine[this.activeIndex];
+        const lineTime = this.lines[this.activeIndex]?.time;
+        if (!words?.length || lineTime === null || lineTime === undefined) return;
+
+        this.ensureKaraokePropertiesRegistered();
+        const lineProgress = Math.max(0, progress - lineTime);
+        words.forEach((word) => {
+            const delay = Math.max(0, word.time - lineTime);
+            const motion = word.node.animate(this.buildKaraokeMotionKeyframes(), {
+                delay,
+                duration: word.effectiveDuration,
+                fill: "both",
+                easing: "linear",
+            });
+            const glow = word.node.animate(this.buildKaraokeGlowKeyframes(word), {
+                delay,
+                duration: word.effectiveDuration + word.releaseDuration,
+                fill: "both",
+                easing: "linear",
+            });
+            word.animations = [motion, glow];
+            word.animations.forEach((animation) => {
+                animation.pause();
+                animation.currentTime = lineProgress;
+                if (isPlaying) animation.play();
+            });
+        });
+        this.karaokeAnimationLine = this.activeIndex;
+        this.karaokeAnimationsPlaying = isPlaying;
+    }
+
+    private static syncKaraokeAnimationClock(
+        progress: number,
+        isPlaying: boolean,
+        forceResync: boolean,
+    ) {
+        const lineTime = this.lines[this.activeIndex]?.time;
+        const words = this.karaokeWordsByLine[this.activeIndex];
+        if (lineTime === null || lineTime === undefined || !words?.length) return;
+        const expectedTime = Math.max(0, progress - lineTime);
+        const shouldResync = forceResync || isPlaying !== this.karaokeAnimationsPlaying;
+        if (!shouldResync) return;
+
+        words.forEach((word) => {
+            word.animations.forEach((animation) => {
+                animation.pause();
+                animation.currentTime = expectedTime;
+                if (isPlaying) animation.play();
+            });
+        });
+        this.karaokeAnimationsPlaying = isPlaying;
+    }
+
+    private static updateKaraokeWordClasses(words: KaraokeWordRenderState[], progress: number) {
+        words.forEach((word) => {
+            const active = progress >= word.time && progress < word.effectiveEnd;
+            const releasing =
+                progress >= word.effectiveEnd &&
+                progress < word.effectiveEnd + word.releaseDuration;
+            word.node.classList.toggle("active", active);
+            word.node.classList.toggle("finished", progress >= word.effectiveEnd);
+            word.node.classList.toggle("glowing", active || releasing);
+        });
+    }
+
+    private static buildKaraokeMotionKeyframes() {
+        return Array.from({ length: 21 }, (_, index) => {
+            const progress = index / 20;
+            const eased = progress * progress * (3 - 2 * progress);
             const lift = 0.05 + (-0.07 - 0.05) * eased;
             const scale = 0.998 + (1.012 - 0.998) * eased;
-            const isActive = progress >= time && progress < effectiveEnd;
-            const glowLevelMs = 100;
-            const maxGlowLevel = 10;
-            const peakGlowLevel = Math.min(
-                maxGlowLevel,
-                Math.ceil(effectiveDuration / glowLevelMs),
-            );
-            const activeGlowLevel = Math.min(
-                peakGlowLevel,
-                Math.max(0, (progress - time) / glowLevelMs),
-            );
-            const activeGlow = activeGlowLevel / maxGlowLevel;
-            const peakGlow = peakGlowLevel / maxGlowLevel;
-            const releaseDuration = Math.max(700, peakGlow * 1000);
-            const releaseAge = progress - effectiveEnd;
-            const isReleasing = releaseAge >= 0 && releaseAge < releaseDuration;
-            const releaseProgress = Math.max(0, Math.min(1, releaseAge / releaseDuration));
-            const releaseEase = releaseProgress * releaseProgress * (3 - 2 * releaseProgress);
-            const glow = progress < time ? 0 : isActive ? activeGlow : peakGlow * (1 - releaseEase);
-            wordNode.style.setProperty("--karaoke-progress", `${percent * 100}%`);
-            wordNode.style.setProperty("--karaoke-lift", `${lift.toFixed(3)}em`);
-            wordNode.style.setProperty("--karaoke-scale", `${scale.toFixed(3)}`);
-            wordNode.style.setProperty("--karaoke-glow", `${glow.toFixed(3)}`);
-            wordNode.classList.toggle("active", isActive);
-            wordNode.classList.toggle("finished", percent >= 1);
-            wordNode.classList.toggle("glowing", isActive || isReleasing);
+            return {
+                offset: progress,
+                "--karaoke-progress": `${progress * 100}`,
+                "--karaoke-lift": `${lift}em`,
+                "--karaoke-scale": `${scale}`,
+            } as Keyframe;
         });
+    }
+
+    private static buildKaraokeGlowKeyframes(word: KaraokeWordRenderState) {
+        const totalDuration = word.effectiveDuration + word.releaseDuration;
+        const activeOffset = word.effectiveDuration / totalDuration;
+        const keyframes: Keyframe[] = [
+            {
+                offset: 0,
+                "--karaoke-glow": "0",
+            } as Keyframe,
+            {
+                offset: activeOffset,
+                "--karaoke-glow": `${word.peakGlow}`,
+            } as Keyframe,
+        ];
+        for (let index = 1; index <= 10; index++) {
+            const releaseProgress = index / 10;
+            const eased = releaseProgress * releaseProgress * (3 - 2 * releaseProgress);
+            keyframes.push({
+                offset: activeOffset + (1 - activeOffset) * releaseProgress,
+                "--karaoke-glow": `${word.peakGlow * (1 - eased)}`,
+            } as Keyframe);
+        }
+        return keyframes;
+    }
+
+    private static ensureKaraokePropertiesRegistered() {
+        if (this.karaokePropertiesRegistered) return;
+        const registerProperty = (
+            CSS as typeof CSS & {
+                registerProperty?: (definition: PropertyDefinition) => void;
+            }
+        ).registerProperty;
+        if (!registerProperty) return;
+        const definitions: PropertyDefinition[] = [
+            { name: "--karaoke-progress", syntax: "<number>", inherits: true, initialValue: "0" },
+            { name: "--karaoke-lift", syntax: "<length>", inherits: true, initialValue: "0em" },
+            { name: "--karaoke-scale", syntax: "<number>", inherits: true, initialValue: "1" },
+            { name: "--karaoke-glow", syntax: "<number>", inherits: true, initialValue: "0" },
+        ];
+        definitions.forEach((definition) => {
+            try {
+                registerProperty.call(CSS, definition);
+            } catch {
+                // The property may already be registered by a previous extension reload.
+            }
+        });
+        this.karaokePropertiesRegistered = true;
+    }
+
+    private static cancelKaraokeAnimations() {
+        this.karaokeWordsByLine.forEach((words) => {
+            words.forEach((word) => {
+                word.animations.forEach((animation) => animation.cancel());
+                word.animations = [];
+            });
+        });
+        this.karaokeAnimationLine = -1;
+        this.karaokeAnimationsPlaying = false;
+        this.lastKaraokeProgress = null;
+        this.lastKaraokeClockTime = 0;
     }
 
     private static applyTransforms(skipAnimation = false) {
@@ -1245,7 +1484,7 @@ export class Lyrics {
         return Number.isFinite(parsed) ? parsed : 24;
     }
 
-    private static normalizeLines(raw: any): LyricLine[] {
+    private static normalizeLines(raw: unknown): LyricLine[] {
         if (!raw || !Array.isArray(raw)) return [];
         return raw
             .map((line) => {
@@ -1264,7 +1503,10 @@ export class Lyrics {
                         : typeof timeValue === "number"
                           ? timeValue
                           : null;
-                return { text, time: Number.isFinite(parsed ?? NaN) ? parsed! : null };
+                return {
+                    text,
+                    time: typeof parsed === "number" && Number.isFinite(parsed) ? parsed : null,
+                };
             })
             .filter(Boolean) as LyricLine[];
     }

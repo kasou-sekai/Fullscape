@@ -385,8 +385,8 @@
             background: linear-gradient(
                 90deg,
                 var(--primary-color) 0%,
-                var(--primary-color) var(--karaoke-progress, 0%),
-                var(--tertiary-color) var(--karaoke-progress, 0%),
+                var(--primary-color) calc(var(--karaoke-progress, 0) * 1%),
+                var(--tertiary-color) calc(var(--karaoke-progress, 0) * 1%),
                 var(--tertiary-color) 100%
             );
             background-clip: text;

@@ -3,7 +3,9 @@ import HtmlSelectors from "./selectors";
 import WebAPI from "../services/web-api";
 
 let prevUriObj: Spicetify.URI;
+let prevContextDetails: Record<string, string> | null = null;
 let wasQueuePanelEnabled: boolean | null = null;
+let queuePanelSequence = 0;
 
 class Utils {
     static allNotExist() {
@@ -65,7 +67,7 @@ class Utils {
         const ele = document.querySelector(selector);
         if (!ele) {
             setTimeout(() => {
-                Utils.addObserver(observer, selector, options);
+                if (Utils.isModeActivated()) Utils.addObserver(observer, selector, options);
             }, 2000);
             return;
         }
@@ -127,8 +129,9 @@ class Utils {
             const res = await WebAPI.searchArt(meta.artist_name ?? "").catch((err) =>
                 console.error(err),
             );
-            arUri = res ? res.artists.items[0].id : "";
+            arUri = res?.artists?.items?.[0]?.id ?? "";
         }
+        if (!arUri) return meta.image_xlarge_url;
         const artistInfo = await WebAPI.getArtistInfo(arUri).catch((err) => console.error(err));
         return artistInfo?.visuals?.headerImage?.sources[0].url ?? meta.image_xlarge_url;
     }
@@ -168,9 +171,7 @@ class Utils {
     static overlayBack(hideBackground = true) {
         const overlay = document.querySelector("body > generic-modal > div");
         if (overlay) {
-            hideBackground
-                ? overlay.classList.add("transparent-bg")
-                : overlay.classList.remove("transparent-bg");
+            overlay.classList.toggle("transparent-bg", hideBackground);
         }
     }
 
@@ -196,12 +197,8 @@ class Utils {
             ctxName = "";
         } else {
             const uriObj = Spicetify.URI.fromString(Spicetify.Player.data.context.uri);
-            if (
-                JSON.stringify(uriObj) === JSON.stringify(prevUriObj) &&
-                ctxSource != undefined &&
-                ctxName != undefined
-            )
-                return { ctxIcon, ctxSource, ctxName };
+            if (JSON.stringify(uriObj) === JSON.stringify(prevUriObj) && prevContextDetails)
+                return prevContextDetails;
             prevUriObj = uriObj;
             switch (uriObj.type) {
                 case Spicetify.URI.Type.TRACK:
@@ -301,14 +298,17 @@ class Utils {
                     ctxName = Spicetify.Player.data?.context?.metadata?.context_description || "";
             }
         }
-        return { ctxIcon, ctxSource, ctxName };
+        prevContextDetails = { ctxIcon, ctxSource, ctxName };
+        return prevContextDetails;
     }
 
     static toggleQueuePanel(myQueueButton: HTMLElement | null, enabled: boolean) {
+        const sequence = ++queuePanelSequence;
         const originalQueueButton = HtmlSelectors.getOriginalQueueButton();
         const rightPanel = HtmlSelectors.getRightPanel();
         if (enabled) {
             setTimeout(() => {
+                if (sequence !== queuePanelSequence || !Utils.isModeActivated()) return;
                 if (!originalQueueButton?.classList.contains("main-genericButton-buttonActive")) {
                     originalQueueButton?.click();
                     wasQueuePanelEnabled = false;
@@ -316,8 +316,10 @@ class Utils {
                     wasQueuePanelEnabled = true;
                 }
                 setTimeout(() => {
+                    if (sequence !== queuePanelSequence || !Utils.isModeActivated()) return;
                     rightPanel?.classList.add("fsd-queue-panel");
                     setTimeout(() => {
+                        if (sequence !== queuePanelSequence || !Utils.isModeActivated()) return;
                         rightPanel?.classList.add("fsd-transform-animation");
                     }, 100);
                 }, 300);

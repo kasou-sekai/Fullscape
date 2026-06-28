@@ -22,7 +22,11 @@ const SeekableVolumeBar = ({ state }: { state: string }) => {
 
     const progSlider = React.useRef<HTMLDivElement>(null);
 
-    const volumeTimer = React.useRef<NodeJS.Timeout | null>(null);
+    const volumeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const volumeRef = React.useRef(curVolume);
+    const changingProgressRef = React.useRef(changingProgress);
+    volumeRef.current = curVolume;
+    changingProgressRef.current = changingProgress;
 
     const onMouseDown = (evt: MouseEvent) => {
         if (evt.button === 0) {
@@ -37,30 +41,37 @@ const SeekableVolumeBar = ({ state }: { state: string }) => {
                 },
             };
             const newPercentage = Math.round((newData.data.positionCoord / sliderHeight) * 100);
+            volumeRef.current = newPercentage;
+            changingProgressRef.current = newData;
             setVolume(newPercentage);
             setChangingProgress(newData);
         }
     };
 
-    const debouncedVolume = debounce((newPercentage: number) => {
-        Spicetify.Player.setVolume(newPercentage / 100);
-    }, 20);
+    const debouncedVolume = React.useMemo(
+        () =>
+            debounce((newPercentage: number) => {
+                Spicetify.Player.setVolume(newPercentage / 100);
+            }, 20),
+        [],
+    );
 
     const onMouseMove = (evt: MouseEvent) => {
-        if (changingProgress.isChanging && changingProgress.data) {
-            const moveY = changingProgress.data.beginClient - evt.clientY;
-            const sliderHeight = changingProgress.data.sliderDimen;
-            const newPosY = Math.min(
-                Math.max(changingProgress.data.begin + moveY, 0),
-                sliderHeight,
-            );
+        const changing = changingProgressRef.current;
+        if (changing.isChanging && changing.data) {
+            const moveY = changing.data.beginClient - evt.clientY;
+            const sliderHeight = changing.data.sliderDimen;
+            const newPosY = Math.min(Math.max(changing.data.begin + moveY, 0), sliderHeight);
             const newPercentage = Math.round((newPosY / sliderHeight) * 100);
+            const nextChanging = {
+                isChanging: true,
+                data: { ...changing.data, positionCoord: newPosY },
+            };
+            volumeRef.current = newPercentage;
+            changingProgressRef.current = nextChanging;
             setVolume(newPercentage);
             debouncedVolume(newPercentage);
-            setChangingProgress({
-                isChanging: true,
-                data: { ...changingProgress.data, positionCoord: newPosY },
-            });
+            setChangingProgress(nextChanging);
         }
         // Show volume bar when mouse is on the left side of the screen and centered vertically
         if (
@@ -74,9 +85,11 @@ const SeekableVolumeBar = ({ state }: { state: string }) => {
     };
 
     const onMouseUp = (evt: MouseEvent) => {
-        if (evt.button == 0 && changingProgress.isChanging) {
-            Spicetify.Player.setVolume(curVolume / 100);
-            setChangingProgress({ isChanging: false, data: null });
+        if (evt.button == 0 && changingProgressRef.current.isChanging) {
+            Spicetify.Player.setVolume(volumeRef.current / 100);
+            const stopped = { isChanging: false, data: null };
+            changingProgressRef.current = stopped;
+            setChangingProgress(stopped);
         }
     };
 
@@ -102,10 +115,10 @@ const SeekableVolumeBar = ({ state }: { state: string }) => {
     // Uses spotify internal event
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updateVolume = (meta: any) => {
-        if (!changingProgress.isChanging) {
+        if (!changingProgressRef.current.isChanging) {
             const newVol = Math.round(meta.data.volume * 100);
-            // console.log("Curvol: ", curVolume, "Newvol: ", newVol);
-            if (newVol !== curVolume) {
+            if (newVol !== volumeRef.current) {
+                volumeRef.current = newVol;
                 setVolume(newVol);
                 if (state === "smart") {
                     hideVolumeBar();
@@ -121,11 +134,12 @@ const SeekableVolumeBar = ({ state }: { state: string }) => {
         Spicetify.Platform.PlaybackAPI._events.addListener("volume", updateVolume);
         setDragListener();
         return () => {
-            // console.log("Cleared Volume Effect");
+            if (volumeTimer.current) clearTimeout(volumeTimer.current);
+            debouncedVolume.cancel();
             Spicetify.Platform.PlaybackAPI._events.removeListener("volume", updateVolume);
             resetDragListener();
         };
-    }, [changingProgress, state, curVolume]);
+    }, [state, debouncedVolume]);
 
     return (
         <div

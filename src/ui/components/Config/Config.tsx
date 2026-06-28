@@ -1,8 +1,8 @@
-import ReactDOM from "react-dom";
 import React from "react";
+import ReactDOM from "react-dom";
 import CFM from "../../../utils/config";
 import translations from "../../../resources/strings";
-import ICONS, { DEFAULTS } from "../../../constants";
+import { DEFAULTS } from "../../../constants";
 import { Config, Settings } from "../../../types/fullscreen";
 import Utils from "../../../utils/utils";
 import { DOM } from "../../elements";
@@ -16,13 +16,16 @@ import { Lyrics } from "../Lyrics/Lyrics";
 
 export class ConfigManager {
     static configContainer: HTMLDivElement;
-    static overlayTimout: NodeJS.Timeout;
+    static overlayTimout: ReturnType<typeof setTimeout>;
     static render: () => void;
     static activate: () => Promise<void>;
     static deactivate: () => Promise<void>;
     static openwithDef: () => void;
     static openwithTV: () => void;
-    static updateBackground: (meta: any, fromResize?: boolean) => Promise<void>;
+    static updateBackground: (
+        meta?: Partial<Record<string, unknown>>,
+        fromResize?: boolean,
+    ) => Promise<void>;
     static updateUpNextShow: () => void;
     static updateMainColor: (imageURL: string, meta: Spicetify.Metadata) => Promise<void>;
 
@@ -32,7 +35,10 @@ export class ConfigManager {
         deactivate: () => Promise<void>,
         openwithDef: () => void,
         openwithTV: () => void,
-        updateBackground: (meta: any, fromResize?: boolean) => Promise<void>,
+        updateBackground: (
+            meta?: Partial<Record<string, unknown>>,
+            fromResize?: boolean,
+        ) => Promise<void>,
         updateUpNextShow: () => void,
         updateMainColor: (imageURL: string, meta: Spicetify.Metadata) => Promise<void>,
     ) {
@@ -72,11 +78,15 @@ export class ConfigManager {
             ${translations[LOCALE].settings.exit}
           </button>
         </div>`;
-        container.querySelector<HTMLElement>("#mode-exit")!.onclick = this.deactivate;
-        container.querySelector<HTMLElement>("#mode-switch")!.onclick = () => {
-            CFM.getGlobal("tvMode") ? this.openwithDef() : this.openwithTV();
-            document.querySelector("body > generic-modal")?.remove();
-        };
+        const exitButton = container.querySelector<HTMLElement>("#mode-exit");
+        const switchButton = container.querySelector<HTMLElement>("#mode-switch");
+        if (exitButton) exitButton.onclick = this.deactivate;
+        if (switchButton)
+            switchButton.onclick = () => {
+                if (CFM.getGlobal("tvMode")) this.openwithDef();
+                else this.openwithTV();
+                document.querySelector("body > generic-modal")?.remove();
+            };
         return container;
     }
 
@@ -87,21 +97,22 @@ export class ConfigManager {
           <button class="main-buttons-button main-button-secondary" id="reset-switch">${translations[LOCALE].settings.configReset}</button>
           <button class="main-buttons-button main-button-secondary" id="reload-switch">${translations[LOCALE].settings.reload}</button>
         </div>`;
-        container.querySelector<HTMLElement>("#reset-switch")!.onclick = () => {
-            if (Utils.isModeActivated()) {
-                CFM.resetSettings();
-                this.render();
-                this.activate();
-                this.configContainer = document.createElement("div"); // Reset container
-                setTimeout(() => this.openConfig(), 5);
-            } else {
-                CFM.resetSettings(null, true);
-                location.reload();
-            }
-        };
-        container.querySelector<HTMLElement>("#reload-switch")!.onclick = () => {
-            location.reload();
-        };
+        const resetButton = container.querySelector<HTMLElement>("#reset-switch");
+        const reloadButton = container.querySelector<HTMLElement>("#reload-switch");
+        if (resetButton)
+            resetButton.onclick = () => {
+                if (Utils.isModeActivated()) {
+                    CFM.resetSettings();
+                    this.render();
+                    this.activate();
+                    this.configContainer = document.createElement("div");
+                    setTimeout(() => this.openConfig(), 5);
+                } else {
+                    CFM.resetSettings(null, true);
+                    location.reload();
+                }
+            };
+        if (reloadButton) reloadButton.onclick = () => location.reload();
         return container;
     }
 
@@ -124,7 +135,8 @@ export class ConfigManager {
             description,
         );
 
-        const select = settingCard.querySelector<HTMLSelectElement>("select")!;
+        const select = settingCard.querySelector<HTMLSelectElement>("select");
+        if (!select) return settingCard;
         if (!(configValue in options)) {
             if (key in DEFAULTS[CFM.getMode()]) {
                 configValue = DEFAULTS[CFM.getMode()][key as keyof Settings] as string;
@@ -321,8 +333,6 @@ export class ConfigManager {
     static openConfig(evt: Event | null = null): void {
         evt?.preventDefault();
         const LOCALE = CFM.getGlobal("locale") as Config["locale"];
-        const INVERTED = JSON.parse(localStorage.getItem("full-screen:inverted") ?? "{}");
-
         this.configContainer = document.createElement("div");
         this.configContainer.id = "full-screen-config-container";
         const style = document.createElement("style");
@@ -448,16 +458,15 @@ export class ConfigManager {
                 CFM.get("progressBarDisplay") as Settings["progressBarDisplay"],
                 "progressBarDisplay",
                 (value: string) => {
-                    CFM.set("progressBarDisplay", value);
+                    CFM.set("progressBarDisplay", value as Settings["progressBarDisplay"]);
                     if (value !== "never") {
                         ReactDOM.render(
                             <SeekableProgressBar state={value} />,
                             DOM.container.querySelector("#fsd-progress-parent"),
                         );
                     } else {
-                        ReactDOM.unmountComponentAtNode(
-                            DOM.container.querySelector("#fsd-progress-parent")!,
-                        );
+                        const root = DOM.container.querySelector("#fsd-progress-parent");
+                        if (root) ReactDOM.unmountComponentAtNode(root);
                     }
                 },
             ),
@@ -532,17 +541,15 @@ export class ConfigManager {
                             <OverviewCard
                                 onExit={this.deactivate}
                                 onToggle={() => {
-                                    CFM.getGlobal("tvMode")
-                                        ? this.openwithDef()
-                                        : this.openwithTV();
+                                    if (CFM.getGlobal("tvMode")) this.openwithDef();
+                                    else this.openwithTV();
                                 }}
                             />,
                             DOM.container.querySelector("#fsd-overview-card-parent"),
                         );
                     } else {
-                        ReactDOM.unmountComponentAtNode(
-                            DOM.container.querySelector("#fsd-overview-card-parent")!,
-                        );
+                        const root = DOM.container.querySelector("#fsd-overview-card-parent");
+                        if (root) ReactDOM.unmountComponentAtNode(root);
                     }
                 },
             ),
@@ -556,16 +563,15 @@ export class ConfigManager {
                 CFM.get("volumeDisplay") as Settings["volumeDisplay"],
                 "volumeDisplay",
                 (value: string) => {
-                    CFM.set("volumeDisplay", value);
+                    CFM.set("volumeDisplay", value as Settings["volumeDisplay"]);
                     if (value !== "never") {
                         ReactDOM.render(
                             <SeekableVolumeBar state={value} />,
                             DOM.container.querySelector("#fsd-volume-parent"),
                         );
                     } else {
-                        ReactDOM.unmountComponentAtNode(
-                            DOM.container.querySelector("#fsd-volume-parent")!,
-                        );
+                        const root = DOM.container.querySelector("#fsd-volume-parent");
+                        if (root) ReactDOM.unmountComponentAtNode(root);
                     }
                 },
                 translations[LOCALE].settings.volumeDisplay.description.join("\n"),
@@ -586,7 +592,7 @@ export class ConfigManager {
                 CFM.get("backgroundChoice") as Settings["backgroundChoice"],
                 "backgroundChoice",
                 (value: string) => {
-                    CFM.set("backgroundChoice", value);
+                    CFM.set("backgroundChoice", value as Settings["backgroundChoice"]);
                     if (Utils.isModeActivated()) {
                         this.updateBackground(Spicetify.Player.data.item?.metadata);
                     }
@@ -697,7 +703,7 @@ export class ConfigManager {
                 CFM.get("backgroundBrightness") as Settings["backgroundBrightness"],
                 "backgroundBrightness",
                 (value: string) => {
-                    CFM.set("backgroundBrightness", value);
+                    CFM.set("backgroundBrightness", Number(value));
                     if (Utils.isModeActivated()) {
                         this.updateBackground(Spicetify.Player.data.item?.metadata, true);
                     }

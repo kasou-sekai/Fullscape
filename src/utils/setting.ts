@@ -4,6 +4,7 @@ import { Config, Settings } from "../types/fullscreen";
 import { version } from "../../package.json";
 import showWhatsNew from "../services/whats-new";
 import CFM from "../utils/config";
+import { sanitizeHtml } from "./sanitize-html";
 
 export function headerText(text: string, subtext = "") {
     const container = document.createElement("div");
@@ -14,7 +15,7 @@ export function headerText(text: string, subtext = "") {
     if (subtext) {
         const listSub = document.createElement("div");
         listSub.classList.add("setting-subhead-description");
-        listSub.innerHTML = marked.parse(subtext, { breaks: true }) as string;
+        listSub.innerHTML = sanitizeHtml(marked.parse(subtext, { breaks: true }) as string);
         container.append(listSub);
     }
     return container;
@@ -45,12 +46,14 @@ export function getSettingCard(
     settingCard.innerHTML = `
         <div class="setting-container">
             <div class="setting-item">
-                <label class="setting-title">${title}</label>
+                <label class="setting-title"></label>
                 <div class="setting-action">${actionContent}</div>
             </div>
-            <div class="setting-description">${marked.parse(description, { breaks: true }) as string}</div>
+            <div class="setting-description">${sanitizeHtml(marked.parse(description, { breaks: true }) as string)}</div>
         </div>
     `;
+    const titleElement = settingCard.querySelector(".setting-title");
+    if (titleElement) titleElement.textContent = title;
     return settingCard;
 }
 
@@ -76,8 +79,8 @@ export function createAdjust(
         }
         value = Number(Number(temp).toFixed(step >= 1 ? 0 : 2));
         (settingCard.querySelector(".adjust-value") as HTMLElement).innerText = `${value}${unit}`;
-        plus && plus.classList.toggle("disabled", value === max);
-        minus && minus.classList.toggle("disabled", value === min);
+        plus?.classList.toggle("disabled", value === max);
+        minus?.classList.toggle("disabled", value === min);
         onChange(value);
     }
     const settingCard = getSettingCard(

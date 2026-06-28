@@ -1,6 +1,6 @@
 import WebAPI from "../services/web-api";
 import CFM from "./config";
-import { Settings } from "../types/fullscreen";
+import { Colors, Settings } from "../types/fullscreen";
 import Utils from "./utils";
 
 class ColorExtractor {
@@ -61,7 +61,7 @@ class ColorExtractor {
     /**
      * Extracts color from album or artist art
      */
-    private static getAlbumArtColor(imageColors: any): string {
+    private static getAlbumArtColor(imageColors: Colors | undefined): string {
         if (!imageColors?.PROMINENT) {
             return this.DEFAULT_FALLBACK_COLOR;
         }
@@ -71,7 +71,7 @@ class ColorExtractor {
     /**
      * Gets dynamic color based on user's colored background choice
      */
-    private static getDynamicColor(imageColors: any): string {
+    private static getDynamicColor(imageColors: Colors | undefined): string {
         const coloredBackChoice = CFM.get("coloredBackChoice") as Settings["coloredBackChoice"];
 
         if (!imageColors || !imageColors[coloredBackChoice]) {

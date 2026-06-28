@@ -5,16 +5,27 @@ import ICONS from "../../../constants";
 import { UpNext } from "../UpNext/UpNext";
 
 export class ExtraControls {
-    static extraControlsTimer: NodeJS.Timeout;
+    static extraControlsTimer: ReturnType<typeof setTimeout>;
+    static heartTimer: ReturnType<typeof setTimeout>;
     static prevControlData = {
         shuffle: Spicetify.Platform?.PlayerAPI?._state?.shuffle,
         repeat: Spicetify.Platform?.PlayerAPI?._state?.repeat,
     };
     static prevHeartData = Spicetify.Player?.data?.item?.metadata["collection.in_collection"];
-    static INVERTED = JSON.parse(localStorage.getItem("full-screen:inverted") ?? "{}");
+    static INVERTED: Record<string, boolean> = (() => {
+        try {
+            const value: unknown = JSON.parse(localStorage.getItem("full-screen:inverted") ?? "{}");
+            return value && typeof value === "object" && !Array.isArray(value)
+                ? (value as Record<string, boolean>)
+                : {};
+        } catch {
+            return {};
+        }
+    })();
 
-    static updateExtraControls(data: any) {
-        data = data?.data ?? Spicetify.Player.data;
+    static updateExtraControls(event: { data?: Spicetify.PlayerState } | null) {
+        if (!DOM.repeat?.isConnected || !DOM.shuffle?.isConnected) return;
+        const data = event?.data ?? Spicetify.Player.data;
         this.updateHeart();
         if (this.prevControlData?.shuffle !== data?.shuffle) Utils.fadeAnimation(DOM.shuffle);
         if (this.prevControlData?.repeat !== data?.repeat) {
@@ -40,15 +51,20 @@ export class ExtraControls {
             DOM.repeat.classList.toggle(
                 "unavailable",
                 !data?.restrictions?.canToggleRepeatTrack &&
-                !data?.restrictions?.canToggleRepeatContext,
+                    !data?.restrictions?.canToggleRepeatContext,
             );
         }
     }
 
     static updateHeart() {
-        setTimeout(() => {
+        if (this.heartTimer) clearTimeout(this.heartTimer);
+        this.heartTimer = setTimeout(() => {
+            if (!DOM.heart?.isConnected) return;
             const meta = Spicetify.Player?.data?.item;
-            DOM.heart.classList.toggle("unavailable", meta?.metadata["collection.can_add"] !== "true");
+            DOM.heart.classList.toggle(
+                "unavailable",
+                meta?.metadata["collection.can_add"] !== "true",
+            );
             if (this.prevHeartData !== meta?.metadata["collection.in_collection"])
                 Utils.fadeAnimation(DOM.heart);
             this.prevHeartData = meta?.metadata["collection.in_collection"];
@@ -74,13 +90,15 @@ export class ExtraControls {
         if (getComputedStyle(DOM.container).getPropertyValue("--main-color").startsWith("0")) {
             DOM.container.style.setProperty("--main-color", "255,255,255");
             DOM.container.style.setProperty("--contrast-color", "0,0,0");
-            if (!CFM.getGlobal("tvMode") && CFM.get("backgroundChoice") === "album_art")
-                this.INVERTED[Spicetify.Player.data.item?.metadata?.album_uri?.split(":")[2]] = false;
+            const albumId = Spicetify.Player.data.item?.metadata?.album_uri?.split(":")[2];
+            if (!CFM.getGlobal("tvMode") && CFM.get("backgroundChoice") === "album_art" && albumId)
+                this.INVERTED[albumId] = false;
         } else {
             DOM.container.style.setProperty("--main-color", "0,0,0");
             DOM.container.style.setProperty("--contrast-color", "255,255,255");
-            if (!CFM.getGlobal("tvMode") && CFM.get("backgroundChoice") === "album_art")
-                this.INVERTED[Spicetify.Player.data.item?.metadata?.album_uri?.split(":")[2]] = true;
+            const albumId = Spicetify.Player.data.item?.metadata?.album_uri?.split(":")[2];
+            if (!CFM.getGlobal("tvMode") && CFM.get("backgroundChoice") === "album_art" && albumId)
+                this.INVERTED[albumId] = true;
         }
         localStorage.setItem("full-screen:inverted", JSON.stringify(this.INVERTED));
     }
@@ -89,7 +107,9 @@ export class ExtraControls {
         if (this.extraControlsTimer) {
             clearTimeout(this.extraControlsTimer);
         }
-        const elements = DOM.container.querySelectorAll(".extra-controls") as NodeListOf<HTMLElement>;
+        const elements = DOM.container.querySelectorAll(
+            ".extra-controls",
+        ) as NodeListOf<HTMLElement>;
         elements.forEach((element) => (element.style.opacity = "1"));
         this.extraControlsTimer = setTimeout(() => {
             elements.forEach((element) => (element.style.opacity = "0"));

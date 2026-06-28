@@ -310,7 +310,7 @@ async function requestJson(url: string, method: "GET" | "POST", stage: string) {
     }
 }
 
-function parseResponseBody(body: any) {
+function parseResponseBody(body: unknown) {
     if (typeof body === "string") return JSON.parse(body);
     return body;
 }
@@ -652,7 +652,7 @@ function normalizeBaseTitle(text: string) {
 
 export function getBaseTrackTitle(title: string) {
     return title
-        .replace(/\s*[\[(]?\s*(?:feat(?:uring)?|ft)\.?\s+.*$/i, "")
+        .replace(/\s*[[(]?\s*(?:feat(?:uring)?|ft)\.?\s+.*$/i, "")
         .replace(/\s+[-–—]\s*.*$/u, "")
         .trim();
 }

@@ -2,7 +2,7 @@ import * as React from "react";
 import "./styles.scss";
 import Utils from "../../../utils/utils";
 import classNames from "classnames";
-import { BsPinAngle, BsPinAngleFill, BsUnlock, BsLockFill } from "react-icons/bs";
+import { BsPinAngle, BsPinAngleFill } from "react-icons/bs";
 import { MdAutorenew } from "react-icons/md";
 import CFM from "../../../utils/config";
 
@@ -15,7 +15,7 @@ const OverviewCard = ({ onExit, onToggle }: OverviewCardProps) => {
     const [visibility, setVisibility] = React.useState(true);
     const [pinned, setPinned] = React.useState(CFM.get("overviewCardPinned"));
 
-    const overviewCardTimer = React.useRef<NodeJS.Timeout | null>(null);
+    const overviewCardTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const hideCard = (timeout = 3000) => {
         if (overviewCardTimer.current) clearTimeout(overviewCardTimer.current);
@@ -45,6 +45,7 @@ const OverviewCard = ({ onExit, onToggle }: OverviewCardProps) => {
         document.addEventListener("mousemove", handleMouseMove);
 
         return () => {
+            if (overviewCardTimer.current) clearTimeout(overviewCardTimer.current);
             document.removeEventListener("mousemove", handleMouseMove);
         };
     }, [pinned]);
@@ -74,14 +75,6 @@ const OverviewCard = ({ onExit, onToggle }: OverviewCardProps) => {
             <ClockSection />
 
             <div id="fsd-overview-button-container">
-                {/* <Spicetify.ReactComponent.TooltipWrapper label="Set Wake Lock" placement="bottom">
-                    <button
-                        id="overview-lock-button"
-                        className="fsd-overview-button"
-                        onClick={() => {}}>
-                        <BsUnlock />
-                    </button>
-                </Spicetify.ReactComponent.TooltipWrapper> */}
                 <Spicetify.ReactComponent.TooltipWrapper label="Toggle Mode" placement="bottom">
                     <button
                         id="overview-toggle-button"

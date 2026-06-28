@@ -3,9 +3,9 @@ import { DOM } from "../../elements";
 import Utils from "../../../utils/utils";
 
 export class PlayerControls {
-    static playerControlsTimer: NodeJS.Timeout;
+    static playerControlsTimer: ReturnType<typeof setTimeout>;
 
-    static updatePlayerControls(evt: any) {
+    static updatePlayerControls(evt: { data: { is_paused?: boolean; isPaused?: boolean } }) {
         if (CFM.get("playerControls") === "mousemove") this.hidePlayerControls();
         Utils.fadeAnimation(DOM.play);
         if (evt.data.is_paused || evt.data.isPaused) {
@@ -19,7 +19,8 @@ export class PlayerControls {
         if (this.playerControlsTimer) {
             clearTimeout(this.playerControlsTimer);
         }
-        const element = DOM.container.querySelector(".fsd-controls-center")! as HTMLElement;
+        const element = DOM.container.querySelector<HTMLElement>(".fsd-controls-center");
+        if (!element) return;
         element.style.opacity = "1";
         this.playerControlsTimer = setTimeout(() => (element.style.opacity = "0"), 3000);
     }

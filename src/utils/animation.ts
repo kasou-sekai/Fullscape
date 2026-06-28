@@ -1,20 +1,35 @@
 import { Settings } from "../types/fullscreen";
 import CFM from "./config";
 
+let transitionFrameId: number | null = null;
+let rotationFrameId: number | null = null;
+let rotationGeneration = 0;
+
+function cancelTransitionAnimation() {
+    if (transitionFrameId !== null) {
+        cancelAnimationFrame(transitionFrameId);
+        transitionFrameId = null;
+    }
+}
+
 export function animateCanvas(
     prevImg: HTMLImageElement,
     nextImg: HTMLImageElement,
     back: HTMLCanvasElement,
     fromResize = false,
 ) {
-    const configTransitionTime = CFM.get("backAnimationTime") as Settings["backAnimationTime"];
+    cancelTransitionAnimation();
+    const configTransitionTime = Math.min(
+        10,
+        Math.max(0, Number(CFM.get("backAnimationTime")) || 0),
+    );
     const { innerWidth: width, innerHeight: height } = window;
     back.width = width;
     back.height = height;
 
     const ctx = back.getContext("2d") as CanvasRenderingContext2D;
     ctx.imageSmoothingEnabled = false;
-    const blur = CFM.get("blurSize") as Settings["blurSize"];
+    const blur = Math.min(200, Math.max(0, Number(CFM.get("blurSize")) || 0));
     ctx.filter = `brightness(${CFM.get("backgroundBrightness")}) blur(${blur}px)`;
 
     const vals = getSizeValues(width, height, nextImg.width, nextImg.height);
@@ -48,16 +63,22 @@ export function animateCanvas(
         }
         if (elapsed < configTransitionTime * 1000) {
             prevTimeStamp = timestamp;
-            !done && requestAnimationFrame(animate);
+            if (!done) transitionFrameId = requestAnimationFrame(animate);
+        } else {
+            transitionFrameId = null;
         }
     };
 
-    requestAnimationFrame(animate);
+    transitionFrameId = requestAnimationFrame(animate);
 }
 
 let prevColor = "#000000";
 export async function animateColor(nextColor: string, back: HTMLCanvasElement, fromConfig = false) {
-    const configTransitionTime = CFM.get("backAnimationTime") as Settings["backAnimationTime"];
+    cancelTransitionAnimation();
+    const configTransitionTime = Math.min(
+        10,
+        Math.max(0, Number(CFM.get("backAnimationTime")) || 0),
+    );
     const { innerWidth: width, innerHeight: height } = window;
     back.width = width;
     back.height = height;
@@ -90,50 +111,64 @@ export async function animateColor(nextColor: string, back: HTMLCanvasElement, f
         }
         if (elapsed < configTransitionTime * 1000) {
             previousTimeStamp = timestamp;
-            !done && requestAnimationFrame(animate);
+            if (!done) transitionFrameId = requestAnimationFrame(animate);
         } else {
             prevColor = nextColor;
+            transitionFrameId = null;
         }
     };
 
-    requestAnimationFrame(animate);
+    transitionFrameId = requestAnimationFrame(animate);
 }
 
 let isAnimationRunning = false;
 
 export const modifyIsAnimationRunning = (value: boolean) => {
     isAnimationRunning = value;
+    if (!value) {
+        cancelTransitionAnimation();
+        rotationGeneration += 1;
+        if (rotationFrameId !== null) {
+            cancelAnimationFrame(rotationFrameId);
+            rotationFrameId = null;
+        }
+    }
 };
 
 let rotationSpeed = CFM.get("animationSpeed") as Settings["animationSpeed"];
 
 export const modifyRotationSpeed = (value: number) => {
-    rotationSpeed = value;
+    rotationSpeed = Math.min(2, Math.max(0, value));
 };
 
-//todo: fix high resource usage when re rendering on setting change
 export function animatedRotatedCanvas(back: HTMLCanvasElement, bgImg: HTMLImageElement) {
+    modifyIsAnimationRunning(false);
+    isAnimationRunning = true;
+    const generation = ++rotationGeneration;
     const ctx = back.getContext("2d") as CanvasRenderingContext2D;
 
     back.width = window.innerWidth;
     back.height = window.innerHeight;
 
-    const blur = Math.max(CFM.get("blurSize") as Settings["blurSize"], 28);
-    const brightness = Math.min(
-        CFM.get("backgroundBrightness") as Settings["backgroundBrightness"],
-        0.7,
-    );
+    const blur = Math.min(200, Math.max(Number(CFM.get("blurSize")) || 0, 28));
+    const brightness = Math.min(Math.max(Number(CFM.get("backgroundBrightness")) || 0, 0), 0.7);
 
     ctx.filter = `saturate(2) brightness(${brightness}) blur(${blur}px)`;
 
     const radius = Math.min(back.width, back.height);
 
     let rotationAngle = 0;
+    let lastFrameTime = 0;
+    const frameInterval = 1000 / 30;
 
-    // let lastFrameTime1 = performance.now();
-    // let frameCount = 0;
-
-    function draw() {
+    function draw(timestamp: number) {
+        if (!isAnimationRunning || generation !== rotationGeneration) return;
+        if (timestamp - lastFrameTime < frameInterval) {
+            rotationFrameId = requestAnimationFrame(draw);
+            return;
+        }
+        const elapsedFrames = lastFrameTime ? (timestamp - lastFrameTime) / (1000 / 60) : 1;
+        lastFrameTime = timestamp;
         ctx.clearRect(0, 0, back.width, back.height);
 
         ctx.save();
@@ -148,144 +183,10 @@ export function animatedRotatedCanvas(back: HTMLCanvasElement, bgImg: HTMLImageE
         ctx.drawImage(bgImg, -radius, -radius, radius * 2, radius * 2);
         ctx.restore();
 
-        rotationAngle += rotationSpeed;
-
-        // //Calculate the frame rate
-        // const now = performance.now();
-        // const deltaTime = now - lastFrameTime1;
-        // frameCount++;
-        // if (deltaTime >= 1000) {
-        //     const fps = Math.round((frameCount * 1000) / deltaTime);
-        //     console.log(`Frame rate: ${fps} fps`);
-        //     frameCount = 0;
-        //     lastFrameTime1 = now;
-        // }
-
-        if (isAnimationRunning) requestAnimationFrame(draw);
+        rotationAngle += rotationSpeed * elapsedFrames;
+        rotationFrameId = requestAnimationFrame(draw);
     }
-    isAnimationRunning = true;
-    draw();
-}
-
-// limited frames animation,logic
-// TODO: fix flickering
-let lastFrameTime = performance.now();
-export function animatedRotatedCanvasV2(back: HTMLCanvasElement, bgImg: HTMLImageElement) {
-    const ctx = back.getContext("2d") as CanvasRenderingContext2D;
-
-    back.width = window.innerWidth;
-    back.height = window.innerHeight;
-
-    const blur = Math.max(CFM.get("blurSize") as Settings["blurSize"], 28);
-    const brightness = Math.min(
-        CFM.get("backgroundBrightness") as Settings["backgroundBrightness"],
-        0.7,
-    );
-
-    ctx.filter = `saturate(2) brightness(${brightness}) blur(${blur}px)`;
-
-    const radius = Math.min(back.width, back.height);
-
-    let rotationAngle = 0;
-
-    const frameRate = 30;
-    const frameInterval = 1000 / frameRate;
-
-    function draw() {
-        if (isAnimationRunning) requestAnimationFrame(draw);
-
-        const now = performance.now();
-        const deltaTime = now - lastFrameTime;
-
-        if (deltaTime >= frameInterval) {
-            lastFrameTime = now - (deltaTime % frameInterval);
-            ctx.clearRect(0, 0, back.width, back.height);
-            ctx.save();
-            ctx.translate(0, 0);
-            ctx.rotate(((2 * Math.PI) / 360) * rotationAngle);
-            ctx.drawImage(bgImg, -radius, -radius, radius * 2, radius * 2);
-            ctx.restore();
-
-            ctx.save();
-            ctx.translate(back.width / 2, 0);
-            ctx.rotate(((2 * Math.PI) / 360) * rotationAngle + Math.PI);
-            ctx.drawImage(bgImg, -radius, -radius, radius * 2, radius * 2);
-            ctx.restore();
-
-            rotationAngle += rotationSpeed;
-        }
-    }
-    isAnimationRunning = true;
-    draw();
-}
-
-const offscreenCanvas = document.createElement("canvas");
-
-// TODO Test this, fix high resource usage on song change
-export function animatedRotatedCanvasOptimized(back: HTMLCanvasElement, bgImg: HTMLImageElement) {
-    const offscreenCtx = offscreenCanvas.getContext("2d") as CanvasRenderingContext2D;
-    const ctx = back.getContext("2d") as CanvasRenderingContext2D;
-
-    offscreenCanvas.width = window.innerWidth;
-    offscreenCanvas.height = window.innerHeight;
-
-    back.width = window.innerWidth;
-    back.height = window.innerHeight;
-
-    const blur = Math.max(CFM.get("blurSize") as Settings["blurSize"], 32);
-    const brightness = Math.min(
-        CFM.get("backgroundBrightness") as Settings["backgroundBrightness"],
-        0.7,
-    );
-
-    offscreenCtx.filter = `saturate(2) brightness(${brightness}) blur(${blur}px)`;
-
-    const radius = Math.min(offscreenCanvas.width, offscreenCanvas.height);
-
-    let rotationAngle = 0;
-    const rotationSpeed = 0.25; // Adjust the rotation speed here (smaller value for slower rotation)
-
-    let lastFrameTime = performance.now();
-    let frameCount = 0;
-
-    function draw() {
-        offscreenCtx.clearRect(0, 0, offscreenCanvas.width, offscreenCanvas.height);
-
-        // Draw the background image
-        offscreenCtx.save();
-        offscreenCtx.translate(0, 0);
-        offscreenCtx.rotate(((2 * Math.PI) / 360) * rotationAngle);
-        offscreenCtx.drawImage(bgImg, -radius, -radius, radius * 2, radius * 2);
-        offscreenCtx.restore();
-
-        // Draw the colored image
-        offscreenCtx.save();
-        offscreenCtx.translate(offscreenCanvas.width, 0);
-        offscreenCtx.rotate(((2 * Math.PI) / 360) * rotationAngle);
-        offscreenCtx.drawImage(bgImg, -radius, -radius, radius * 2, radius * 2);
-        offscreenCtx.restore();
-
-        rotationAngle += rotationSpeed;
-
-        // Calculate the frame rate
-        const now = performance.now();
-        const deltaTime = now - lastFrameTime;
-        frameCount++;
-        if (deltaTime >= 1000) {
-            const fps = Math.round((frameCount * 1000) / deltaTime);
-            console.log(`Frame rate: ${fps} fps`);
-            frameCount = 0;
-            lastFrameTime = now;
-        }
-
-        // Copy the off-screen canvas onto the visible canvas
-        ctx.clearRect(0, 0, back.width, back.height);
-        ctx.drawImage(offscreenCanvas, 0, 0);
-
-        if (isAnimationRunning) requestAnimationFrame(draw);
-    }
-    isAnimationRunning = true;
-    draw();
+    rotationFrameId = requestAnimationFrame(draw);
 }
 
 function getSizeValues(
