@@ -147,6 +147,35 @@ async function main() {
         });
     }
 
+    function updateLyricsBounds() {
+        if (!CFM.get("lyricsDisplay") || !DOM.lyrics?.isConnected) return;
+        const artwork = DOM.container.querySelector<HTMLElement>("#fsd-art");
+        const controls = DOM.container.querySelector<HTMLElement>("#fsd-status");
+        const progress = DOM.container.querySelector<HTMLElement>("#fsd-progress-parent");
+        if (!artwork || !controls) return;
+
+        const containerRect = DOM.container.getBoundingClientRect();
+        const artworkRect = artwork.getBoundingClientRect();
+        const controlsRect = controls.getBoundingClientRect();
+        const progressRect = progress?.getBoundingClientRect();
+        const controlsBottom =
+            controlsRect.height > 0 ? controlsRect.bottom : (progressRect?.bottom ?? 0);
+        const unscaledArtworkTop =
+            artworkRect.top - (artwork.offsetHeight - artworkRect.height) / 2;
+        const top = unscaledArtworkTop - containerRect.top;
+        const height = controlsBottom - unscaledArtworkTop;
+        if (!Number.isFinite(top) || !Number.isFinite(height) || height <= 0) return;
+
+        DOM.container.style.setProperty("--lyrics-container-top", `${top}px`);
+        DOM.container.style.setProperty("--lyrics-container-height", `${height}px`);
+    }
+
+    function updatePlaybackLayout(evt?: any) {
+        const isPaused =
+            evt?.data?.is_paused ?? evt?.data?.isPaused ?? !Spicetify.Player.isPlaying();
+        DOM.container.classList.toggle("playback-paused", Boolean(isPaused));
+    }
+
     function render() {
         DOM.container.classList.toggle("lyrics-active", Boolean(CFM.get("lyricsDisplay")));
         Utils.toggleQueuePanel(null, false);
@@ -169,6 +198,7 @@ async function main() {
         Spicetify.Player.removeEventListener("songchange", updateInfo);
         Spicetify.Player.removeEventListener("onplaypause", updatePlayerControls);
         Spicetify.Player.removeEventListener("onplaypause", updatePlayingIcon);
+        Spicetify.Player.removeEventListener("onplaypause", updatePlaybackLayout);
         document.removeEventListener("fullscreenchange", fullScreenListener);
 
         Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", updateUpNext);
@@ -364,6 +394,7 @@ async function main() {
                 updatedAlbum = true;
             }
             updateMetadataOverflow();
+            updateLyricsBounds();
         };
 
         // Placeholder
@@ -487,6 +518,10 @@ async function main() {
             Spicetify.Player.addEventListener("onplaypause", updatePlayerControls);
         }
         document.querySelector(".Root__top-container")?.append(DOM.style, DOM.container);
+        updatePlaybackLayout({
+            data: { is_paused: !Spicetify.Player.isPlaying() },
+        });
+        Spicetify.Player.addEventListener("onplaypause", updatePlaybackLayout);
         if (CFM.get("lyricsDisplay")) {
             // hard reset lyric renderer to avoid stale raf state after re-entry
             Lyrics.teardown();
@@ -521,6 +556,7 @@ async function main() {
         Utils.toggleQueuePanel(null, false);
         Background.stop();
         Spicetify.Player.removeEventListener("songchange", updateInfo);
+        Spicetify.Player.removeEventListener("onplaypause", updatePlaybackLayout);
         handleMouseMoveDeactivation();
         window.removeEventListener("resize", resizeEvents);
         cancelResize();
@@ -614,6 +650,7 @@ async function main() {
         );
         applyLyricsScale();
         updateMetadataOverflow();
+        updateLyricsBounds();
     }
 
     ConfigManager.init(
