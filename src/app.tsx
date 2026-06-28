@@ -17,14 +17,11 @@ import { initMoustrapRecord } from "./services/mousetrap-record";
 
 import SeekableProgressBar from "./ui/components/ProgressBar/ProgressBar";
 import SeekableVolumeBar from "./ui/components/VolumeBar/VolumeBar";
-import OverviewCard from "./ui/components/OverviewPopup/OverviewCard";
 
 import { DOM } from "./ui/elements";
 import { ConfigManager } from "./ui/components/Config/Config";
 import { UpNext } from "./ui/components/UpNext/UpNext";
-import { Context } from "./ui/components/Context/Context";
 import { PlayerControls } from "./ui/components/PlayerControls/PlayerControls";
-import { ExtraControls } from "./ui/components/ExtraControls/ExtraControls";
 import { Lyrics } from "./ui/components/Lyrics/Lyrics";
 import { Background } from "./utils/background";
 
@@ -95,16 +92,64 @@ async function main() {
     }
 
     const updatePlayerControls = PlayerControls.updatePlayerControls.bind(PlayerControls);
-    const updateExtraControls = ExtraControls.updateExtraControls.bind(ExtraControls);
     const updateUpNext = UpNext.updateUpNext.bind(UpNext);
     const updateUpNextShow = UpNext.updateUpNextShow.bind(UpNext);
-    const hideContext = Context.hideContext.bind(Context);
-    const hideExtraControls = ExtraControls.hideExtraControls.bind(ExtraControls);
     const hidePlayerControls = PlayerControls.hidePlayerControls.bind(PlayerControls);
+    let metadataFrameId: number | null = null;
+
+    function updateMetadataOverflow() {
+        if (metadataFrameId !== null) cancelAnimationFrame(metadataFrameId);
+        metadataFrameId = requestAnimationFrame(() => {
+            metadataFrameId = null;
+            const targets = [
+                {
+                    viewport: DOM.container.querySelector<HTMLElement>("#fsd-title-text-viewport"),
+                    track: DOM.container.querySelector<HTMLElement>("#fsd-title-text-track"),
+                },
+                {
+                    viewport: DOM.container.querySelector<HTMLElement>("#fsd-secondary-meta"),
+                    track: DOM.container.querySelector<HTMLElement>("#fsd-secondary-meta-track"),
+                },
+            ].filter(
+                (
+                    target,
+                ): target is {
+                    viewport: HTMLElement;
+                    track: HTMLElement;
+                } => Boolean(target.viewport && target.track),
+            );
+
+            targets.forEach(({ track }) => {
+                track.classList.remove("is-overflowing");
+                track.style.animation = "none";
+                track.style.removeProperty("--translate_width_fsd");
+                track.style.removeProperty("--meta-scroll-duration");
+            });
+
+            // Force the previous animations to reset before both tracks restart together.
+            void DOM.container.offsetWidth;
+
+            const measurements = targets.map((target) => ({
+                ...target,
+                overflow: Math.ceil(target.track.scrollWidth - target.viewport.clientWidth),
+            }));
+            const maxOverflow = Math.max(0, ...measurements.map(({ overflow }) => overflow));
+            if (maxOverflow <= 1) return;
+
+            const animationDuration = Math.max(maxOverflow / 0.035, 1700);
+            measurements.forEach(({ track, overflow }) => {
+                track.style.removeProperty("animation");
+                if (overflow <= 1) return;
+                track.style.setProperty("--translate_width_fsd", `-${overflow + 5}px`);
+                track.style.setProperty("--meta-scroll-duration", `${animationDuration}ms`);
+                track.classList.add("is-overflowing");
+            });
+        });
+    }
 
     function render() {
         DOM.container.classList.toggle("lyrics-active", Boolean(CFM.get("lyricsDisplay")));
-        Utils.toggleQueuePanel(DOM.queue, false);
+        Utils.toggleQueuePanel(null, false);
         DOM.container.classList.toggle(
             "vertical-mode",
             (CFM.get("verticalMonitorSupport") as Settings["verticalMonitorSupport"]) &&
@@ -117,8 +162,7 @@ async function main() {
         );
         DOM.container.setAttribute("data-locale", LOCALE);
         DOM.container.setAttribute("mode", CFM.getMode());
-        if (!CFM.get("lyricsDisplay") || CFM.get("extraControls") === "never")
-            DOM.container.classList.remove("lyrics-hide-force");
+        DOM.container.classList.remove("lyrics-hide-force");
 
         applyLyricsScale();
 
@@ -126,7 +170,6 @@ async function main() {
         Spicetify.Player.removeEventListener("onplaypause", updatePlayerControls);
         Spicetify.Player.removeEventListener("onplaypause", updatePlayingIcon);
         document.removeEventListener("fullscreenchange", fullScreenListener);
-        Spicetify.Platform.PlayerAPI._events.removeListener("update", updateExtraControls);
 
         Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", updateUpNext);
         Spicetify.Platform.PlayerAPI._events.removeListener("update", updateUpNextShow);
@@ -139,6 +182,10 @@ async function main() {
         UpNext.upNextShown = false;
 
         cancelResize();
+        if (metadataFrameId !== null) {
+            cancelAnimationFrame(metadataFrameId);
+            metadataFrameId = null;
+        }
         Background.stop();
 
         handleMouseMoveDeactivation();
@@ -165,20 +212,14 @@ async function main() {
         DOM.back.height = window.innerHeight;
 
         DOM.cover = DOM.container.querySelector("#fsd-art-image")!;
-        DOM.title = DOM.container.querySelector("#fsd-title span")!;
-        DOM.artist = DOM.container.querySelector("#fsd-artist span")!;
+        DOM.title = DOM.container.querySelector("#fsd-title-text-track")!;
+        DOM.artist = DOM.container.querySelector("#fsd-artist .fsd-artist-list")!;
         DOM.album = DOM.container.querySelector("#fsd-album span")!;
         if (CFM.get("lyricsDisplay")) {
             DOM.lyrics = DOM.container.querySelector("#fad-lyrics-container")!;
             Lyrics.attach(DOM.lyrics);
         }
 
-        if (CFM.get("contextDisplay") !== "never") {
-            DOM.ctx_container = DOM.container.querySelector("#fsd-ctx-container")!;
-            DOM.ctx_icon = DOM.container.querySelector("#fsd-ctx-icon")!;
-            DOM.ctx_source = DOM.container.querySelector("#fsd-ctx-source")!;
-            DOM.ctx_name = DOM.container.querySelector("#fsd-ctx-name")!;
-        }
         if (CFM.get("upnextDisplay") !== "never") {
             DOM.fsd_myUp = DOM.container.querySelector("#fsd-upnext-container")!;
             DOM.fsd_myUp.onclick = Spicetify.Player.next;
@@ -223,38 +264,10 @@ async function main() {
                 Spicetify.Player.back();
             };
         }
-        if (CFM.get("extraControls") !== "never") {
-            DOM.heart = DOM.container.querySelector("#fsd-heart")!;
-            DOM.shuffle = DOM.container.querySelector("#fsd-shuffle")!;
-            DOM.repeat = DOM.container.querySelector("#fsd-repeat")!;
-
-            DOM.heart.onclick = () => {
-                Utils.fadeAnimation(DOM.heart);
-                Spicetify.Player.toggleHeart();
-            };
-            DOM.shuffle.onclick = () => {
-                Utils.fadeAnimation(DOM.shuffle);
-                Spicetify.Player.toggleShuffle();
-            };
-            DOM.repeat.onclick = () => {
-                Utils.fadeAnimation(DOM.repeat);
-                Spicetify.Player.toggleRepeat();
-            };
-
-            if (CFM.get("invertColors") === "auto") {
-                DOM.invertButton = DOM.container.querySelector("#fsd-invert")!;
-                DOM.invertButton.onclick = ExtraControls.toggleInvert.bind(ExtraControls);
-            }
-            DOM.queue = DOM.container.querySelector("#fsd-queue")!;
-            DOM.queue.onclick = () => toggleQueue();
-        }
     }
 
     function toggleQueue() {
-        Utils.toggleQueue(DOM.queue);
-        if (DOM.queue) {
-            Utils.fadeAnimation(DOM.queue);
-        }
+        Utils.toggleQueue(null);
     }
 
     function handleNavigation(navigateUri: string) {
@@ -282,9 +295,6 @@ async function main() {
         if (CFM.get("lyricsDisplay")) {
             loadCurrentLyrics();
         }
-
-        if (CFM.get("contextDisplay") !== "never")
-            Context.updateContext().catch((err) => console.error("Error getting context: ", err));
 
         // prepare title
         let songName = meta?.title;
@@ -317,7 +327,10 @@ async function main() {
                 Utils.getAlbumReleaseDate(albumURI, LOCALE).then((releaseDate) => {
                     if (sequence !== infoSequence) return;
                     albumText += releaseDate;
-                    if (updatedAlbum) DOM.album.innerText = albumText || "";
+                    if (updatedAlbum) {
+                        DOM.album.innerText = albumText || "";
+                        updateMetadataOverflow();
+                    }
                 });
             }
         }
@@ -350,6 +363,7 @@ async function main() {
                 DOM.album.setAttribute("uri", meta?.album_uri || "");
                 updatedAlbum = true;
             }
+            updateMetadataOverflow();
         };
 
         // Placeholder
@@ -383,14 +397,6 @@ async function main() {
     function handleMouseMoveActivation() {
         DOM.container.addEventListener("mousemove", hideCursor);
         hideCursor();
-        if (CFM.get("contextDisplay") === "mousemove") {
-            DOM.container.addEventListener("mousemove", hideContext);
-            Context.hideContext();
-        }
-        if (CFM.get("extraControls") === "mousemove") {
-            DOM.container.addEventListener("mousemove", hideExtraControls);
-            ExtraControls.hideExtraControls();
-        }
         if (CFM.get("playerControls") === "mousemove") {
             DOM.container.addEventListener("mousemove", hidePlayerControls);
             PlayerControls.hidePlayerControls();
@@ -399,13 +405,9 @@ async function main() {
 
     function handleMouseMoveDeactivation() {
         DOM.container.removeEventListener("mousemove", hideCursor);
-        DOM.container.removeEventListener("mousemove", hideContext);
-        DOM.container.removeEventListener("mousemove", hideExtraControls);
         DOM.container.removeEventListener("mousemove", hidePlayerControls);
 
         if (curTimer) clearTimeout(curTimer);
-        if (Context.ctxTimer) clearTimeout(Context.ctxTimer);
-        if (ExtraControls.extraControlsTimer) clearTimeout(ExtraControls.extraControlsTimer);
         if (PlayerControls.playerControlsTimer) clearTimeout(PlayerControls.playerControlsTimer);
     }
 
@@ -429,12 +431,11 @@ async function main() {
     const handleLyricsProgress = () => Lyrics.prefetchNextLyrics();
     const handleLyricsQueueUpdate = () => Lyrics.prefetchNextLyrics();
 
-    const heartObserver = new MutationObserver(() => ExtraControls.updateHeart());
     let activationSequence = 0;
 
     async function activate() {
         const sequence = ++activationSequence;
-        Utils.toggleQueuePanel(DOM.queue, true);
+        Utils.toggleQueuePanel(null, true);
         document.body.classList.add(...CLASSES_TO_ADD);
         if (CFM.get("enableFullscreen")) await Utils.fullScreenOn()?.catch(() => undefined);
         else await Utils.fullScreenOff()?.catch(() => undefined);
@@ -479,31 +480,11 @@ async function main() {
                 DOM.container.querySelector("#fsd-progress-parent"),
             );
         }
-        if (CFM.get("overviewDisplay")) {
-            ReactDOM.render(
-                <OverviewCard
-                    onExit={deactivate}
-                    onToggle={() => {
-                        if (CFM.getGlobal("tvMode")) openwithDef();
-                        else openwithTV();
-                    }}
-                />,
-                DOM.container.querySelector("#fsd-overview-card-parent"),
-            );
-        }
         if (CFM.get("playerControls") !== "never") {
             PlayerControls.updatePlayerControls({
                 data: { is_paused: !Spicetify.Player.isPlaying() },
             });
             Spicetify.Player.addEventListener("onplaypause", updatePlayerControls);
-        }
-        if (CFM.get("extraControls") !== "never") {
-            ExtraControls.updateExtraControls(null);
-            Utils.addObserver(heartObserver, ".control-button-heart", {
-                attributes: true,
-                attributeFilter: ["aria-checked"],
-            });
-            Spicetify.Platform.PlayerAPI._events.addListener("update", updateExtraControls);
         }
         document.querySelector(".Root__top-container")?.append(DOM.style, DOM.container);
         if (CFM.get("lyricsDisplay")) {
@@ -537,12 +518,16 @@ async function main() {
     async function deactivate() {
         activationSequence += 1;
         infoSequence += 1;
-        Utils.toggleQueuePanel(DOM.queue, false);
+        Utils.toggleQueuePanel(null, false);
         Background.stop();
         Spicetify.Player.removeEventListener("songchange", updateInfo);
         handleMouseMoveDeactivation();
         window.removeEventListener("resize", resizeEvents);
         cancelResize();
+        if (metadataFrameId !== null) {
+            cancelAnimationFrame(metadataFrameId);
+            metadataFrameId = null;
+        }
         if (CFM.get("upnextDisplay") !== "never") {
             UpNext.upNextShown = false;
             Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", updateUpNext);
@@ -551,7 +536,6 @@ async function main() {
         [
             DOM.container.querySelector("#fsd-volume-parent"),
             DOM.container.querySelector("#fsd-progress-parent"),
-            DOM.container.querySelector("#fsd-overview-card-parent"),
         ].forEach((root) => {
             if (root) ReactDOM.unmountComponentAtNode(root);
         });
@@ -568,10 +552,6 @@ async function main() {
                 handleLyricsQueueUpdate,
             );
             Lyrics.teardown();
-        }
-        if (CFM.get("extraControls") !== "never") {
-            heartObserver.disconnect();
-            Spicetify.Platform.PlayerAPI._events.removeListener("update", updateExtraControls);
         }
         document.body.classList.remove(...CLASSES_TO_ADD);
         UpNext.upNextShown = false;
@@ -633,6 +613,7 @@ async function main() {
                 window.innerWidth < window.innerHeight,
         );
         applyLyricsScale();
+        updateMetadataOverflow();
     }
 
     ConfigManager.init(

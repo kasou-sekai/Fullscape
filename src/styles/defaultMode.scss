@@ -166,22 +166,16 @@
     }
 
     #fsd-title {
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 3;
+        display: flex;
+        min-width: 0;
+        align-items: baseline;
+        justify-content: center;
         overflow: hidden;
     }
-    #fsd-album,
-    #fsd-artist {
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2;
-        overflow: hidden;
-    }
-
     #fsd-progress-parent {
         width: 28vw;
         max-width: var(--fsd-items-max-width);
+        margin: 12px auto 0;
     }
     #fsd-details {
         padding-top: 30px;
@@ -194,7 +188,7 @@
         width: 28vw;
         max-width: var(--fsd-items-max-width);
         align-items: center;
-        justify-content: space-between;
+        justify-content: center;
         flex-direction: row;
         &.active {
             margin: 5px auto 0;
@@ -260,17 +254,10 @@
         margin-top: 10px;
         margin-bottom: 5px;
     }
-    .fsd-controls-left {
-        width: 30%;
-        justify-content: flex-start;
-    }
     .fsd-controls-center {
-        width: 40%;
+        width: 100%;
+        align-items: center;
         justify-content: center;
-        margin: 10px auto 5px;
-    }
-    .fsd-controls-right {
-        width: 30%;
-        justify-content: flex-end;
+        margin: 6px auto 5px;
     }
 }

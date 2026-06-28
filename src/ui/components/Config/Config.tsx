@@ -10,7 +10,6 @@ import { settingsStyles } from "../../../styles/settings";
 import { headerText, getSettingCard, createAdjust, getAboutSection } from "../../../utils/setting";
 import SeekableProgressBar from "../ProgressBar/ProgressBar";
 import SeekableVolumeBar from "../VolumeBar/VolumeBar";
-import OverviewCard from "../OverviewPopup/OverviewCard";
 import { modifyRotationSpeed, animateColor } from "../../../utils/animation";
 import { Lyrics } from "../Lyrics/Lyrics";
 
@@ -499,17 +498,6 @@ export class ConfigManager {
                 : "",
             headerText(translations[LOCALE].settings.extraHeader),
             this.createOptions(
-                translations[LOCALE].settings.extraControls,
-                {
-                    never: translations[LOCALE].settings.contextDisplay.never,
-                    mousemove: translations[LOCALE].settings.contextDisplay.mouse,
-                    always: translations[LOCALE].settings.contextDisplay.always,
-                },
-                CFM.get("extraControls") as Settings["extraControls"],
-                "extraControls",
-                (value: string) => this.saveOption("extraControls", value),
-            ),
-            this.createOptions(
                 translations[LOCALE].settings.upnextDisplay,
                 {
                     always: translations[LOCALE].settings.volumeDisplay.always,
@@ -519,39 +507,6 @@ export class ConfigManager {
                 CFM.get("upnextDisplay") as Settings["upnextDisplay"],
                 "upnextDisplay",
                 (value: string) => this.saveOption("upnextDisplay", value),
-            ),
-            this.createOptions(
-                translations[LOCALE].settings.contextDisplay.setting,
-                {
-                    never: translations[LOCALE].settings.contextDisplay.never,
-                    mousemove: translations[LOCALE].settings.contextDisplay.mouse,
-                    always: translations[LOCALE].settings.contextDisplay.always,
-                },
-                CFM.get("contextDisplay") as Settings["contextDisplay"],
-                "contextDisplay",
-                (value: string) => this.saveOption("contextDisplay", value),
-            ),
-            this.createToggle(
-                translations[LOCALE].settings.overviewDisplay.setting,
-                "overviewDisplay",
-                (value: boolean) => {
-                    CFM.set("overviewDisplay", value);
-                    if (value) {
-                        ReactDOM.render(
-                            <OverviewCard
-                                onExit={this.deactivate}
-                                onToggle={() => {
-                                    if (CFM.getGlobal("tvMode")) this.openwithDef();
-                                    else this.openwithTV();
-                                }}
-                            />,
-                            DOM.container.querySelector("#fsd-overview-card-parent"),
-                        );
-                    } else {
-                        const root = DOM.container.querySelector("#fsd-overview-card-parent");
-                        if (root) ReactDOM.unmountComponentAtNode(root);
-                    }
-                },
             ),
             this.createOptions(
                 translations[LOCALE].settings.volumeDisplay.setting,

@@ -2,12 +2,10 @@ import * as React from "react";
 import "./styles.scss";
 import { SeekbarProps } from "../../../types/fullscreen";
 import classNames from "classnames";
-import CFM from "../../../utils/config";
 
 const SeekableProgressBar = ({ state }: { state: string }) => {
     const [curProgress, setProgress] = React.useState(Spicetify.Player.getProgress());
     const [curDuration, setDuration] = React.useState(Spicetify.Player.getDuration());
-    const [secondaryPref, setSecondaryPref] = React.useState(CFM.get("showRemainingTime"));
 
     const [changingProgress, setChangingProgress] = React.useState<SeekbarProps>({
         isChanging: false,
@@ -19,14 +17,18 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
     const [visibility, setVisibility] = React.useState(true);
 
     const progressTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const animationFrame = React.useRef<number | null>(null);
     const progressRef = React.useRef(curProgress);
     const durationRef = React.useRef(curDuration);
     const changingProgressRef = React.useRef(changingProgress);
-    const secondaryPrefRef = React.useRef(secondaryPref);
+    const playbackAnchor = React.useRef({
+        progress: curProgress,
+        timestamp: performance.now(),
+        isPlaying: Spicetify.Player.isPlaying(),
+    });
     progressRef.current = curProgress;
     durationRef.current = curDuration;
     changingProgressRef.current = changingProgress;
-    secondaryPrefRef.current = secondaryPref;
 
     const onMouseDown = (evt: MouseEvent) => {
         if (evt.button == 0) {
@@ -74,6 +76,11 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
     const onMouseUp = (evt: MouseEvent) => {
         if (evt.button == 0 && changingProgressRef.current.isChanging) {
             Spicetify.Player.seek(progressRef.current);
+            playbackAnchor.current = {
+                progress: progressRef.current,
+                timestamp: performance.now(),
+                isPlaying: Spicetify.Player.isPlaying(),
+            };
             const stopped = { isChanging: false, data: null };
             changingProgressRef.current = stopped;
             setChangingProgress(stopped);
@@ -102,36 +109,63 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
         document.removeEventListener("mouseup", onMouseUp);
     };
 
-    const updateProgress = () => {
-        const progress = Spicetify.Player.getProgress();
-        if (
-            !changingProgressRef.current.isChanging &&
-            (Spicetify.Player.isPlaying() || progressRef.current !== progress)
-        ) {
+    const syncProgress = () => {
+        const playerProgress = Spicetify.Player.getProgress();
+        const isPlaying = Spicetify.Player.isPlaying();
+        const drift = playerProgress - progressRef.current;
+        const progress =
+            isPlaying && Math.abs(drift) < 1500
+                ? Math.max(playerProgress, progressRef.current)
+                : playerProgress;
+        playbackAnchor.current = {
+            progress,
+            timestamp: performance.now(),
+            isPlaying,
+        };
+        if (!changingProgressRef.current.isChanging) {
             progressRef.current = progress;
             setProgress(progress);
         }
     };
+    const animateProgress = (timestamp: number) => {
+        if (!changingProgressRef.current.isChanging) {
+            const anchor = playbackAnchor.current;
+            const elapsed = anchor.isPlaying ? timestamp - anchor.timestamp : 0;
+            const progress = Math.min(durationRef.current, Math.max(0, anchor.progress + elapsed));
+            progressRef.current = progress;
+            setProgress(progress);
+        }
+        animationFrame.current = requestAnimationFrame(animateProgress);
+    };
     //Using spotify internal songchange event listener
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const updateDuration = (meta: any) => {
-        setProgress(0);
-        progressRef.current = 0;
-        durationRef.current = meta.data.duration;
-        setDuration(meta.data.duration);
+        const duration = meta.data.duration ?? Spicetify.Player.getDuration();
+        const progress = Spicetify.Player.getProgress();
+        progressRef.current = progress;
+        durationRef.current = duration;
+        playbackAnchor.current = {
+            progress,
+            timestamp: performance.now(),
+            isPlaying: Spicetify.Player.isPlaying(),
+        };
+        setProgress(progress);
+        setDuration(duration);
     };
-
-    const updateSecondaryPref = () => {
-        const nextValue = !secondaryPrefRef.current;
-        secondaryPrefRef.current = nextValue;
-        setSecondaryPref(nextValue);
-        CFM.set("showRemainingTime", nextValue);
-    };
-    const getSecondaryTime = () => {
-        if (secondaryPref) {
-            return " -" + Spicetify.Player.formatTime(curDuration - curProgress);
-        } else {
-            return Spicetify.Player.formatTime(curDuration);
+    const updatePlaybackState = (evt?: Event) => {
+        const playbackEvent = evt as
+            | (Event & { data?: { is_paused?: boolean; isPaused?: boolean } })
+            | undefined;
+        const isPaused = playbackEvent?.data?.is_paused ?? playbackEvent?.data?.isPaused;
+        const progress = Spicetify.Player.getProgress();
+        playbackAnchor.current = {
+            progress,
+            timestamp: performance.now(),
+            isPlaying: typeof isPaused === "boolean" ? !isPaused : Spicetify.Player.isPlaying(),
+        };
+        if (!changingProgressRef.current.isChanging) {
+            progressRef.current = progress;
+            setProgress(progress);
         }
     };
 
@@ -142,36 +176,43 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
         } else {
             setVisibility(true);
         }
-        const updateInterval = setInterval(updateProgress, 500);
+        syncProgress();
+        animationFrame.current = requestAnimationFrame(animateProgress);
+        const syncInterval = setInterval(syncProgress, 1000);
 
         Spicetify.Player.addEventListener("songchange", updateDuration);
+        Spicetify.Player.addEventListener("onplaypause", updatePlaybackState);
         setDragListener();
         return () => {
-            // console.log("Progress Effect cleared");
-            clearInterval(updateInterval);
+            clearInterval(syncInterval);
+            if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
             if (progressTimer.current) clearTimeout(progressTimer.current);
             Spicetify.Player.removeEventListener("songchange", updateDuration);
+            Spicetify.Player.removeEventListener("onplaypause", updatePlaybackState);
             resetDragListener();
         };
     }, [state]);
 
+    const progressPercentage =
+        curDuration > 0 ? Math.min(100, Math.max(0, (curProgress / curDuration) * 100)) : 0;
+
     return (
         <div id="fsd-progress-container" style={{ opacity: visibility ? 1 : 0 }}>
-            <div className="progress-number" id="fsd-elapsed">
-                {Spicetify.Player.formatTime(curProgress)}
-            </div>
             <div
                 id="fsd-progress-bar"
                 ref={progSlider}
                 className={classNames({ dragging: changingProgress.isChanging })}>
-                <div
-                    id="fsd-progress-bar-inner"
-                    style={{ width: (curProgress / curDuration) * 100 + "%" }}>
+                <div id="fsd-progress-bar-inner" style={{ width: `${progressPercentage}%` }}>
                     <div id="progress-thumb" />
                 </div>
             </div>
-            <div className="progress-number" id="fsd-duration" onClick={updateSecondaryPref}>
-                {getSecondaryTime()}
+            <div id="fsd-progress-times">
+                <div className="progress-number" id="fsd-elapsed">
+                    {Spicetify.Player.formatTime(curProgress)}
+                </div>
+                <div className="progress-number" id="fsd-duration">
+                    -{Spicetify.Player.formatTime(Math.max(0, curDuration - curProgress))}
+                </div>
             </div>
         </div>
     );

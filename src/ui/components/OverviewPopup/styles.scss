@@ -17,30 +17,6 @@
     opacity: 1;
     transform: translateX(-50%) scale(1) translateY(0px);
 
-    #fsd-time-display {
-        margin-bottom: 12px;
-        font-size: 24px;
-        font-weight: 700;
-        line-height: initial;
-    }
-
-    #fsd-overview-pin-button {
-        position: absolute;
-        top: -10px;
-        right: -10px;
-        border-radius: 50%;
-        background: rgba(0, 0, 0, 0.1);
-        border: 1px solid rgba(150, 150, 150, 0.1);
-        width: 40px;
-        height: 40px;
-        padding: 4px;
-        cursor: pointer;
-        svg {
-            width: 1.5em;
-            height: 1.5em;
-        }
-    }
-
     #fsd-overview-button-container {
         display: flex;
         flex-direction: row;
@@ -78,24 +54,6 @@
 
         .fsd-overview-button {
             background: rgba(0, 0, 0, 0.3);
-        }
-    }
-    &.card-pinned {
-        background: transparent;
-        #fsd-overview-button-container,
-        #fsd-overview-pin-button {
-            display: none;
-        }
-
-        &:hover {
-            background-color: rgba(0, 0, 0, 0.2);
-            #fsd-overview-button-container {
-                display: flex;
-            }
-
-            #fsd-overview-pin-button {
-                display: block;
-            }
         }
     }
 }

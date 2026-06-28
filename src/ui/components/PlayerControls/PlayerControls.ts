@@ -1,6 +1,7 @@
 import CFM from "../../../utils/config";
 import { DOM } from "../../elements";
 import Utils from "../../../utils/utils";
+import ICONS from "../../../constants";
 
 export class PlayerControls {
     static playerControlsTimer: ReturnType<typeof setTimeout>;
@@ -9,9 +10,9 @@ export class PlayerControls {
         if (CFM.get("playerControls") === "mousemove") this.hidePlayerControls();
         Utils.fadeAnimation(DOM.play);
         if (evt.data.is_paused || evt.data.isPaused) {
-            DOM.play.innerHTML = `<svg height="20" width="20" viewBox="0 0 16 16" fill="currentColor">${Spicetify.SVGIcons.play}</svg>`;
+            DOM.play.innerHTML = ICONS.APPLE_MUSIC_PLAY;
         } else {
-            DOM.play.innerHTML = `<svg height="20" width="20" viewBox="0 0 16 16" fill="currentColor">${Spicetify.SVGIcons.pause}</svg>`;
+            DOM.play.innerHTML = ICONS.APPLE_MUSIC_PAUSE;
         }
     }
 

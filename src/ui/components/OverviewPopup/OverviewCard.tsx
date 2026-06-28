@@ -1,10 +1,7 @@
 import * as React from "react";
 import "./styles.scss";
-import Utils from "../../../utils/utils";
 import classNames from "classnames";
-import { BsPinAngle, BsPinAngleFill } from "react-icons/bs";
 import { MdAutorenew } from "react-icons/md";
-import CFM from "../../../utils/config";
 
 interface OverviewCardProps {
     onExit: () => void;
@@ -13,7 +10,6 @@ interface OverviewCardProps {
 
 const OverviewCard = ({ onExit, onToggle }: OverviewCardProps) => {
     const [visibility, setVisibility] = React.useState(true);
-    const [pinned, setPinned] = React.useState(CFM.get("overviewCardPinned"));
 
     const overviewCardTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -28,7 +24,6 @@ const OverviewCard = ({ onExit, onToggle }: OverviewCardProps) => {
     const handleMouseMove = (evt: MouseEvent) => {
         // Show card when mouse is on the top side of the screen and centered horizantally
         if (
-            !pinned &&
             evt.clientY / window.innerHeight < 0.15 &&
             evt.clientX / window.innerWidth > 0.3 &&
             evt.clientX / window.innerWidth < 0.7
@@ -39,41 +34,21 @@ const OverviewCard = ({ onExit, onToggle }: OverviewCardProps) => {
 
     React.useEffect(() => {
         if (overviewCardTimer.current) clearTimeout(overviewCardTimer.current);
-        if (!pinned) {
-            hideCard();
-        }
+        hideCard();
         document.addEventListener("mousemove", handleMouseMove);
 
         return () => {
             if (overviewCardTimer.current) clearTimeout(overviewCardTimer.current);
             document.removeEventListener("mousemove", handleMouseMove);
         };
-    }, [pinned]);
+    }, []);
 
     return (
         <div
             id="fsd-overview-card"
             className={classNames({
                 "c-hidden": !visibility,
-                "card-pinned": pinned,
             })}>
-            <Spicetify.ReactComponent.TooltipWrapper
-                label={pinned ? "Unpin Card" : "Pin Card"}
-                placement="bottom">
-                <button
-                    id="fsd-overview-pin-button"
-                    onClick={() => {
-                        if (!pinned) {
-                            if (overviewCardTimer.current) clearTimeout(overviewCardTimer.current);
-                        }
-                        setPinned(!pinned);
-                        CFM.set("overviewCardPinned", !pinned);
-                    }}>
-                    {pinned ? <BsPinAngleFill /> : <BsPinAngle />}
-                </button>
-            </Spicetify.ReactComponent.TooltipWrapper>
-            <ClockSection />
-
             <div id="fsd-overview-button-container">
                 <Spicetify.ReactComponent.TooltipWrapper label="Toggle Mode" placement="bottom">
                     <button
@@ -101,21 +76,4 @@ const OverviewCard = ({ onExit, onToggle }: OverviewCardProps) => {
     );
 };
 
-const ClockSection = () => {
-    const [currentTime, setCurrentTime] = React.useState(Utils.getTimeFormatted());
-
-    function updateTimeDisplay() {
-        setCurrentTime(Utils.getTimeFormatted());
-    }
-
-    React.useEffect(() => {
-        const updateInterval = setInterval(updateTimeDisplay, 1000);
-
-        return () => {
-            clearInterval(updateInterval);
-        };
-    }, []);
-
-    return <div id="fsd-time-display">{currentTime}</div>;
-};
 export default OverviewCard;

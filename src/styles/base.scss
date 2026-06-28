@@ -565,11 +565,60 @@
         font-weight: 400;
         color: var(--tertiary-color);
     }
+    #fsd-title-text-viewport {
+        flex: 0 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+    }
+    #fsd-title-text-track {
+        display: block;
+        width: max-content;
+        white-space: nowrap;
+        will-change: transform;
+    }
+    #fsd-secondary-meta {
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden;
+        white-space: nowrap;
+        text-align: center;
+    }
+    #fsd-secondary-meta-track {
+        display: flex;
+        width: max-content;
+        max-width: none;
+        margin-inline: auto;
+        align-items: center;
+        white-space: nowrap;
+        will-change: transform;
+    }
+    #fsd-title-text-track.is-overflowing,
+    #fsd-secondary-meta-track.is-overflowing {
+        animation: fsd_translate var(--meta-scroll-duration) linear 800ms infinite;
+    }
+    #fsd-artist,
+    #fsd-album {
+        display: flex;
+        flex: 0 0 auto;
+        align-items: baseline;
+        white-space: nowrap;
+    }
+    .fsd-artist-list {
+        display: inline-flex;
+        white-space: nowrap;
+    }
+    .fsd-meta-separator {
+        flex: 0 0 auto;
+        margin: 0 0.55em;
+        color: var(--tertiary-color);
+    }
     .fsd-controls {
         display: flex;
         flex-direction: row;
+        align-items: center;
         transition: opacity 1s ease-in-out;
-        column-gap: 10px;
+        column-gap: 18px;
     }
     #fsd-background {
         position: absolute;
@@ -587,11 +636,16 @@
     }
 
     .fs-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
         background: transparent;
         border: 0;
         border-radius: 8px;
         color: var(--primary-color);
-        padding: 3px 5px 0 5px;
+        padding: 0;
+        line-height: 0;
         cursor: pointer;
         position: relative;
         transition:
@@ -607,6 +661,28 @@
             filter: saturate(1.5) contrast(1.5) !important;
         }
     }
+    #fsd-back,
+    #fsd-next {
+        width: 58px;
+        height: 58px;
+    }
+    #fsd-play {
+        width: 64px;
+        height: 64px;
+    }
+    .apple-music-skip-icon {
+        width: 44px;
+        height: 44px;
+    }
+    .apple-music-play-icon,
+    .apple-music-pause-icon {
+        width: 52px;
+        height: 52px;
+    }
+    .apple-music-control-icon {
+        display: block;
+        flex: 0 0 auto;
+    }
     #fsd-foreground svg {
         fill: var(--primary-color);
         transition: all 0.3s var(--transition-function);
@@ -620,6 +696,15 @@
     }
     .fsd-background-fade {
         transition: background-image var(--fs-transition) linear;
+    }
+    @media (prefers-reduced-motion: reduce) {
+        #fsd-title-text-track.is-overflowing,
+        #fsd-secondary-meta-track.is-overflowing {
+            animation: none;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
     }
 }
 

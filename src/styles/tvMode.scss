@@ -26,9 +26,7 @@
     #fsd-progress-parent {
         width: 100%;
         max-width: 450px;
-    }
-    .fsd-controls + #fsd-progress-parent {
-        padding-left: 10px;
+        margin: 14px auto 0;
     }
     #fsd-details {
         padding-left: 30px;
@@ -36,24 +34,11 @@
         width: 80%;
         color: var(--primary-color);
     }
-    #fsd-title,
-    #fsd-album,
-    #fsd-artist {
+    #fsd-title {
         display: flex;
         justify-content: flex-start;
         align-items: baseline;
         gap: 5px;
-    }
-    #fsd-title span,
-    #fsd-album span,
-    #fsd-artist > span {
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2;
-        overflow: hidden;
-    }
-    #fsd-title span {
-        -webkit-line-clamp: 3;
     }
     #fsd-title svg,
     #fsd-artist svg,
@@ -101,10 +86,10 @@
         min-width: 450px;
         max-width: 450px;
         align-items: center;
-        justify-content: space-between;
+        justify-content: center;
         &.active {
             column-gap: 10px;
-            margin: 10px 0;
+            margin: 6px 0 10px;
         }
     }
 }
