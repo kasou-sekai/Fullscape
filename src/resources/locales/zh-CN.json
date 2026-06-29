@@ -22,6 +22,11 @@
             "btns": "仅按钮",
             "keys": "仅键盘快捷方式"
         },
+        "debugMode": {
+            "setting": "调试模式",
+            "description": "在设置中显示歌词诊断，并在播放界面标记背景响应节拍的时机。"
+        },
+        "lyricsDebugHeader": "歌词调试",
         "lyricsHeader": "歌词设置",
         "lyrics": "歌词",
         "lyricsDescription": ["**提示:** 默认使用 Spotify 自带的歌词。"],
@@ -150,6 +155,9 @@
             "auto": "自动(基于背景)"
         },
         "backAnimationTime": "背景动画时间",
+        "animationSpeed": "动画速度",
+        "beatBounce": "节拍弹跳",
+        "beatBounceDescription": "Motion 较高时向外延展背景色块，较低时平滑恢复。",
         "upnextTime": "下一首提示显示时间",
         "backgroundBlur": "背景模糊",
         "backgroundBrightness": "背景亮度",

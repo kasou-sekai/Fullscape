@@ -8,7 +8,7 @@ import Utils from "../../../utils/utils";
 import { DOM } from "../../elements";
 import { headerText, getSettingCard, createAdjust } from "../../../utils/setting";
 import SeekableProgressBar from "../ProgressBar/ProgressBar";
-import { modifyRotationSpeed, animateColor } from "../../../utils/animation";
+import { modifyRotationSpeed } from "../../../utils/animation";
 import { Lyrics } from "../Lyrics/Lyrics";
 
 export class ConfigManager {
@@ -22,7 +22,6 @@ export class ConfigManager {
         fromResize?: boolean,
     ) => Promise<void>;
     static updateUpNextShow: () => void;
-    static updateMainColor: (imageURL: string, meta: Spicetify.Metadata) => Promise<void>;
 
     static init(
         render: () => void,
@@ -33,18 +32,16 @@ export class ConfigManager {
             fromResize?: boolean,
         ) => Promise<void>,
         updateUpNextShow: () => void,
-        updateMainColor: (imageURL: string, meta: Spicetify.Metadata) => Promise<void>,
     ) {
         this.render = render;
         this.activate = activate;
         this.deactivate = deactivate;
         this.updateBackground = updateBackground;
         this.updateUpNextShow = updateUpNextShow;
-        this.updateMainColor = updateMainColor;
     }
 
-    static saveOption(key: keyof Settings, value: Settings[keyof Settings]) {
-        CFM.set(key, value);
+    static saveOption(key: keyof Settings, value: unknown) {
+        CFM.set(key, value as never);
         this.render();
         if (Utils.isModeActivated()) this.activate();
     }
@@ -402,6 +399,18 @@ export class ConfigManager {
         return card;
     }
 
+    private static createDebugSettings(LOCALE: string) {
+        const section = document.createElement("section");
+        section.classList.add("fsd-debug-settings");
+        section.hidden = !CFM.get("debugMode");
+        section.append(
+            headerText(translations[LOCALE].settings.lyricsDebugHeader),
+            this.createLyricsRefreshCard(LOCALE),
+            this.createLyricsDiagnosticsCard(LOCALE),
+        );
+        return section;
+    }
+
     static openConfig(evt: Event | null = null): void {
         evt?.preventDefault();
         const LOCALE = CFM.getGlobal("locale") as Config["locale"];
@@ -436,6 +445,17 @@ export class ConfigManager {
                 },
                 translations[LOCALE].settings.activationTypes.description,
             ),
+            this.createToggle(
+                translations[LOCALE].settings.debugMode.setting,
+                "debugMode",
+                (value) => {
+                    const section =
+                        this.configContainer.querySelector<HTMLElement>(".fsd-debug-settings");
+                    if (section) section.hidden = !value;
+                    this.saveOption("debugMode", value);
+                },
+                translations[LOCALE].settings.debugMode.description,
+            ),
             headerText(translations[LOCALE].settings.lyricsHeader),
             this.createToggle(
                 translations[LOCALE].settings.lyrics,
@@ -469,8 +489,7 @@ export class ConfigManager {
                     this.saveOption("lyricsSize", value as unknown as Settings["lyricsSize"]),
                 translations[LOCALE].settings.lyricsSize.description,
             ),
-            this.createLyricsRefreshCard(LOCALE),
-            this.createLyricsDiagnosticsCard(LOCALE),
+            this.createDebugSettings(LOCALE),
             headerText(translations[LOCALE].settings.generalHeader),
             this.createOptions(
                 translations[LOCALE].settings.progressBar,
@@ -552,24 +571,11 @@ export class ConfigManager {
                 translations[LOCALE].settings.backgroundHeader,
                 translations[LOCALE].settings.backgroundSubHeader,
             ),
-            this.createOptions(
-                translations[LOCALE].settings.backgroundChoice.setting,
-                {
-                    album_art: translations[LOCALE].settings.backgroundChoice.artwork,
-                    animated_album: translations[LOCALE].settings.backgroundChoice.animatedArt,
-                    dynamic_color: translations[LOCALE].settings.backgroundChoice.dynamicColor,
-                    static_color: translations[LOCALE].settings.backgroundChoice.staticColor,
-                    artist_art: translations[LOCALE].settings.backgroundChoice.artist,
-                },
-                CFM.get("backgroundChoice") as Settings["backgroundChoice"],
-                "backgroundChoice",
-                (value: string) => {
-                    CFM.set("backgroundChoice", value as Settings["backgroundChoice"]);
-                    if (Utils.isModeActivated()) {
-                        this.updateBackground(Spicetify.Player.data.item?.metadata);
-                    }
-                },
-                translations[LOCALE].settings.backgroundChoice.description.join("<br>"),
+            this.createToggle(
+                translations[LOCALE].settings.beatBounce,
+                "beatBounce",
+                (value) => this.saveOption("beatBounce", value),
+                translations[LOCALE].settings.beatBounceDescription,
             ),
             createAdjust(
                 translations[LOCALE].settings.animationSpeed,
@@ -595,46 +601,6 @@ export class ConfigManager {
                 (state) => {
                     CFM.set("backAnimationTime", Number(state));
                     DOM.container.style.setProperty("--fs-transition", `${state}s`);
-                },
-            ),
-            this.createOptions(
-                translations[LOCALE].settings.backgroundColor.setting,
-                {
-                    VIBRANT: translations[LOCALE].settings.backgroundColor.vibrant,
-                    PROMINENT: translations[LOCALE].settings.backgroundColor.prominent,
-                    DESATURATED: translations[LOCALE].settings.backgroundColor.desaturated,
-                    LIGHT_VIBRANT: translations[LOCALE].settings.backgroundColor.lightVibrant,
-                    DARK_VIBRANT: translations[LOCALE].settings.backgroundColor.darkVibrant,
-                    VIBRANT_NON_ALARMING:
-                        translations[LOCALE].settings.backgroundColor.vibrantNonAlarming,
-                },
-                CFM.get("coloredBackChoice") as Settings["coloredBackChoice"],
-                "coloredBackChoice",
-                (value: string) => {
-                    CFM.set("coloredBackChoice", value);
-                    if (Utils.isModeActivated()) {
-                        this.updateBackground(Spicetify.Player.data.item?.metadata, true);
-                    }
-                },
-            ),
-            this.createInputElement(
-                translations[LOCALE].settings.staticColor,
-                "staticBackChoice",
-                "color",
-                (value) => {
-                    CFM.set("staticBackChoice", value);
-                    if (CFM.get("backgroundChoice") === "static_color" && Utils.isModeActivated()) {
-                        Utils.overlayBack();
-                        animateColor(value, DOM.back, true);
-                        this.updateMainColor(
-                            Spicetify.Player.data.item?.metadata.image_xlarge_url,
-                            Spicetify.Player.data.item?.metadata,
-                        );
-                        if (this.overlayTimout) clearTimeout(this.overlayTimout);
-                        this.overlayTimout = setTimeout(() => {
-                            Utils.overlayBack(false);
-                        }, 1500);
-                    }
                 },
             ),
             createAdjust(

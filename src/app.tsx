@@ -220,9 +220,10 @@ async function main() {
         }
         DOM.container.innerHTML = getHtmlContent();
 
-        DOM.back = DOM.container.querySelector("canvas")!;
+        DOM.back = DOM.container.querySelector("#fsd-background")!;
         DOM.back.width = window.innerWidth;
         DOM.back.height = window.innerHeight;
+        DOM.fluidBack = DOM.container.querySelector("#fsd-fluid-background")!;
 
         DOM.cover = DOM.container.querySelector("#fsd-art-image")!;
         DOM.title = DOM.container.querySelector("#fsd-title-text-track")!;
@@ -633,7 +634,6 @@ async function main() {
         deactivate,
         Background.updateBackground.bind(Background),
         UpNext.updateUpNextShow.bind(UpNext),
-        Background.updateMainColor.bind(Background),
     );
 
     const extraBar = HtmlSelectors.getExtraBarSelector() as HTMLElement;
