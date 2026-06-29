@@ -113,6 +113,76 @@
             box-shadow: inset 0 -1px 0 rgba(110, 118, 129, 0.4);
         }
     }
+    .lyrics-diagnostics-output {
+        margin-top: 8px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: var(--main-background-color);
+        color: var(--secondary-text-color);
+        max-height: min(55vh, 600px);
+        overflow: auto;
+        font:
+            12px/1.6 ui-monospace,
+            SFMono-Regular,
+            Menlo,
+            Consolas,
+            monospace;
+        overflow-wrap: anywhere;
+    }
+    .lyrics-diagnostics-section + .lyrics-diagnostics-section,
+    .lyrics-diagnostics-details {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid var(--tertiary-background-color);
+    }
+    .lyrics-diagnostics-heading {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--main-text-color);
+        font-family: inherit;
+        font-size: 13px;
+    }
+    .lyrics-diagnostics-row {
+        margin: 2px 0;
+        strong {
+            color: var(--main-text-color);
+        }
+    }
+    .lyrics-diagnostics-block {
+        margin-top: 8px;
+        > strong {
+            color: var(--main-text-color);
+        }
+        pre {
+            margin: 4px 0 0;
+            padding: 8px;
+            border-radius: 6px;
+            background: var(--secondary-background-color);
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+    }
+    .lyrics-diagnostics-details {
+        summary {
+            cursor: pointer;
+            color: var(--main-text-color);
+            user-select: none;
+        }
+    }
+    .lyrics-diagnostics-details-content {
+        padding-top: 8px;
+    }
+    .lyrics-diagnostics-candidate {
+        padding: 8px 10px;
+        border-radius: 7px;
+        background: var(--secondary-background-color);
+        + .lyrics-diagnostics-candidate {
+            margin-top: 8px;
+        }
+        pre {
+            background: var(--main-background-color);
+        }
+    }
     .switch {
         position: relative;
         display: inline-block;

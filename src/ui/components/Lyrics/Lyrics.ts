@@ -41,6 +41,13 @@ type TimedKaraokeSegment = {
     duration: number;
     start: number;
 };
+type LyricsDiagnostics = {
+    total: number;
+    timed: number;
+    translations: number;
+    romanizations: number;
+    karaoke: number;
+};
 
 export class Lyrics {
     private static readonly REQUEST_TIMEOUT_MS = 12000;
@@ -69,6 +76,13 @@ export class Lyrics {
     private static lastMeasuredFontSize = 0;
     private static isSynced = false;
     private static lastStatus: "synced" | "unsynced" | "unavailable" | "loading" = "unavailable";
+    private static diagnostics: LyricsDiagnostics = {
+        total: 0,
+        timed: 0,
+        translations: 0,
+        romanizations: 0,
+        karaoke: 0,
+    };
     private static loadSequence = 0;
     private static currentTrackUri: string | null = null;
     private static refetchAttempt = 0;
@@ -95,6 +109,7 @@ export class Lyrics {
         this.container = null;
         this.isSynced = false;
         this.lastStatus = "unavailable";
+        this.resetDiagnostics();
         this.currentTrackUri = null;
         this.clearRefetch();
         this.loadSequence += 1;
@@ -403,6 +418,7 @@ export class Lyrics {
         this.lyricsRoot = null;
         this.isSynced = false;
         this.lastStatus = unavailable ? "unavailable" : "loading";
+        this.resetDiagnostics();
         if (unavailable) DOM.container.classList.add("lyrics-unavailable");
         else DOM.container.classList.remove("lyrics-unavailable");
         this.stopLoop();
@@ -420,6 +436,13 @@ export class Lyrics {
             line.time === null ? [] : [{ index, time: line.time }],
         );
         this.lastStatus = this.isSynced ? "synced" : "unsynced";
+        this.diagnostics = {
+            total: lines.length,
+            timed: timeValues.length,
+            translations: lines.filter((line) => Boolean(line.translation)).length,
+            romanizations: lines.filter((line) => Boolean(line.romanization)).length,
+            karaoke: lines.filter((line) => Boolean(line.words?.length)).length,
+        };
         this.activeIndex = this.isSynced ? -1 : 0;
         DOM.container.classList.remove("lyrics-unavailable");
         this.container?.classList.toggle("lyrics-unsynced", !this.isSynced);
@@ -492,10 +515,15 @@ export class Lyrics {
 
         const flushSemanticWord = () => {
             if (!semanticWord) return;
-            phrase += `<span class="rnp-karaoke-semantic-word">${semanticWord}</span>`;
+            phrase += `<span class="rnp-lyrics-semantic-word">${semanticWord}</span>`;
             semanticWord = "";
         };
         segments.forEach((segment) => {
+            if (this.hasPreferredBreakAtStart(segment.text) && (semanticWord || phrase)) {
+                flushSemanticWord();
+                phraseGroups.push(phrase);
+                phrase = "";
+            }
             if (wordStarts.has(segment.start)) flushSemanticWord();
             semanticWord += this.renderKaraokeWordSegment(
                 segment.text,
@@ -548,7 +576,11 @@ export class Lyrics {
             let foundFirstWord = false;
             for (const segment of segmenter.segment(text)) {
                 if (!segment.isWordLike) continue;
-                if (foundFirstWord) starts.add(segment.index);
+                const followsOpeningQuote =
+                    /[“‘「『《〈«‹][\p{White_Space}\u200b\ufeff]*$/u.test(
+                        text.slice(0, segment.index),
+                    );
+                if (foundFirstWord && !followsOpeningQuote) starts.add(segment.index);
                 foundFirstWord = true;
             }
         } catch {
@@ -615,17 +647,23 @@ export class Lyrics {
         );
     }
 
+    private static hasPreferredBreakAtStart(text: string) {
+        return /^[“‘「『《〈«‹]/u.test(text);
+    }
+
     private static renderKaraokeWordSegment(text: string, time: number, duration: number) {
         return `<span class="rnp-karaoke-word" data-time="${time}" data-duration="${duration}"><span>${this.formatLyricText(text)}</span></span>`;
     }
 
     private static splitLyricTextAtPreferredBreaks(text: string) {
-        return (
+        const trailingBreakSegments =
             text
                 .match(
                     /.*?(?:[\p{White_Space}\u200b\ufeff]+|[,.;:!?，。！？、；：…~～\-‐‑‒–—―/\\|)\]）】」』》〉]+|$)/gu,
                 )
-                ?.filter(Boolean) ?? [text]
+                ?.filter(Boolean) ?? [text];
+        return trailingBreakSegments.flatMap((segment) =>
+            segment.split(/(?=[“‘「『《〈«‹])/u).filter(Boolean),
         );
     }
 
@@ -651,11 +689,29 @@ export class Lyrics {
     }
 
     private static formatPlainLyricText(text: string) {
+        const wordStarts = this.getSemanticWordStarts(text);
+        let globalOffset = 0;
         return this.splitLyricTextAtPreferredBreaks(text)
-            .map(
-                (segment) =>
-                    `<span class="rnp-lyrics-break-segment">${this.escapeHtml(segment)}</span>`,
-            )
+            .map((segment) => {
+                const segmentStart = globalOffset;
+                const segmentEnd = segmentStart + segment.length;
+                const localStarts = Array.from(wordStarts)
+                    .filter((offset) => offset > segmentStart && offset < segmentEnd)
+                    .map((offset) => offset - segmentStart)
+                    .sort((first, second) => first - second);
+                const boundaries = [0, ...localStarts, segment.length];
+                const semanticWords = boundaries
+                    .slice(0, -1)
+                    .map((start, index) => segment.slice(start, boundaries[index + 1]))
+                    .filter(Boolean)
+                    .map(
+                        (word) =>
+                            `<span class="rnp-lyrics-semantic-word">${this.escapeHtml(word)}</span>`,
+                    )
+                    .join("");
+                globalOffset = segmentEnd;
+                return `<span class="rnp-lyrics-break-segment">${semanticWords}</span>`;
+            })
             .join("<wbr>");
     }
 
@@ -1152,5 +1208,27 @@ export class Lyrics {
                 };
             })
             .filter(Boolean) as LyricLine[];
+    }
+
+    private static resetDiagnostics() {
+        this.diagnostics = {
+            total: 0,
+            timed: 0,
+            translations: 0,
+            romanizations: 0,
+            karaoke: 0,
+        };
+    }
+
+    static getDiagnostics() {
+        return {
+            status: this.lastStatus,
+            lines: { ...this.diagnostics },
+            rendered: this.lines.map((line) => ({
+                ...line,
+                words: line.words?.map((word) => ({ ...word })),
+            })),
+            thirdParty: getThirdPartyLyricsDebug(),
+        };
     }
 }
