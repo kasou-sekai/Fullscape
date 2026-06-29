@@ -1,8 +1,6 @@
 import { marked } from "marked";
 import ICONS, { DEFAULTS } from "../constants";
 import { Config, Settings } from "../types/fullscreen";
-import { version } from "../../package.json";
-import showWhatsNew from "../services/whats-new";
 import CFM from "../utils/config";
 import { sanitizeHtml } from "./sanitize-html";
 
@@ -38,9 +36,7 @@ export function getSettingCard(
     } else {
         settingCard.setAttribute(
             "setting-default",
-            String(
-                CFM.get(key as keyof Settings) === DEFAULTS[CFM.getMode()][key as keyof Settings],
-            ),
+            String(CFM.get(key as keyof Settings) === DEFAULTS.def[key as keyof Settings]),
         );
     }
     settingCard.innerHTML = `
@@ -99,23 +95,5 @@ export function createAdjust(
         minus.onclick = () => adjustValue(-1);
         plus.onclick = () => adjustValue(1);
     }
-    return settingCard;
-}
-
-export function getAboutSection() {
-    const settingCard = document.createElement("div");
-    settingCard.classList.add("setting-card");
-    settingCard.innerHTML = `
-        <div class="setting-container about-section">
-            <div class="setting-about">Version: ${"  " + version}</div>
-            <div class="setting-about">Originally created by Daksh Khurana</div>
-            <div class="setting-about"><button class="main-buttons-button main-button-primary" id="changelog">Show Changelog</button></div>
-        </div>
-    `;
-    (settingCard.querySelector("#changelog") as HTMLButtonElement).onclick = () => {
-        const popup = document.querySelector("body > generic-modal");
-        if (popup) popup.remove();
-        setTimeout(() => showWhatsNew(true), 100);
-    };
     return settingCard;
 }

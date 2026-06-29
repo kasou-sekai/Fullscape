@@ -1,27 +1,8 @@
 {
     "langName": "Svenska",
-    "context": {
-        "queue": "Spelar från kö",
-        "track": "Spelar låt",
-        "album": "Spelar från album",
-        "artist": "Spelar från artist",
-        "playlist": "Spelar från spellista",
-        "playlistFolder": "Spelar från spellistmapp",
-        "search": "Spelar från sökning",
-        "searchDest": "Låtar",
-        "collection": "Spelar från bibliotek",
-        "likedSongs": "Gillade låtar",
-        "trackRadio": "Låtradio",
-        "artistRadio": "Artistradio",
-        "albumRadio": "Albumradio",
-        "playlistRadio": "Spellistradio"
-    },
     "upnext": "NÄSTA",
     "unknownArtist": "Okänd artist",
     "settings": {
-        "switchToTV": "Växla till TV-läge",
-        "switchToFullscreen": "Växla till standardläge",
-        "tvModeConfig": "TV-läge konfiguration",
         "fullscreenConfig": "Helskärmskonfiguration",
         "exit": "Avsluta",
         "pluginSettings": "Insticksinställningar",
@@ -32,44 +13,20 @@
             "setting": "Autostart (vid Spotify-start)",
             "description": "**Begränsning:** Spotify-fönstret kan inte gå till helskärm vid autostart.",
             "never": "Aldrig (Standard)",
-            "default": "Öppna standardläge",
-            "tvmode": "Öppna TV-läge",
-            "lastused": "Senast använda läge"
+            "default": "Öppna standardläge"
         },
         "activationTypes": {
             "setting": "Aktiveringsmetoder",
-            "description": "Välj metoder för att aktivera insticksprogrammet. Tangenter <kbd>F</kbd> och <kbd>T</kbd>, eller knappar i topp- och bottenfältet.",
             "both": "Knappar och kortkommandon",
             "btns": "Endast knappar",
             "keys": "Endast kortkommandon"
-        },
-        "buttonActivation": {
-            "setting": "Anpassa knappar",
-            "description": "Välj aktiveringsknappar, i toppfältet (*TV-läge*) och bottenfältet (*Standardläge*).",
-            "both": "Knappar för båda",
-            "tv": "Endast TV-läge knapp",
-            "def": "Endast standardläge knapp"
-        },
-        "keyActivation": {
-            "setting": "Anpassa tangenter",
-            "description": "Välj aktiveringstangenter. <kbd>F</kbd> för *Standardläge* och <kbd>T</kbd> för *TV-läge*",
-            "both": "Tangenter för båda",
-            "tv": "Endast TV-läge tangent",
-            "def": "Endast standardläge tangent"
         },
         "lyricsHeader": "Textinställningar",
         "lyrics": "Text",
         "lyricsDescription": [
             "**Obs:** Använder Spotifys inbyggda låttexter när de finns tillgängliga."
         ],
-        "lyricsAlignment": {
-            "setting": "Textjustering",
-            "left": "Vänster",
-            "center": "Mitten",
-            "right": "Höger"
-        },
         "autoHideLyrics": "Dölj text auto. (om ej tillgänglig)",
-        "lyricsAnimationTempo": "Textanimationstempo",
         "generalHeader": "Allmänna inställningar",
         "progressBar": "Förloppsindikator",
         "playerControls": "Spelarkontroller",
@@ -82,9 +39,7 @@
             "always": "Alltid",
             "date": "Med utgivningsdatum"
         },
-        "showAllArtists": "Visa alla artister",
         "icons": "Ikoner",
-        "songChangeAnimation": "Låtbytesanimation",
         "fullscreen": "Helskärm",
         "extraHeader": "Extra funktionalitet",
         "backgroundChoice": {
@@ -99,33 +54,16 @@
             "animatedArt": "Animerat albumomslag (Experimentellt)",
             "artist": "Artistbild"
         },
-        "sidebarQueue": "Kö i sidofält (ersätter textknapp)",
-        "sidebarQueueDescription": [
-            "Växla kö i sidofält med <kbd>Q</kbd> eller knappen i extrafältet.",
-            "Se till att aktivera inställningen i experimentella funktioner."
-        ],
-        "extraControls": "Extra kontroller",
         "upnextDisplay": "Visa Nästa",
         "contextDisplay": {
-            "setting": "Visa kontext",
             "always": "Alltid",
             "never": "Aldrig",
             "mouse": "Vid musrörelse"
         },
         "volumeDisplay": {
-            "setting": "Volymfält",
-            "description": [
-                "I `Smart` läge visas fältet när:",
-                " - du flyttar musen till vänster sida.",
-                " - volymen ändras."
-            ],
             "always": "Alltid",
             "never": "Aldrig",
             "smart": "Smart"
-        },
-        "overviewDisplay": {
-            "setting": "Översiktsvy",
-            "description": "Visa kort översikt med tid och kontroller"
         },
         "appearanceHeader": "Avancerat/Utseende",
         "appearanceSubHeader": "*(Ändra bara om du vet vad du gör!)*",
@@ -153,18 +91,10 @@
         "verticalMonitorSupportDescription": "Aktivera för vertikala skärmar. Text visas längst ner om höjden är större än bredden.",
         "backAnimationTime": "Bakgrundsanimationstid (Bild)",
         "animationSpeed": "⭐ Animationshastighet (Animerad)",
-        "upnextScroll": {
-            "setting": "Nästa scrollanimation",
-            "mq": "Rullande text/Scroll",
-            "sp": "Spotify/Översättning"
-        },
         "upnextTime": "Nästa visningstid",
         "backgroundBlur": "Bakgrundsoskärpa",
         "backgroundBrightness": "Bakgrundsljusstyrka",
-        "aboutHeader": "Om",
-        "configReset": "Återställ konfiguration",
-        "reload": "Ladda om klient"
+        "configReset": "Återställ konfiguration"
     },
-    "tvBtnDesc": "TV-läge",
     "fullscreenBtnDesc": "Helskärm"
 }

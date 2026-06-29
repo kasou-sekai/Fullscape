@@ -1,8 +1,8 @@
 [
-  {
-    "name": "Full Screen",
-    "description": "Fancy artwork display. Modified from FAD with extra features.",
-    "main": "dist/fullScreen.js",
-    "readme": "README.md"
-  }
+    {
+        "name": "Full Screen",
+        "description": "Full-screen now-playing display with lyrics and artwork.",
+        "main": "dist/fullScreen.js",
+        "readme": "README.md"
+    }
 ]

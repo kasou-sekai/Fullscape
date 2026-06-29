@@ -9,24 +9,12 @@ class WebAPI {
         return Spicetify.Platform.AuthorizationAPI._state.token.accessToken;
     }
 
-    static async getTrackInfo(id: string) {
-        return this.fetchJson(`https://api.spotify.com/v1/tracks/${encodeURIComponent(id)}`, {
-            headers: {
-                Authorization: `Bearer ${WebAPI.getToken()}`,
-            },
-        });
-    }
-
     static async getAlbumInfo(id: string) {
         return this.fetchJson(`https://api.spotify.com/v1/albums/${encodeURIComponent(id)}`, {
             headers: {
                 Authorization: `Bearer ${WebAPI.getToken()}`,
             },
         });
-    }
-
-    static async getPlaylistInfo(uri: string) {
-        return Spicetify.CosmosAsync.get(`sp://core-playlist/v1/playlist/${uri}`);
     }
 
     static async getArtistInfo(id: string) {

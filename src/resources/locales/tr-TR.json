@@ -1,27 +1,8 @@
 {
     "langName": "Turkish",
-    "context": {
-        "queue": "Çalma sırasından çalınıyor",
-        "track": "Parça çalınıyor",
-        "album": "Albümden oynatılıyor",
-        "artist": "Sanatçı'dan oynatılıyor",
-        "playlist": "Çalma Listesi'den oynatılıyor",
-        "playlistFolder": "Çalma Listesi Klasöründen oynatılıyor",
-        "search": "Arama'dan oynatılıyor",
-        "searchDest": "Parçalar",
-        "collection": "Koleksiyon'dan oynatılıyor",
-        "likedSongs": "Beğenilen şarkılar",
-        "trackRadio": "Parça Radyosu'ndan oynatılıyor",
-        "artistRadio": "Sanatçı Radyosu'ndan oynatılıyor",
-        "albumRadio": "Albüm Radyosu'ndan oynatılıyor",
-        "playlistRadio": "Çalma Listesi Radyosu'ndan oynatılıyor"
-    },
     "upnext": "SONRAKİ",
     "unknownArtist": "Sanatçı (Mevcut değil)",
     "settings": {
-        "switchToTV": "TV Moduna geç",
-        "switchToFullscreen": "Tam ekran moduna geç",
-        "tvModeConfig": "TV Modu ayarları",
         "fullscreenConfig": "Tam ekran modu ayarları",
         "exit": "Çık",
         "pluginSettings": "Eklenti ayarları",
@@ -32,44 +13,18 @@
             "setting": "Otomatik Başlat (Spotify başlangıcında)",
             "description": "**Sınırlama:** Spotify penceresi başlangıçta otomatik olarak tam ekrana geçemez.",
             "never": "Asla (Varsayılan)",
-            "default": "Varsayılan Modu Aç",
-            "tvmode": "TV Modunu Aç",
-            "lastused": "Son Kullanılan Mod"
+            "default": "Varsayılan Modu Aç"
         },
         "activationTypes": {
             "setting": "Etkinleştirme Yöntemleri",
-            "description": "Eklentiyi etkinleştirmek için kullanmak istediğiniz yöntemleri seçin. <kbd>F</kbd> ve <kbd>T</kbd> tuşları veya üst ve alt çubuktaki düğmeler.",
             "both": "Düğmeler ve Klavye Kısayolları",
             "btns": "Yalnızca Düğmeler",
             "keys": "Yalnızca Klavye Kısayolları"
         },
-        "buttonActivation": {
-            "setting": "Etkinleştirme Düğmelerini Özelleştir",
-            "description": "Etkinleştirme için istediğiniz düğmeleri seçin, üst çubukta (*TV Modu*) ve alt çubukta (*Varsayılan Mod*).",
-            "both": "Her iki mod için düğmeler",
-            "tv": "Yalnızca TV Modu için düğme",
-            "def": "Yalnızca Varsayılan Mod için düğme"
-        },
-        "keyActivation": {
-            "setting": "Etkinleştirme Tuşlarını Özelleştir",
-            "description": "Etkinleştirme için istediğiniz tuşları seçin. *Varsayılan Mod* için <kbd>F</kbd> ve *TV Modu* için <kbd>T</kbd>",
-            "both": "Her iki mod için tuşlar",
-            "tv": "Yalnızca TV Modu için tuş",
-            "def": "Yalnızca Varsayılan Mod için tuş"
-        },
         "lyricsHeader": "Şarkı sözleri ayarları",
         "lyrics": "Şarkı sözleri",
-        "lyricsDescription": [
-            "**Not:** Mevcutsa Spotify'ın yerleşik şarkı sözlerini kullanır."
-        ],
-        "lyricsAlignment": {
-            "setting": "Şarkı sözleri konumu",
-            "left": "Sol",
-            "center": "Orta",
-            "right": "Sağ"
-        },
+        "lyricsDescription": ["**Not:** Mevcutsa Spotify'ın yerleşik şarkı sözlerini kullanır."],
         "autoHideLyrics": "Şarkı sözlerini otomatik gizle (kullanılamadığında)",
-        "lyricsAnimationTempo": "Şarkı sözleri animasyonu hızı",
         "generalHeader": "Genel ayarlar",
         "progressBar": "İlerleme çubuğu",
         "playerControls": "Oynatıcı kontrolleri",
@@ -82,9 +37,7 @@
             "always": "Her zaman",
             "date": "Albüm'ün yayınlanma tarihini göster"
         },
-        "showAllArtists": "Şarkıya katkısı olan tüm sanatçıları göster",
         "icons": "Simgeler",
-        "songChangeAnimation": "Şarkı değiştirme animasyonu",
         "fullscreen": "Tam ekran",
         "extraHeader": "Ekstra özellikler",
         "backgroundChoice": {
@@ -99,33 +52,16 @@
             "animatedArt": "Animasyonlu Albüm Kapağı (Deneysel)",
             "artist": "Sanatçı resmi"
         },
-        "sidebarQueue": "Kenar Çubuğunda Sırayı Etkinleştir (şarkı sözleri düğmesinin yerini alır)",
-        "sidebarQueueDescription": [
-            "Kenar çubuğundaki sırayı <kbd>Q</kbd> veya ekstra çubuktaki düğme ile değiştirin.",
-            "Deneysel özelliklerde ayarı etkinleştirdiğinizden emin olun."
-        ],
-        "extraControls": "Ekstra Kontroller",
         "upnextDisplay": "Sonraki şarkıyı gösterme",
         "contextDisplay": {
-            "setting": "Ayrıntıları gösterme",
             "always": "Her zaman",
             "never": "Asla",
             "mouse": "Yalnızca mause hareketinde"
         },
         "volumeDisplay": {
-            "setting": "Ses çubuğunu gösterme",
-            "description": [
-                "`Akıllı` modda ses çubuğu şu durumlarda gösterilecektir:",
-                "  - farenizi ekranın sol tarafına hareket ettirdiğinizde.",
-                "  - ses seviyesi değiştirildiğinde."
-            ],
             "always": "Her zaman",
             "never": "Asla",
             "smart": "Akıllı"
-        },
-        "overviewDisplay": {
-            "setting": "Genel Bakış Ekranı",
-            "description": "Zaman ve kontrol eylemleriyle kısa bir genel bakış kartı göster"
         },
         "appearanceHeader": "Gelişmiş/Görünüm",
         "appearanceSubHeader": "Dikkat! Yalnızca ne yaptığını biliyorsan değiştir.",
@@ -151,18 +87,10 @@
         "verticalMonitorSupportDescription": "Dikey bir monitör kurulumunuz varsa bunu etkinleştirin. Pencere yüksekliği genişlikten büyük olduğunda şarkı sözleri altta gösterilecektir.",
         "backAnimationTime": "Arkaplan animasyon stili",
         "animationSpeed": "⭐ Animasyon Hızı (animasyonlu arka plan için)",
-        "upnextScroll": {
-            "setting": "Sonraki şarkı yazı animasyonu",
-            "mq": "Marquee/Kayan",
-            "sp": "Spotify/Sağa sola giden"
-        },
         "upnextTime": "Sonraki şarkı kaçıncı saniyeden sonra gösterilsin? ",
         "backgroundBlur": "Arkaplan'ı bulanıklaştır",
         "backgroundBrightness": "Arka plan parlaklığı",
-        "aboutHeader": "Hakkında",
-        "configReset": "Ayarları sıfırla",
-        "reload": "İstemciyi (Spotify) yenile (F5)"
+        "configReset": "Ayarları sıfırla"
     },
-    "tvBtnDesc": "TV Modu'nu göster",
     "fullscreenBtnDesc": "Tam ekran"
 }

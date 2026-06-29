@@ -1,27 +1,8 @@
 {
     "langName": "Português Brasileiro",
-    "context": {
-        "queue": "Reproduzindo da fila",
-        "track": "Reproduzindo faixa",
-        "album": "Reproduzindo do álbum",
-        "artist": "Reproduzindo do artista",
-        "playlist": "Reproduzindo da playlist",
-        "playlistFolder": "Reproduzindo de pasta de playlist",
-        "search": "Reproduzindo da pesquisa",
-        "searchDest": "Músicas",
-        "collection": "Reproduzindo da coleção",
-        "likedSongs": "Músicas Curtidas",
-        "trackRadio": "Reproduzindo do rádio da faixa",
-        "artistRadio": "Reproduzindo do rádio do artista",
-        "albumRadio": "Reproduzindo do rádio do álbum",
-        "playlistRadio": "Reproduzindo do rádio da playlist"
-    },
     "upnext": "A SEGUIR",
     "unknownArtist": "Artista (Indisponível)",
     "settings": {
-        "switchToTV": "Mudar para Modo TV",
-        "switchToFullscreen": "Mudar para Modo Padrão",
-        "tvModeConfig": "Configuração do Modo TV",
         "fullscreenConfig": "Configuração de Tela Cheia",
         "exit": "Sair",
         "pluginSettings": "Configurações do Plugin",
@@ -32,44 +13,20 @@
             "setting": "Inicialização automática (na inicialização do Spotify))",
             "description": "**Limitação:** A janela do Spotify não pode ser maximizada automaticamente na inicialização.",
             "never": "Nunca (Padrão)",
-            "default": "Modo Padrão",
-            "tvmode": "Modo TV",
-            "lastused": "Último Modo Utilizado"
+            "default": "Modo Padrão"
         },
         "activationTypes": {
             "setting": "Métodos de Ativação",
-            "description": "Escolha os métodos que deseja usar para ativar o plugin. <kbd>F</kbd> e <kbd>T</kbd> keys, ou botões na barra superior e inferior.",
             "both": "Botões e Atalhos de Teclado",
             "btns": "Apenas Botões",
             "keys": "Apenas Atalhos de Teclado"
-        },
-        "buttonActivation": {
-            "setting": "Personalizar Botões de Ativação",
-            "description": "Escolha os botões desejados para ativação, na barra superior (*Modo TV*) e inferior (*Modo Padrão*).",
-            "both": "Modo Padrão e Modo TV",
-            "tv": "Modo TV",
-            "def": "Modo Padrão"
-        },
-        "keyActivation": {
-            "setting": "Personalizar Teclas de Ativação",
-            "description": "Escolha as teclas desejadas para ativação. Tecla <kbd>F</kbd> para *Modo Padrão* e <kbd>T</kbd> para *Modo TV*",
-            "both": "Modo Padrão e Modo TV",
-            "tv": "Modo TV",
-            "def": "Modo Padrão"
         },
         "lyricsHeader": "Configurações de Letras",
         "lyrics": "Letras",
         "lyricsDescription": [
             "**Observação:** Usa as letras nativas do Spotify quando disponíveis."
         ],
-        "lyricsAlignment": {
-            "setting": "Alinhamento de Letras",
-            "left": "Esquerda",
-            "center": "Centro",
-            "right": "Direita"
-        },
         "autoHideLyrics": "Ocultar Letras Automaticamente (Quando indisponíveis)",
-        "lyricsAnimationTempo": "Tempo de Animação das Letras",
         "generalHeader": "Configurações Gerais",
         "progressBar": "Barra de Progresso",
         "playerControls": "Controles do Reprodutor",
@@ -81,9 +38,7 @@
             "always": "Sempre",
             "date": "Exibir com Data de Lançamento"
         },
-        "showAllArtists": "Exibição de Todos os Artistas",
         "icons": "Ícones",
-        "songChangeAnimation": "Animação de Troca de Música",
         "fullscreen": "Tela Cheia",
         "extraHeader": "Funcionalidades Extras",
         "backgroundChoice": {
@@ -98,21 +53,13 @@
             "animatedArt": "Arte do Álbum Animada (Experimental))",
             "artist": "Arte do Artista"
         },
-        "extraControls": "Controles Extras",
         "upnextDisplay": "Exibição da Próxima Música",
         "contextDisplay": {
-            "setting": "Exibição do Contexto",
             "always": "Sempre",
             "never": "Nunca",
             "mouse": "Ao movimentar o mouse"
         },
         "volumeDisplay": {
-            "setting": "Exibição da Barra de Volume",
-            "description": [
-                "No modo `inteligente`, a barra de volume será exibida quando:",
-                "  - você mover o mouse para o lado esquerdo da tela.",
-                " - quando o volume for alterado."
-            ],
             "always": "Sempre",
             "never": "Nunca",
             "smart": "Inteligente"
@@ -143,18 +90,10 @@
         "verticalMonitorSupportDescription": "Ative isso se tiver uma configuração de monitor vertical. As letras serão exibidas na parte inferior quando a altura da janela for maior que a largura.",
         "backAnimationTime": "Tempo de Animação do Fundo (Para fundo de imagem)",
         "animationSpeed": "⭐ Velocidade de Animação (Para fundo animado)",
-        "upnextScroll": {
-            "setting": "Animação de rolagem da faixa a seguir",
-            "mq": "Marcação/Rolagem",
-            "sp": "Spotify/Tradução"
-        },
         "upnextTime": "Tempo para exibição da faixa a seguir",
         "backgroundBlur": "Desfoque do Fundo",
         "backgroundBrightness": "Brilho do Fundo",
-        "aboutHeader": "Sobre",
-        "configReset": "Redefinir Configuração",
-        "reload": "Recarregar Cliente"
+        "configReset": "Redefinir Configuração"
     },
-    "tvBtnDesc": "Exibição do Modo TV",
     "fullscreenBtnDesc": "Tela Cheia"
 }

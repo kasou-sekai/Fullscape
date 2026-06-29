@@ -1,19 +1,14 @@
-import ICONS from "../constants";
 import HtmlSelectors from "./selectors";
 import WebAPI from "../services/web-api";
 
-let prevUriObj: Spicetify.URI;
-let prevContextDetails: Record<string, string> | null = null;
 let wasQueuePanelEnabled: boolean | null = null;
 let queuePanelSequence = 0;
 
 class Utils {
     static allNotExist() {
         const extraBar = HtmlSelectors.getExtraBarSelector();
-        const topBar = HtmlSelectors.getTopBarSelector();
 
         const entriesToVerify = {
-            "Top Bar Component": topBar,
             "Extra Bar Component": extraBar,
             "Spicetify CosmosAsync": Spicetify.CosmosAsync,
             "Spicetify Mousetrap": Spicetify.Mousetrap,
@@ -145,15 +140,6 @@ class Utils {
         return nextColor;
     }
 
-    static revertPathHistory(originalLocation: string) {
-        Spicetify.Platform.History.push(originalLocation);
-        Spicetify.Platform.History.entries.splice(Spicetify.Platform.History.entries.length - 3, 2);
-        Spicetify.Platform.History.index =
-            Spicetify.Platform.History.index > 0 ? Spicetify.Platform.History.index - 2 : -1;
-        Spicetify.Platform.History.length =
-            Spicetify.Platform.History.length > 1 ? Spicetify.Platform.History.length - 2 : 0;
-    }
-
     // Return the total time left to show the upnext timer
     static getShowTime(upnextTime: number) {
         const showBefore = upnextTime * 1000;
@@ -183,123 +169,6 @@ class Utils {
             languages[lang] = translations[lang].langName;
         }
         return languages;
-    }
-
-    // Translation strings
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    static async getContext(STRINGS: Record<string, any>): Promise<Record<string, string>> {
-        let ctxIcon = "",
-            ctxSource,
-            ctxName;
-        if (Spicetify.Player.data.item?.provider === "queue") {
-            ctxIcon = ICONS.CTX_QUEUE;
-            ctxSource = STRINGS.context.queue;
-            ctxName = "";
-        } else {
-            const uriObj = Spicetify.URI.fromString(Spicetify.Player.data.context.uri);
-            if (JSON.stringify(uriObj) === JSON.stringify(prevUriObj) && prevContextDetails)
-                return prevContextDetails;
-            prevUriObj = uriObj;
-            switch (uriObj.type) {
-                case Spicetify.URI.Type.TRACK:
-                    ctxIcon = ICONS.CTX_TRACK;
-                    ctxSource = STRINGS.context.track;
-                    await WebAPI.getTrackInfo(uriObj?.id ?? "").then(
-                        (meta) => (ctxName = `${meta.name}  •  ${meta.artists[0].name}`),
-                    );
-                    break;
-                case Spicetify.URI.Type.SEARCH:
-                    ctxIcon = Spicetify.SVGIcons["search-active"];
-                    ctxSource = STRINGS.context.search;
-                    ctxName = `"${uriObj.query}" in ${STRINGS.context.searchDest}`;
-                    break;
-                case Spicetify.URI.Type.COLLECTION:
-                    ctxIcon = Spicetify.SVGIcons["heart-active"];
-                    ctxSource = STRINGS.context.collection;
-                    ctxName = STRINGS.context.likedSongs;
-                    break;
-                case Spicetify.URI.Type.PLAYLIST_V2:
-                    ctxIcon = Spicetify.SVGIcons["playlist"];
-                    ctxSource = STRINGS.context.playlist;
-                    ctxName = Spicetify.Player.data.context?.metadata?.context_description || "";
-                    break;
-
-                case Spicetify.URI.Type.STATION:
-                case Spicetify.URI.Type.RADIO:
-                    ctxIcon = ICONS.CTX_RADIO;
-                    switch (uriObj.args[0]) {
-                        case "album":
-                            ctxSource = STRINGS.context.albumRadio;
-                            await WebAPI.getAlbumInfo(uriObj.args[1]).then(
-                                (meta) => (ctxName = meta.name),
-                            );
-                            break;
-                        case "track":
-                            ctxSource = STRINGS.context.trackRadio;
-                            await WebAPI.getTrackInfo(uriObj.args[1]).then(
-                                (meta) => (ctxName = `${meta.name}  •  ${meta.artists[0].name}`),
-                            );
-                            break;
-                        case "artist":
-                            ctxSource = STRINGS.context.artistRadio;
-                            await WebAPI.getArtistInfo(uriObj.args[1]).then(
-                                (meta) => (ctxName = meta?.profile?.name),
-                            );
-                            break;
-                        case "playlist":
-                        case "playlist-v2":
-                            ctxSource = STRINGS.context.playlistRadio;
-                            ctxIcon = `<svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor"><path d="M16.94 6.9l-1.4 1.46C16.44 9.3 17 10.58 17 12s-.58 2.7-1.48 3.64l1.4 1.45C18.22 15.74 19 13.94 19 12s-.8-3.8-2.06-5.1zM23 12c0-3.12-1.23-5.95-3.23-8l-1.4 1.45C19.97 7.13 21 9.45 21 12s-1 4.9-2.64 6.55l1.4 1.45c2-2.04 3.24-4.87 3.24-8zM7.06 17.1l1.4-1.46C7.56 14.7 7 13.42 7 12s.6-2.7 1.5-3.64L7.08 6.9C5.78 8.2 5 10 5 12s.8 3.8 2.06 5.1zM1 12c0 3.12 1.23 5.95 3.23 8l1.4-1.45C4.03 16.87 3 14.55 3 12s1-4.9 2.64-6.55L4.24 4C2.24 6.04 1 8.87 1 12zm9-3.32v6.63l5-3.3-5-3.3z"></path></svg>`;
-                            await WebAPI.getPlaylistInfo("spotify:playlist:" + uriObj.args[1]).then(
-                                (meta) => (ctxName = meta.playlist.name),
-                            );
-                            break;
-                        default:
-                            ctxName = "";
-                    }
-                    break;
-
-                case Spicetify.URI.Type.PLAYLIST:
-                    ctxIcon = Spicetify.SVGIcons[uriObj.type];
-                    ctxSource = STRINGS.context.playlist;
-                    ctxName = Spicetify.Player.data.context?.metadata.context_description || "";
-                    break;
-                case Spicetify.URI.Type.ALBUM:
-                    ctxIcon = Spicetify.SVGIcons[uriObj.type];
-                    ctxSource = STRINGS.context.album;
-                    ctxName = Spicetify.Player.data.context?.metadata.context_description || "";
-                    break;
-
-                case Spicetify.URI.Type.ARTIST:
-                    ctxIcon = Spicetify.SVGIcons[uriObj.type];
-                    ctxSource = STRINGS.context.artist;
-                    ctxName = Spicetify.Player.data.context?.metadata.context_description || "";
-                    break;
-
-                case Spicetify.URI.Type.FOLDER: {
-                    ctxIcon = Spicetify.SVGIcons["playlist-folder"];
-                    ctxSource = STRINGS.context.playlistFolder;
-                    const res = await Spicetify.CosmosAsync.get(`sp://core-playlist/v1/rootlist`, {
-                        policy: { folder: { rows: true, link: true, name: true } },
-                    });
-                    for (const item of res.rows) {
-                        if (
-                            item.type === "folder" &&
-                            item.link === Spicetify.Player.data.context.uri
-                        ) {
-                            ctxName = item.name;
-                            break;
-                        }
-                    }
-                    break;
-                }
-                default:
-                    ctxSource = uriObj.type;
-                    ctxName = Spicetify.Player.data?.context?.metadata?.context_description || "";
-            }
-        }
-        prevContextDetails = { ctxIcon, ctxSource, ctxName };
-        return prevContextDetails;
     }
 
     static toggleQueuePanel(myQueueButton: HTMLElement | null, enabled: boolean) {

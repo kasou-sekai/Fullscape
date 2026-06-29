@@ -134,58 +134,12 @@
         transform: translateX(-50%);
         width: 4px;
     }
-    #fsd-ctx-container {
-        background-color: transparent;
-        color: var(--secondary-color);
-        position: fixed;
-        float: left;
-        top: 30px;
-        left: 50px;
-        display: flex;
-        flex-direction: row;
-        justify-content: center;
-        align-items: center;
-        text-align: left;
-        z-index: 50;
-        transition: all 1s ease-in-out;
-        opacity: 1;
-        max-width: 40%;
-    }
-    #fsd-ctx-details {
-        padding-left: 18px;
-        line-height: initial;
-        font-size: 18px;
-        overflow: hidden;
-    }
-    #fsd-ctx-icon {
-        width: 48px;
-        height: 48px;
-    }
     #fsd-progress-container {
         --theme-main-color: rgba(var(--main-color), 1);
     }
     &.themed-buttons #fsd-progress-container,
     &.themed-icons #fsd-progress-container {
         --theme-main-color: rgba(var(--theme-color), 1);
-    }
-    #fsd-ctx-icon svg {
-        fill: var(--primary-color) !important;
-    }
-    #fsd-ctx-source {
-        text-transform: uppercase;
-    }
-    #fsd-ctx-name {
-        font-weight: 700;
-        font-size: 20px;
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2;
-        line-clamp: 2;
-    }
-    .ctx-no-name {
-        padding-bottom: 2px;
-        font-size: 24px;
-        font-weight: 600;
     }
     #fsd-upnext-container {
         float: right;
@@ -308,17 +262,6 @@
             overflow-wrap: break-word;
             text-wrap: pretty;
         }
-        .rnp-lyrics-line ruby {
-            ruby-align: center;
-            ruby-position: over;
-        }
-        .rnp-lyrics-line rt {
-            color: var(--secondary-color);
-            font-size: 0.42em;
-            font-weight: 500;
-            line-height: 1;
-            text-shadow: none;
-        }
         .rnp-lyrics-line > .rnp-lyrics-line-original {
             white-space: break-spaces;
             word-break: keep-all;
@@ -331,7 +274,6 @@
             word-break: auto-phrase;
             overflow-wrap: break-word;
         }
-        .rnp-lyrics-line-furigana,
         .rnp-lyrics-line-romaji,
         .rnp-lyrics-line-translated {
             margin-top: calc(var(--lyrics-base-font-size) * var(--lyrics-font-scale, 1) * 0.15);
@@ -344,9 +286,6 @@
             font-family: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC",
                 "Source Han Sans SC", sans-serif;
             font-weight: 400;
-        }
-        .rnp-lyrics-line-furigana {
-            font-size: 0.58em;
         }
         .rnp-lyrics-line > .rnp-lyrics-line-karaoke {
             line-height: 1.32;
@@ -435,7 +374,6 @@
             text-shadow: none;
             animation: none;
         }
-        .rnp-lyrics-line.active .rnp-lyrics-line-furigana,
         .rnp-lyrics-line.active .rnp-lyrics-line-romaji,
         .rnp-lyrics-line.active .rnp-lyrics-line-translated {
             color: var(--secondary-color);
@@ -680,8 +618,7 @@ body {
     &.fsd-activated #full-screen-display {
         display: block;
     }
-    #fullscreen-default-button,
-    #fullscreen-tv-button {
+    #fullscreen-default-button {
         background: transparent;
         outline: none;
         border: none;

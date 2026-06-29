@@ -1,27 +1,8 @@
 {
     "langName": "Nederlands",
-    "context": {
-        "queue": "Afspelen vanuit wachtrij",
-        "track": "Nummer afspelen",
-        "album": "Afspelen van album",
-        "artist": "Afspelen van artiest",
-        "playlist": "Afspelen van afspeellijst",
-        "playlistFolder": "Afspelen van afspeellijstmap",
-        "search": "Afspelen vanuit zoeken",
-        "searchDest": "Nummers",
-        "collection": "Afspelen vanuit bibliotheek",
-        "likedSongs": "Gelikete nummers",
-        "trackRadio": "Nummerradio",
-        "artistRadio": "Artiestradio",
-        "albumRadio": "Albumradio",
-        "playlistRadio": "Afspeellijstradio"
-    },
     "upnext": "VOLGENDE",
     "unknownArtist": "Onbekende artiest",
     "settings": {
-        "switchToTV": "Schakel naar TV-modus",
-        "switchToFullscreen": "Schakel naar standaardmodus",
-        "tvModeConfig": "TV-modus configuratie",
         "fullscreenConfig": "Volledig scherm configuratie",
         "exit": "Afsluiten",
         "pluginSettings": "Plugin-instellingen",
@@ -32,44 +13,20 @@
             "setting": "Automatisch starten (bij Spotify start)",
             "description": "**Beperking:** Het Spotify-venster kan niet naar volledig scherm gaan bij automatisch starten.",
             "never": "Nooit (Standaard)",
-            "default": "Open standaardmodus",
-            "tvmode": "Open TV-modus",
-            "lastused": "Laatst gebruikte modus"
+            "default": "Open standaardmodus"
         },
         "activationTypes": {
             "setting": "Activeringsmethoden",
-            "description": "Kies methoden om de plugin te activeren. Toetsen <kbd>F</kbd> en <kbd>T</kbd>, of knoppen in de boven- en onderbalk.",
             "both": "Knoppen en sneltoetsen",
             "btns": "Alleen knoppen",
             "keys": "Alleen sneltoetsen"
-        },
-        "buttonActivation": {
-            "setting": "Knoppen aanpassen",
-            "description": "Kies activeringsknoppen, in bovenbalk (*TV-modus*) en onderbalk (*Standaardmodus*).",
-            "both": "Knoppen voor beide",
-            "tv": "Alleen TV-modus knop",
-            "def": "Alleen standaardmodus knop"
-        },
-        "keyActivation": {
-            "setting": "Toetsen aanpassen",
-            "description": "Kies activeringstoetsen. <kbd>F</kbd> voor *Standaardmodus* en <kbd>T</kbd> voor *TV-modus*",
-            "both": "Toetsen voor beide",
-            "tv": "Alleen TV-modus toets",
-            "def": "Alleen standaardmodus toets"
         },
         "lyricsHeader": "Tekstinstellingen",
         "lyrics": "Tekst",
         "lyricsDescription": [
             "**Opmerking:** Gebruikt de ingebouwde Spotify-songteksten wanneer beschikbaar."
         ],
-        "lyricsAlignment": {
-            "setting": "Tekstuitlijning",
-            "left": "Links",
-            "center": "Midden",
-            "right": "Rechts"
-        },
         "autoHideLyrics": "Tekst auto. verbergen (indien niet beschikbaar)",
-        "lyricsAnimationTempo": "Tekstanimatiesnelheid",
         "generalHeader": "Algemene instellingen",
         "progressBar": "Voortgangsbalk",
         "playerControls": "Spelerbediening",
@@ -82,9 +39,7 @@
             "always": "Altijd",
             "date": "Met releasedatum"
         },
-        "showAllArtists": "Toon alle artiesten",
         "icons": "Iconen",
-        "songChangeAnimation": "Nummerwisselanimatie",
         "fullscreen": "Volledig scherm",
         "extraHeader": "Extra functionaliteit",
         "backgroundChoice": {
@@ -99,33 +54,16 @@
             "animatedArt": "Geanimeerde albumhoes (Experimenteel)",
             "artist": "Artiestafbeelding"
         },
-        "sidebarQueue": "Wachtrij in zijbalk (vervangt tekstknop)",
-        "sidebarQueueDescription": [
-            "Schakel wachtrij in zijbalk met <kbd>Q</kbd> of knop in extra balk.",
-            "Zorg dat je de instelling in experimentele functies inschakelt."
-        ],
-        "extraControls": "Extra bediening",
         "upnextDisplay": "Toon Volgende",
         "contextDisplay": {
-            "setting": "Toon context",
             "always": "Altijd",
             "never": "Nooit",
             "mouse": "Bij muisbeweging"
         },
         "volumeDisplay": {
-            "setting": "Volumebalk",
-            "description": [
-                "In `Slimme` modus verschijnt de balk wanneer:",
-                " - je de muis naar links beweegt.",
-                " - het volume verandert."
-            ],
             "always": "Altijd",
             "never": "Nooit",
             "smart": "Slim"
-        },
-        "overviewDisplay": {
-            "setting": "Overzichtsweergave",
-            "description": "Toon korte overzichtskaart met tijd en bediening"
         },
         "appearanceHeader": "Geavanceerd/Uiterlijk",
         "appearanceSubHeader": "*(Alleen wijzigen als je weet wat je doet!)*",
@@ -153,18 +91,10 @@
         "verticalMonitorSupportDescription": "Schakel in voor verticale monitoren. Tekst staat onderaan als hoogte groter is dan breedte.",
         "backAnimationTime": "Achtergrondanimatietijd (Afbeelding)",
         "animationSpeed": "⭐ Animatiesnelheid (Geanimeerd)",
-        "upnextScroll": {
-            "setting": "Volgende scrollanimatie",
-            "mq": "Lichtkrant/Scrollen",
-            "sp": "Spotify/Vertaling"
-        },
         "upnextTime": "Volgende weergavetijd",
         "backgroundBlur": "Achtergrondvervaging",
         "backgroundBrightness": "Achtergrondhelderheid",
-        "aboutHeader": "Over",
-        "configReset": "Configuratie resetten",
-        "reload": "Client herladen"
+        "configReset": "Configuratie resetten"
     },
-    "tvBtnDesc": "TV-modus",
     "fullscreenBtnDesc": "Volledig scherm"
 }

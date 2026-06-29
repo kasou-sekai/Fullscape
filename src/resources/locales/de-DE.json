@@ -1,27 +1,8 @@
 {
     "langName": "Deutsch",
-    "context": {
-        "queue": "Wiedergabe aus der Warteschlange",
-        "track": "Titel spielen",
-        "album": "Abspielen von Album",
-        "artist": "Abspielen von Künstler",
-        "playlist": "Abspielen von Playlist",
-        "playlistFolder": "Wiedergabe aus dem Playlist-Ordner",
-        "search": "Wiedergabe aus Suche",
-        "searchDest": "Lieder",
-        "collection": "Abspielen aus Sammlung",
-        "likedSongs": "Lieblingssongs",
-        "trackRadio": "Abspielen von Titel Radio",
-        "artistRadio": "Abspielen von Künstler Radio",
-        "albumRadio": "Abspielen von Alben Radio",
-        "playlistRadio": "Abspielen von Playlist Radio"
-    },
     "upnext": "ALS NÄCHSTES",
     "unknownArtist": "Künstler (nicht verfügbar)",
     "settings": {
-        "switchToTV": "Wechseln zu TV-Modus",
-        "switchToFullscreen": "Einstellungen des Vollbildmodis",
-        "tvModeConfig": "Konfiguration des TV-Modus",
         "fullscreenConfig": "Vollbildmodus konfiguration",
         "exit": "Exit",
         "pluginSettings": "Plugin Einstellungen",
@@ -32,44 +13,20 @@
             "setting": "Automatischer Start (beim Spotify-Start)",
             "description": "**Einschränkung:** Das Spotify-Fenster kann beim automatischen Start nicht in den Vollbildmodus wechseln.",
             "never": "Niemals (Standard)",
-            "default": "Standardmodus öffnen",
-            "tvmode": "TV-Modus öffnen",
-            "lastused": "Zuletzt verwendeter Modus"
+            "default": "Standardmodus öffnen"
         },
         "activationTypes": {
             "setting": "Aktivierungsmethoden",
-            "description": "Wählen Sie die Methoden, die Sie zur Aktivierung des Plugins verwenden möchten. <kbd>F</kbd> und <kbd>T</kbd> Tasten oder Schaltflächen in der oberen und unteren Leiste.",
             "both": "Schaltflächen und Tastaturkürzel",
             "btns": "Nur Schaltflächen",
             "keys": "Nur Tastaturkürzel"
-        },
-        "buttonActivation": {
-            "setting": "Aktivierungsschaltflächen anpassen",
-            "description": "Wählen Sie die Schaltflächen für die Aktivierung, in der oberen Leiste (*TV-Modus*) und der unteren Leiste (*Standardmodus*).",
-            "both": "Schaltflächen für beide Modi",
-            "tv": "Schaltfläche nur für TV-Modus",
-            "def": "Schaltfläche nur für Standardmodus"
-        },
-        "keyActivation": {
-            "setting": "Aktivierungstasten anpassen",
-            "description": "Wählen Sie die Tasten für die Aktivierung. <kbd>F</kbd> für *Standardmodus* und <kbd>T</kbd> für *TV-Modus*",
-            "both": "Tasten für beide Modi",
-            "tv": "Taste nur für TV-Modus",
-            "def": "Taste nur für Standardmodus"
         },
         "lyricsHeader": "Ausrichtung des Liedtextes",
         "lyrics": "Liedtext",
         "lyricsDescription": [
             "**Hinweis:** Verwendet die integrierten Spotify-Songtexte, falls verfügbar."
         ],
-        "lyricsAlignment": {
-            "setting": "Liedtext Ausrichtung",
-            "left": "Links",
-            "center": "Center",
-            "right": "Rechts"
-        },
         "autoHideLyrics": "Liedtext automatisch ausblenden (wenn nicht verfügbar)",
-        "lyricsAnimationTempo": "Liedtext Animationtempo",
         "generalHeader": "Allgemeine Einstellungen",
         "progressBar": "Fortschritt anzeige",
         "playerControls": "Wiedegergabe steuerung",
@@ -82,9 +39,7 @@
             "always": "Immer",
             "date": "Veröffentlichungsdatum anzeigen"
         },
-        "showAllArtists": "Alle Künstler anzeigen",
         "icons": "Symbole",
-        "songChangeAnimation": "Songwechsel-Animation",
         "fullscreen": "Vollbildmodus",
         "extraHeader": "Zusätzliche Funktionalität",
         "backgroundChoice": {
@@ -99,33 +54,16 @@
             "animatedArt": "Animiertes Albumcover (Experimentell)",
             "artist": "Künstler-Artwork"
         },
-        "sidebarQueue": "Warteschlange in der Seitenleiste aktivieren (ersetzt die Liedtext-Schaltfläche)",
-        "sidebarQueueDescription": [
-            "Schalten Sie die Warteschlange in der Seitenleiste mit <kbd>Q</kbd> oder der Schaltfläche in der Extra-Leiste um.",
-            "Stellen Sie sicher, dass Sie die Einstellung in den experimentellen Funktionen aktivieren."
-        ],
-        "extraControls": "Zusätzliche Steuerelemente",
         "upnextDisplay": "Nächste-titel Anzeige",
         "contextDisplay": {
-            "setting": "Kontextanzeige",
             "always": "Immer",
             "never": "Niemals",
             "mouse": "Bei Mausbewegung"
         },
         "volumeDisplay": {
-            "setting": "Anzeige der Lautstärkenleiste",
-            "description": [
-                "Im `Smart`-Modus wird die Lautstärkeleiste angezeigt, wenn:",
-                "  - Sie die Maus auf die linke Seite des Bildschirms bewegen.",
-                "  - wenn die Lautstärke geändert wird."
-            ],
             "always": "Immer",
             "never": "Niemals",
             "smart": "Smart"
-        },
-        "overviewDisplay": {
-            "setting": "Übersichtsanzeige",
-            "description": "Eine kurze Übersichtskarte mit Zeit und Steuerungsaktionen anzeigen"
         },
         "appearanceHeader": "Erweitert/Aussehen",
         "appearanceSubHeader": "Achtung! Ändern diese Einstellungen, wenn Sie wissen, was Sie tun!",
@@ -153,18 +91,10 @@
         "verticalMonitorSupportDescription": "Aktivieren Sie dies, wenn Sie ein vertikales Monitor-Setup haben. Liedtexte werden unten angezeigt, wenn die Fensterhöhe größer als die Breite ist.",
         "backAnimationTime": "Background Animation Time",
         "animationSpeed": "⭐ Animationsgeschwindigkeit (für animierten Hintergrund)",
-        "upnextScroll": {
-            "setting": "Nächstes Lied Scroll-Animation",
-            "mq": "Marquee/Scrolling",
-            "sp": "Spotify/Translating"
-        },
         "upnextTime": "Nächster Titel Anzeigedauer",
         "backgroundBlur": "Hintergrund Blur",
         "backgroundBrightness": "Hintergrund Brightness",
-        "aboutHeader": "Über",
-        "configReset": "Konfig zurücksetzen",
-        "reload": "Client neu laden"
+        "configReset": "Konfig zurücksetzen"
     },
-    "tvBtnDesc": "TV Modus",
     "fullscreenBtnDesc": "Vollbild"
 }

@@ -1,27 +1,8 @@
 {
     "langName": "English",
-    "context": {
-        "queue": "Playing from queue",
-        "track": "Playing track",
-        "album": "Playing from album",
-        "artist": "Playing from artist",
-        "playlist": "Playing from playlist",
-        "playlistFolder": "Playing from playlist folder",
-        "search": "Playing from search",
-        "searchDest": "Songs",
-        "collection": "Playing from collection",
-        "likedSongs": "Liked Songs",
-        "trackRadio": "Playing from track radio",
-        "artistRadio": "Playing from artist radio",
-        "albumRadio": "Playing from album radio",
-        "playlistRadio": "Playing from playlist radio"
-    },
     "upnext": "UP NEXT",
     "unknownArtist": "Artist (Unavailable)",
     "settings": {
-        "switchToTV": "Switch to TV Mode",
-        "switchToFullscreen": "Switch to Default Mode",
-        "tvModeConfig": "TV Mode Configuration",
         "fullscreenConfig": "Full Screen Configuration",
         "exit": "Exit",
         "pluginSettings": "Plugin Settings",
@@ -32,30 +13,14 @@
             "setting": "Auto launch(on spotify startup)",
             "description": "**Limitation:** The spotify window cannot go into fullscreen while automatically launching on startup.",
             "never": "Never(Default)",
-            "default": "Open Default Mode",
-            "tvmode": "Open TV Mode",
-            "lastused": "Last Used Mode"
+            "default": "Open Default Mode"
         },
         "activationTypes": {
             "setting": "Activation Methods",
-            "description": "Choose the methods you want to use to activate the plugin. <kbd>F</kbd> and <kbd>T</kbd> keys, or buttons on topbar and bottom bar.",
+            "description": "Choose whether to activate full screen with the button, the F key, or both.",
             "both": "Buttons and Keyboard Shortcuts",
             "btns": "Buttons Only",
             "keys": "Keyboard Shortcuts Only"
-        },
-        "buttonActivation": {
-            "setting": "Customize Activation Buttons",
-            "description": "Choose the buttons you want for activation, on topbar(*TV Mode*) and bottom bar(*Default Mode*).",
-            "both": "Buttons for both modes",
-            "tv": "Button only for TV Mode",
-            "def": "Button only for Default Mode"
-        },
-        "keyActivation": {
-            "setting": "Customize Activation Keys",
-            "description": "Choose the keys you want for activation. <kbd>F</kbd> for *Default Mode* and <kbd>T</kbd> for *TV Mode*",
-            "both": "Keys for both modes",
-            "tv": "Key only for TV Mode",
-            "def": "Key only for Default Mode"
         },
         "lyricsHeader": "Lyrics Settings",
         "lyrics": "Lyrics",
@@ -63,7 +28,6 @@
         "thirdPartyLyrics": "Enhance Lyrics from NetEase",
         "showLyricsTranslation": "Show Lyric Translation",
         "showLyricsRomanization": "Show Romanized Lyrics",
-        "showLyricsFurigana": "Show Furigana Lyrics",
         "karaokeLyrics": "Use Word-by-word Lyrics",
         "refreshLyrics": {
             "setting": "Refresh Lyrics",
@@ -73,19 +37,11 @@
             "failed": "Unavailable",
             "description": "Clear the current track's lyric cache and fetch it again immediately."
         },
-        "lyricsAlignment": {
-            "setting": "Lyrics Alignment",
-            "left": "Left",
-            "center": "Center",
-            "right": "Right"
-        },
         "lyricsSize": {
             "setting": "Lyrics Size",
-            "description": "Use the +/- buttons to set a custom size (12–99 px).",
-            "auto": "Auto (based on screen)"
+            "description": "Use the +/- buttons to set a custom size (12–99 px)."
         },
         "autoHideLyrics": "Auto Hide Lyrics (when unavailable)",
-        "lyricsAnimationTempo": "Lyrics Animation Tempo",
         "generalHeader": "General Settings",
         "progressBar": "Progress Bar",
         "playerControls": "Player Controls",
@@ -98,9 +54,7 @@
             "always": "Always",
             "date": "Show with Release Date"
         },
-        "showAllArtists": "Show All Artists",
         "icons": "Icons",
-        "songChangeAnimation": "Song Change Animation",
         "fullscreen": "Fullscreen",
         "extraHeader": "Extra Functionality",
         "backgroundChoice": {
@@ -115,33 +69,16 @@
             "animatedArt": "Animated Album Art (Experimental)",
             "artist": "Artist artwork"
         },
-        "sidebarQueue": "Enable Queue in Sidebar (replaces the lyrics button)",
-        "sidebarQueueDescription": [
-            "Toggle the queue in the sidebar with <kbd>Q</kbd> or the button in the extra bar.",
-            "Make sure to enable the setting in Experimental features."
-        ],
-        "extraControls": "Extra Controls",
         "upnextDisplay": "Upnext Display",
         "contextDisplay": {
-            "setting": "Context Display",
             "always": "Always",
             "never": "Never",
             "mouse": "On mouse movement"
         },
         "volumeDisplay": {
-            "setting": "Volume Bar Display",
-            "description": [
-                "In `smart` mode the volume bar will be displayed when:",
-                "  - you move your mouse to the left side of the screen.",
-                " - when the volume is changed."
-            ],
             "always": "Always",
             "never": "Never",
             "smart": "Smart"
-        },
-        "overviewDisplay": {
-            "setting": "Overview Display",
-            "description": "Show a brief overview card with time and control actions"
         },
         "appearanceHeader": "Advanced/Appearance",
         "appearanceSubHeader": "*(Only change if you know what you are doing!)*",
@@ -169,18 +106,10 @@
         "verticalMonitorSupportDescription": "Enable this if you have a vertical monitor setup. Lyrics will be shown in the bottom, when the window height is greater than the width.",
         "backAnimationTime": "Background Animation Time (for image background)",
         "animationSpeed": "⭐ Animation Speed (for animated background)",
-        "upnextScroll": {
-            "setting": "Upnext Scroll Animation",
-            "mq": "Marquee/Scrolling",
-            "sp": "Spotify/Translating"
-        },
         "upnextTime": "Upnext Time to Show",
         "backgroundBlur": "Background Blur",
         "backgroundBrightness": "Background Brightness",
-        "aboutHeader": "About",
-        "configReset": "Reset Config",
-        "reload": "Reload Client"
+        "configReset": "Reset Config"
     },
-    "tvBtnDesc": "TV Mode Display",
     "fullscreenBtnDesc": "Full Screen"
 }

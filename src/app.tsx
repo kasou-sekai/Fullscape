@@ -12,7 +12,6 @@ import HtmlSelectors from "./utils/selectors";
 import { Config, Settings } from "./types/fullscreen";
 import { createOverflowScrollAnimation, getOverflowScrollTiming } from "./utils/overflow-scroll";
 
-import showWhatsNew from "./services/whats-new";
 import { getHtmlContent } from "./services/html-creator";
 import { initMoustrapRecord } from "./services/mousetrap-record";
 
@@ -26,7 +25,6 @@ import { Lyrics } from "./ui/components/Lyrics/Lyrics";
 import { Background } from "./utils/background";
 
 import "./styles/base.scss";
-import "./styles/tvMode.scss";
 import "./styles/defaultMode.scss";
 import "./styles/settings.scss";
 
@@ -45,39 +43,16 @@ async function main() {
     }
 
     // Start from here
-    showWhatsNew();
     initMoustrapRecord(Spicetify.Mousetrap);
     DOM.init();
 
     if (CFM.getGlobal("activationTypes") !== "btns") {
-        if (CFM.getGlobal("keyActivation") !== "def") Spicetify.Mousetrap.bind("t", openwithTV);
-        if (CFM.getGlobal("keyActivation") !== "tv") Spicetify.Mousetrap.bind("f", openwithDef);
+        Spicetify.Mousetrap.bind("f", toggleFullscreen);
     }
 
-    function openwithTV() {
-        if (!Utils.isModeActivated() || !CFM.getGlobal("tvMode") || CFM.getMode() !== "tv") {
-            if (!CFM.getGlobal("tvMode") || CFM.getMode() !== "tv") {
-                CFM.setGlobal("tvMode", true);
-                CFM.setMode("tv");
-                render();
-            }
-            activate();
-        } else deactivate();
-    }
-
-    function openwithDef() {
-        if (!Utils.isModeActivated() || CFM.getGlobal("tvMode") || CFM.getMode() === "tv") {
-            if (CFM.getGlobal("tvMode") || CFM.getMode() === "tv") {
-                CFM.setGlobal("tvMode", false);
-                CFM.setMode("def");
-                render();
-            }
-            activate();
-        } else deactivate();
-    }
-
-    if (localStorage.getItem("full-screen:inverted") === null) {
-        localStorage.setItem("full-screen:inverted", "{}");
+    function toggleFullscreen() {
+        if (Utils.isModeActivated()) deactivate();
+        else activate();
     }
 
     let LOCALE: string = CFM.getGlobal("locale") as Config["locale"];
@@ -198,7 +173,6 @@ async function main() {
                 window.innerWidth < window.innerHeight,
         );
         DOM.container.setAttribute("data-locale", LOCALE);
-        DOM.container.setAttribute("mode", CFM.getMode());
         DOM.container.classList.remove("lyrics-hide-force");
 
         applyLyricsScale();
@@ -657,8 +631,6 @@ async function main() {
         render,
         activate,
         deactivate,
-        openwithDef,
-        openwithTV,
         Background.updateBackground.bind(Background),
         UpNext.updateUpNextShow.bind(UpNext),
         Background.updateMainColor.bind(Background),
@@ -674,71 +646,24 @@ async function main() {
             lastExtraBarItem.remove();
     }
     if (CFM.getGlobal("activationTypes") != "keys") {
-        if (CFM.getGlobal("buttonActivation") !== "tv") {
-            // Add Full Screen Button on bottom bar
-            const defButton = document.createElement("button");
-            defButton.classList.add("button");
-            defButton.id = "fullscreen-default-button";
-            defButton.setAttribute("title", translations[LOCALE].fullscreenBtnDesc);
+        const defButton = document.createElement("button");
+        defButton.classList.add("button");
+        defButton.id = "fullscreen-default-button";
+        defButton.setAttribute("title", translations[LOCALE].fullscreenBtnDesc);
 
-            defButton.innerHTML = ICONS.FULLSCREEN;
-            defButton.onclick = openwithDef;
+        defButton.innerHTML = ICONS.FULLSCREEN;
+        defButton.onclick = toggleFullscreen;
 
-            defButton.oncontextmenu = (evt) => {
-                evt.preventDefault();
-                CFM.setMode("def");
-                ConfigManager.openConfig();
-            };
-            (extraBar as HTMLElement)?.append(defButton);
-        }
-
-        if (CFM.getGlobal("buttonActivation") !== "def") {
-            // Add TV Mode Button on top bar
-            const tvButton = document.createElement("button");
-
-            tvButton.innerHTML = ICONS.TV_MODE;
-            tvButton.id = "fullscreen-tv-button";
-            tvButton.setAttribute("title", translations[LOCALE].tvBtnDesc);
-
-            tvButton.onclick = openwithTV;
-
-            tvButton.classList.add(
-                "tm-button",
-                "Button-buttonTertiary-small-isUsingKeyboard-useBrowserDefaultFocusStyle-condensedAll",
-                "Button-small-small-buttonTertiary-condensedAll-isUsingKeyboard-useBrowserDefaultFocusStyle",
-                "Button-buttonTertiary-small-small-isUsingKeyboard-useBrowserDefaultFocusStyle-condensedAll",
-                "encore-text-body-small-bold",
-                "main-globalNav-buddyFeed",
-                "Button-sc-1dqy6lx-0",
-            );
-            HtmlSelectors.getTopBarSelector()?.prepend(tvButton);
-
-            // document.querySelector(TOP_BAR_SELECTOR)?.append(tvButton);
-            tvButton.oncontextmenu = (evt) => {
-                evt.preventDefault();
-                CFM.setMode("tv");
-                ConfigManager.openConfig();
-            };
-        }
+        defButton.oncontextmenu = (evt) => {
+            evt.preventDefault();
+            ConfigManager.openConfig();
+        };
+        (extraBar as HTMLElement)?.append(defButton);
     }
 
     render();
 
-    switch (CFM.getGlobal("autoLaunch")) {
-        case "default":
-            openwithDef();
-            break;
-        case "tvmode":
-            openwithTV();
-            break;
-        case "lastused":
-            if (CFM.getGlobal("tvMode")) openwithTV();
-            else openwithDef();
-            break;
-        case "never":
-        default:
-            break;
-    }
+    if (CFM.getGlobal("autoLaunch") === "default") toggleFullscreen();
 }
 
 export default main;

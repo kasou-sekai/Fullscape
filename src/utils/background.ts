@@ -1,5 +1,4 @@
 import CFM from "./config";
-import ICONS from "../constants";
 import { Settings } from "../types/fullscreen";
 import Utils from "./utils";
 import { DOM } from "../ui/elements";
@@ -11,7 +10,6 @@ import {
     animatedRotatedCanvas,
     modifyIsAnimationRunning,
 } from "./animation";
-import { ExtraControls } from "../ui/components/ExtraControls/ExtraControls";
 
 export class Background {
     private static updateSequence = 0;
@@ -143,25 +141,10 @@ export class Background {
                 DOM.container.style.setProperty("--contrast-color", "255,255,255");
                 break;
             case "auto": {
-                let mainColor = "255,255,255",
-                    contrastColor = "0,0,0";
-                if (
-                    CFM.get("backgroundChoice") === "album_art" &&
-                    (meta?.album_uri?.split(":")[2] ?? "") in ExtraControls.INVERTED
-                ) {
-                    mainColor = ExtraControls.INVERTED[meta?.album_uri?.split(":")[2] ?? ""]
-                        ? "0,0,0"
-                        : "255,255,255";
-                } else {
-                    [mainColor, contrastColor] = await ColorExtractor.getMainColor(imageURL);
-                }
+                const [mainColor, contrastColor] = await ColorExtractor.getMainColor(imageURL);
                 if (sequence !== this.updateSequence) return;
                 DOM.container.style.setProperty("--main-color", mainColor);
                 DOM.container.style.setProperty("--contrast-color", contrastColor);
-                if (CFM.get("extraControls") !== "never") {
-                    DOM.invertButton.classList.remove("button-active");
-                    DOM.invertButton.innerHTML = ICONS.INVERT_INACTIVE;
-                }
                 break;
             }
             case "never":

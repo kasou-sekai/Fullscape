@@ -7,10 +7,6 @@ export class DOM {
     static artist: HTMLElement;
     static album: HTMLElement;
     static play: HTMLElement;
-    static ctx_container: HTMLElement;
-    static ctx_icon: HTMLElement;
-    static ctx_source: HTMLElement;
-    static ctx_name: HTMLElement;
     static fsd_myUp: HTMLElement;
     static fsd_nextCover: HTMLElement;
     static fsd_up_next_text: HTMLElement;
@@ -22,11 +18,7 @@ export class DOM {
     static pausedIcon: HTMLElement;
     static nextControl: HTMLElement;
     static backControl: HTMLElement;
-    static heart: HTMLElement;
-    static shuffle: HTMLElement;
-    static repeat: HTMLElement;
     static queue: HTMLElement | null;
-    static invertButton: HTMLElement;
     static lyrics: HTMLElement;
     static coverImg = new Image();
     static backgroundImg = new Image();

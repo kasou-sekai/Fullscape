@@ -1,27 +1,8 @@
 {
     "langName": "日本語",
-    "context": {
-        "queue": "キューから再生中",
-        "track": "トラックを再生中",
-        "album": "アルバムから再生中",
-        "artist": "アーティストから再生中",
-        "playlist": "プレイリストから再生中",
-        "playlistFolder": "プレイリストフォルダから再生中",
-        "search": "検索結果から再生中",
-        "searchDest": "曲",
-        "collection": "コレクションから再生中",
-        "likedSongs": "お気に入りの曲",
-        "trackRadio": "トラックラジオから再生中",
-        "artistRadio": "アーティストラジオから再生中",
-        "albumRadio": "アルバムラジオから再生中",
-        "playlistRadio": "プレイリストラジオから再生中"
-    },
     "upnext": "次は",
     "unknownArtist": "不明なアーティスト",
     "settings": {
-        "switchToTV": "TVモードに切り替え",
-        "switchToFullscreen": "デフォルトモードに切り替え",
-        "tvModeConfig": "TVモード設定",
         "fullscreenConfig": "全画面モード設定",
         "exit": "終了",
         "pluginSettings": "プラグイン設定",
@@ -32,44 +13,18 @@
             "setting": "自動起動 (Spotify起動時)",
             "description": "**制限:** 自動起動時はSpotifyウィンドウを全画面にできません。",
             "never": "しない (デフォルト)",
-            "default": "デフォルトモードを開く",
-            "tvmode": "TVモードを開く",
-            "lastused": "最後に使用したモード"
+            "default": "デフォルトモードを開く"
         },
         "activationTypes": {
             "setting": "起動方法",
-            "description": "プラグインを起動する方法を選択してください。<kbd>F</kbd> と <kbd>T</kbd> キー、またはトップバーとボトムバーのボタン。",
             "both": "ボタンとキーボードショートカット",
             "btns": "ボタンのみ",
             "keys": "キーボードショートカットのみ"
         },
-        "buttonActivation": {
-            "setting": "起動ボタンのカスタマイズ",
-            "description": "起動ボタンを選択してください。トップバー (*TVモード*) とボトムバー (*デフォルトモード*)。",
-            "both": "両方のモードのボタン",
-            "tv": "TVモードのみ",
-            "def": "デフォルトモードのみ"
-        },
-        "keyActivation": {
-            "setting": "起動キーのカスタマイズ",
-            "description": "起動キーを選択してください。*デフォルトモード* は <kbd>F</kbd>、*TVモード* は <kbd>T</kbd>。",
-            "both": "両方のモードのキー",
-            "tv": "TVモードのみ",
-            "def": "デフォルトモードのみ"
-        },
         "lyricsHeader": "歌詞設定",
         "lyrics": "歌詞",
-        "lyricsDescription": [
-            "**注意:** 利用可能な場合は Spotify の内蔵歌詞を使用します。"
-        ],
-        "lyricsAlignment": {
-            "setting": "歌詞の配置",
-            "left": "左",
-            "center": "中央",
-            "right": "右"
-        },
+        "lyricsDescription": ["**注意:** 利用可能な場合は Spotify の内蔵歌詞を使用します。"],
         "autoHideLyrics": "歌詞を自動的に隠す (利用できない場合)",
-        "lyricsAnimationTempo": "歌詞アニメーション速度",
         "generalHeader": "一般設定",
         "progressBar": "プログレスバー",
         "playerControls": "プレーヤーコントロール",
@@ -82,9 +37,7 @@
             "always": "常に表示",
             "date": "リリース日と共に表示"
         },
-        "showAllArtists": "すべてのアーティストを表示",
         "icons": "アイコン",
-        "songChangeAnimation": "曲変更アニメーション",
         "fullscreen": "全画面",
         "extraHeader": "追加機能",
         "backgroundChoice": {
@@ -99,33 +52,16 @@
             "animatedArt": "アニメーションアルバムアート (実験的)",
             "artist": "アーティスト画像"
         },
-        "sidebarQueue": "サイドバーでキューを有効化 (歌詞ボタンを置き換え)",
-        "sidebarQueueDescription": [
-            "<kbd>Q</kbd> または追加バーのボタンでサイドバーのキューを切り替えます。",
-            "実験的機能の設定を有効にしてください。"
-        ],
-        "extraControls": "追加コントロール",
         "upnextDisplay": "「次は」を表示",
         "contextDisplay": {
-            "setting": "コンテキスト表示",
             "always": "常に",
             "never": "表示しない",
             "mouse": "マウス移動時"
         },
         "volumeDisplay": {
-            "setting": "音量バー表示",
-            "description": [
-                "`スマート` モードでは、以下の場合に音量バーが表示されます:",
-                " - マウスを画面左側に移動したとき。",
-                " - 音量が変更されたとき。"
-            ],
             "always": "常に",
             "never": "表示しない",
             "smart": "スマート"
-        },
-        "overviewDisplay": {
-            "setting": "概要表示",
-            "description": "時間と操作を含む短い概要カードを表示"
         },
         "appearanceHeader": "高度/外観",
         "appearanceSubHeader": "*(何をしているか分かっている場合のみ変更してください！)*",
@@ -153,18 +89,10 @@
         "verticalMonitorSupportDescription": "縦型モニター設定の場合に有効にしてください。ウィンドウの高さが幅より大きい場合、歌詞が下に表示されます。",
         "backAnimationTime": "背景アニメーション時間 (画像背景)",
         "animationSpeed": "⭐ アニメーション速度 (アニメーション背景)",
-        "upnextScroll": {
-            "setting": "「次は」スクロールアニメーション",
-            "mq": "マーキー/スクロール",
-            "sp": "Spotify/翻訳"
-        },
         "upnextTime": "「次は」表示時間",
         "backgroundBlur": "背景ぼかし",
         "backgroundBrightness": "背景の明るさ",
-        "aboutHeader": "情報",
-        "configReset": "設定をリセット",
-        "reload": "クライアントを再読み込み"
+        "configReset": "設定をリセット"
     },
-    "tvBtnDesc": "TVモード表示",
     "fullscreenBtnDesc": "全画面"
 }

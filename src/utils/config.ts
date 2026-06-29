@@ -2,7 +2,8 @@ import { Config, Settings } from "../types/fullscreen";
 import { DEFAULTS } from "../constants";
 
 let CONFIG: Config | null = null;
-let ACTIVE: "tv" | "def" | null = null;
+const STORAGE_KEY = "full-screen-playing:config";
+const LEGACY_STORAGE_KEY = "full-screen-config";
 
 function cloneDefaults(): Config {
     return JSON.parse(JSON.stringify(DEFAULTS)) as Config;
@@ -29,23 +30,30 @@ function mergeKnownValues<T>(stored: unknown, defaults: T): T {
 
 function getConfig(defaultConfig: Config): Config {
     try {
-        const parsed: unknown = JSON.parse(localStorage.getItem("full-screen-config") ?? "{}");
+        const storedConfig = localStorage.getItem(STORAGE_KEY);
+        const legacyConfig = localStorage.getItem(LEGACY_STORAGE_KEY);
+        const parsed: unknown = JSON.parse(storedConfig ?? legacyConfig ?? "{}");
         const config = mergeKnownValues(parsed, defaultConfig);
+        if (config.autoLaunch !== "never" && config.autoLaunch !== "default") {
+            config.autoLaunch = "default";
+        }
         saveConfig(config);
+        if (legacyConfig !== null) localStorage.removeItem(LEGACY_STORAGE_KEY);
         return config;
     } catch {
         const config = cloneDefaults();
         saveConfig(config);
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
         return config;
     }
 }
 
 function saveConfig(CONFIG: Config) {
-    localStorage.setItem("full-screen-config", JSON.stringify(CONFIG));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(CONFIG));
 }
 
-function resetModeSetting<K extends keyof Settings>(config: Config, mode: "tv" | "def", key: K) {
-    config[mode][key] = DEFAULTS[mode][key];
+function resetSetting<K extends keyof Settings>(config: Config, key: K) {
+    config.def[key] = DEFAULTS.def[key];
 }
 
 const ConfigManager = {
@@ -53,19 +61,13 @@ const ConfigManager = {
         if (CONFIG === null) {
             CONFIG = getConfig(DEFAULTS);
         }
-        if (ACTIVE === null) {
-            ACTIVE = CONFIG.tvMode ? "tv" : "def";
-        }
-        return CONFIG[ACTIVE][key];
+        return CONFIG.def[key];
     },
     set<K extends keyof Settings>(key: K, value: Settings[K]) {
         if (CONFIG === null) {
             CONFIG = getConfig(DEFAULTS);
         }
-        if (ACTIVE === null) {
-            ACTIVE = CONFIG.tvMode ? "tv" : "def";
-        }
-        CONFIG[ACTIVE][key] = value;
+        CONFIG.def[key] = value;
         saveConfig(CONFIG);
         document.dispatchEvent(new CustomEvent(key, { detail: value }));
     },
@@ -73,33 +75,15 @@ const ConfigManager = {
         if (CONFIG === null) {
             CONFIG = getConfig(DEFAULTS);
         }
-        if (ACTIVE === null) {
-            ACTIVE = CONFIG.tvMode ? "tv" : "def";
-        }
         return CONFIG[key];
     },
     setGlobal<K extends keyof Config>(key: K, value: Config[K]) {
         if (CONFIG === null) {
             CONFIG = getConfig(DEFAULTS);
         }
-        if (ACTIVE === null) {
-            ACTIVE = CONFIG.tvMode ? "tv" : "def";
-        }
         CONFIG[key] = value;
         saveConfig(CONFIG);
         document.dispatchEvent(new CustomEvent(key, { detail: value }));
-    },
-    getMode() {
-        if (CONFIG === null) {
-            CONFIG = getConfig(DEFAULTS);
-        }
-        if (ACTIVE === null) {
-            ACTIVE = CONFIG.tvMode ? "tv" : "def";
-        }
-        return ACTIVE;
-    },
-    setMode(modeValue: "tv" | "def") {
-        ACTIVE = modeValue;
     },
     resetSettings(key: keyof Settings | null = null, isGlobal = false) {
         if (CONFIG === null) {
@@ -108,13 +92,10 @@ const ConfigManager = {
         if (isGlobal) {
             CONFIG = cloneDefaults();
         } else {
-            if (ACTIVE === null) {
-                ACTIVE = CONFIG.tvMode ? "tv" : "def";
-            }
             if (key === null) {
-                CONFIG[ACTIVE] = mergeKnownValues(undefined, DEFAULTS[ACTIVE]);
+                CONFIG.def = mergeKnownValues(undefined, DEFAULTS.def);
             } else {
-                resetModeSetting(CONFIG, ACTIVE, key);
+                resetSetting(CONFIG, key);
             }
         }
         saveConfig(CONFIG);

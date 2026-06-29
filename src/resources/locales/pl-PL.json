@@ -1,27 +1,8 @@
 {
     "langName": "Polski",
-    "context": {
-        "queue": "Odtwarzanie z kolejki",
-        "track": "Odtwarzanie utworu",
-        "album": "Odtwarzanie z albumu",
-        "artist": "Odtwarzanie z artysty",
-        "playlist": "Odtwarzanie z playlisty",
-        "playlistFolder": "Odtwarzanie z folderu playlisty",
-        "search": "Odtwarzanie z wyszukiwania",
-        "searchDest": "Utwory",
-        "collection": "Odtwarzanie z kolekcji",
-        "likedSongs": "Polubione utwory",
-        "trackRadio": "Radio utworu",
-        "artistRadio": "Radio artysty",
-        "albumRadio": "Radio albumu",
-        "playlistRadio": "Radio playlisty"
-    },
     "upnext": "NASTĘPNY",
     "unknownArtist": "Nieznany artysta",
     "settings": {
-        "switchToTV": "Przełącz na tryb TV",
-        "switchToFullscreen": "Przełącz na tryb domyślny",
-        "tvModeConfig": "Konfiguracja trybu TV",
         "fullscreenConfig": "Konfiguracja pełnego ekranu",
         "exit": "Wyjdź",
         "pluginSettings": "Ustawienia wtyczki",
@@ -32,44 +13,20 @@
             "setting": "Automatyczne uruchamianie (przy starcie Spotify)",
             "description": "**Ograniczenie:** Okno Spotify nie może przejść w tryb pełnoekranowy podczas automatycznego uruchamiania.",
             "never": "Nigdy (Domyślnie)",
-            "default": "Otwórz tryb domyślny",
-            "tvmode": "Otwórz tryb TV",
-            "lastused": "Ostatnio używany tryb"
+            "default": "Otwórz tryb domyślny"
         },
         "activationTypes": {
             "setting": "Metody aktywacji",
-            "description": "Wybierz metody aktywacji wtyczki. Klawisze <kbd>F</kbd> i <kbd>T</kbd> lub przyciski na górnym i dolnym pasku.",
             "both": "Przyciski i skróty klawiszowe",
             "btns": "Tylko przyciski",
             "keys": "Tylko skróty klawiszowe"
-        },
-        "buttonActivation": {
-            "setting": "Dostosuj przyciski",
-            "description": "Wybierz przyciski aktywacji, na górnym pasku (*Tryb TV*) i dolnym pasku (*Tryb domyślny*).",
-            "both": "Przyciski dla obu",
-            "tv": "Tylko przycisk trybu TV",
-            "def": "Tylko przycisk trybu domyślnego"
-        },
-        "keyActivation": {
-            "setting": "Dostosuj klawisze",
-            "description": "Wybierz klawisze aktywacji. <kbd>F</kbd> dla *Trybu domyślnego* i <kbd>T</kbd> dla *Trybu TV*",
-            "both": "Klawisze dla obu",
-            "tv": "Tylko klawisz trybu TV",
-            "def": "Tylko klawisz trybu domyślnego"
         },
         "lyricsHeader": "Ustawienia tekstu",
         "lyrics": "Tekst",
         "lyricsDescription": [
             "**Uwaga:** Korzysta z wbudowanych tekstów Spotify, jeśli są dostępne."
         ],
-        "lyricsAlignment": {
-            "setting": "Wyrównanie tekstu",
-            "left": "Lewo",
-            "center": "Środek",
-            "right": "Prawo"
-        },
         "autoHideLyrics": "Automatycznie ukryj tekst (gdy niedostępny)",
-        "lyricsAnimationTempo": "Tempo animacji tekstu",
         "generalHeader": "Ustawienia ogólne",
         "progressBar": "Pasek postępu",
         "playerControls": "Sterowanie odtwarzaczem",
@@ -82,9 +39,7 @@
             "always": "Zawsze",
             "date": "Z datą wydania"
         },
-        "showAllArtists": "Pokaż wszystkich artystów",
         "icons": "Ikony",
-        "songChangeAnimation": "Animacja zmiany utworu",
         "fullscreen": "Pełny ekran",
         "extraHeader": "Dodatkowe funkcje",
         "backgroundChoice": {
@@ -99,33 +54,16 @@
             "animatedArt": "Animowana okładka (Eksperymentalne)",
             "artist": "Zdjęcie artysty"
         },
-        "sidebarQueue": "Kolejka na pasku bocznym (zastępuje przycisk tekstu)",
-        "sidebarQueueDescription": [
-            "Przełącz kolejkę na pasku bocznym za pomocą <kbd>Q</kbd> lub przycisku na dodatkowym pasku.",
-            "Upewnij się, że włączyłeś ustawienie w funkcjach eksperymentalnych."
-        ],
-        "extraControls": "Dodatkowe sterowanie",
         "upnextDisplay": "Wyświetlanie Następnego",
         "contextDisplay": {
-            "setting": "Wyświetlanie kontekstu",
             "always": "Zawsze",
             "never": "Nigdy",
             "mouse": "Przy ruchu myszy"
         },
         "volumeDisplay": {
-            "setting": "Pasek głośności",
-            "description": [
-                "W trybie `Inteligentnym` pasek pojawia się, gdy:",
-                " - przesuniesz mysz na lewą stronę.",
-                " - zmieni się głośność."
-            ],
             "always": "Zawsze",
             "never": "Nigdy",
             "smart": "Inteligentny"
-        },
-        "overviewDisplay": {
-            "setting": "Wyświetlanie przeglądu",
-            "description": "Pokaż krótką kartę przeglądu z czasem i sterowaniem"
         },
         "appearanceHeader": "Zaawansowane/Wygląd",
         "appearanceSubHeader": "*(Zmieniaj tylko jeśli wiesz, co robisz!)*",
@@ -153,18 +91,10 @@
         "verticalMonitorSupportDescription": "Włącz dla monitorów pionowych. Tekst będzie na dole, jeśli wysokość jest większa niż szerokość.",
         "backAnimationTime": "Czas animacji tła (Obraz)",
         "animationSpeed": "⭐ Prędkość animacji (Animowane)",
-        "upnextScroll": {
-            "setting": "Animacja przewijania Następnego",
-            "mq": "Marquee/Przewijanie",
-            "sp": "Spotify/Tłumaczenie"
-        },
         "upnextTime": "Czas wyświetlania Następnego",
         "backgroundBlur": "Rozmycie tła",
         "backgroundBrightness": "Jasność tła",
-        "aboutHeader": "O programie",
-        "configReset": "Zresetuj konfigurację",
-        "reload": "Przeładuj klienta"
+        "configReset": "Zresetuj konfigurację"
     },
-    "tvBtnDesc": "Tryb TV",
     "fullscreenBtnDesc": "Pełny ekran"
 }
