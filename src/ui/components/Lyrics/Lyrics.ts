@@ -33,7 +33,8 @@ type KaraokeWordRenderState = {
     effectiveDuration: number;
     peakGlow: number;
     releaseDuration: number;
-    animations: Animation[];
+    animation: Animation | null;
+    visualState: number;
 };
 type TimedKaraokeSegment = {
     text: string;
@@ -54,6 +55,7 @@ export class Lyrics {
     private static readonly RETRY_DELAYS_MS = [0, 900, 1800, 3200];
     private static readonly REFETCH_DELAYS_MS = [15000, 45000, 120000];
     private static readonly PREFETCH_WINDOW_MS = 10000;
+    private static readonly LINE_RENDER_OVERSCAN = 0.5;
     private static readonly spotifyRequests = new Map<string, Promise<LyricLine[]>>();
     private static readonly enhancedRequests = new Map<string, Promise<LyricLine[]>>();
     private static container: HTMLElement | null = null;
@@ -835,7 +837,8 @@ export class Lyrics {
                         effectiveDuration,
                         peakGlow,
                         releaseDuration: Math.max(700, peakGlow * 1000),
-                        animations: [],
+                        animation: null,
+                        visualState: 0,
                     },
                 ];
             });
@@ -879,13 +882,14 @@ export class Lyrics {
     private static resetKaraokeLine(lineIndex: number) {
         if (lineIndex < 0) return;
         this.karaokeWordsByLine[lineIndex]?.forEach((word) => {
-            word.animations.forEach((animation) => animation.cancel());
-            word.animations = [];
+            word.animation?.cancel();
+            word.animation = null;
             word.node.classList.remove("active", "finished", "glowing");
             word.node.style.removeProperty("--karaoke-progress");
             word.node.style.removeProperty("--karaoke-lift");
             word.node.style.removeProperty("--karaoke-scale");
             word.node.style.removeProperty("--karaoke-glow");
+            word.visualState = 0;
         });
         if (this.karaokeAnimationLine === lineIndex) {
             this.karaokeAnimationLine = -1;
@@ -894,7 +898,9 @@ export class Lyrics {
     }
 
     private static scheduleKaraokeLine(progress: number, isPlaying: boolean) {
-        this.cancelKaraokeAnimations();
+        if (this.karaokeAnimationLine >= 0) {
+            this.resetKaraokeLine(this.karaokeAnimationLine);
+        }
         const words = this.karaokeWordsByLine[this.activeIndex];
         const lineTime = this.lines[this.activeIndex]?.time;
         if (!words?.length || lineTime === null || lineTime === undefined) return;
@@ -903,24 +909,16 @@ export class Lyrics {
         const lineProgress = Math.max(0, progress - lineTime);
         words.forEach((word) => {
             const delay = Math.max(0, word.time - lineTime);
-            const motion = word.node.animate(this.buildKaraokeMotionKeyframes(), {
-                delay,
-                duration: word.effectiveDuration,
-                fill: "both",
-                easing: "linear",
-            });
-            const glow = word.node.animate(this.buildKaraokeGlowKeyframes(word), {
+            const animation = word.node.animate(this.buildKaraokeKeyframes(word), {
                 delay,
                 duration: word.effectiveDuration + word.releaseDuration,
                 fill: "both",
                 easing: "linear",
             });
-            word.animations = [motion, glow];
-            word.animations.forEach((animation) => {
-                animation.pause();
-                animation.currentTime = lineProgress;
-                if (isPlaying) animation.play();
-            });
+            word.animation = animation;
+            animation.pause();
+            animation.currentTime = lineProgress;
+            if (isPlaying) animation.play();
         });
         this.karaokeAnimationLine = this.activeIndex;
         this.karaokeAnimationsPlaying = isPlaying;
@@ -939,11 +937,11 @@ export class Lyrics {
         if (!shouldResync) return;
 
         words.forEach((word) => {
-            word.animations.forEach((animation) => {
-                animation.pause();
-                animation.currentTime = expectedTime;
-                if (isPlaying) animation.play();
-            });
+            const animation = word.animation;
+            if (!animation) return;
+            animation.pause();
+            animation.currentTime = expectedTime;
+            if (isPlaying) animation.play();
         });
         this.karaokeAnimationsPlaying = isPlaying;
     }
@@ -951,48 +949,43 @@ export class Lyrics {
     private static updateKaraokeWordClasses(words: KaraokeWordRenderState[], progress: number) {
         words.forEach((word) => {
             const active = progress >= word.time && progress < word.effectiveEnd;
-            const releasing =
-                progress >= word.effectiveEnd &&
-                progress < word.effectiveEnd + word.releaseDuration;
-            word.node.classList.toggle("active", active);
-            word.node.classList.toggle("finished", progress >= word.effectiveEnd);
-            word.node.classList.toggle("glowing", active || releasing);
+            const finished = progress >= word.effectiveEnd;
+            const releasing = finished && progress < word.effectiveEnd + word.releaseDuration;
+            const visualState =
+                (active ? 1 : 0) | (finished ? 2 : 0) | (active || releasing ? 4 : 0);
+            const changed = word.visualState ^ visualState;
+            if (!changed) return;
+            if (changed & 1) word.node.classList.toggle("active", active);
+            if (changed & 2) word.node.classList.toggle("finished", finished);
+            if (changed & 4) word.node.classList.toggle("glowing", active || releasing);
+            word.visualState = visualState;
         });
     }
 
-    private static buildKaraokeMotionKeyframes() {
-        return Array.from({ length: 21 }, (_, index) => {
+    private static buildKaraokeKeyframes(word: KaraokeWordRenderState) {
+        const totalDuration = word.effectiveDuration + word.releaseDuration;
+        const activeOffset = word.effectiveDuration / totalDuration;
+        const keyframes = Array.from({ length: 21 }, (_, index) => {
             const progress = index / 20;
             const eased = progress * progress * (3 - 2 * progress);
             const lift = 0.05 + (-0.07 - 0.05) * eased;
             const scale = 0.998 + (1.012 - 0.998) * eased;
             return {
-                offset: progress,
+                offset: progress * activeOffset,
                 "--karaoke-progress": `${progress * 100}`,
                 "--karaoke-lift": `${lift}em`,
                 "--karaoke-scale": `${scale}`,
+                "--karaoke-glow": `${word.peakGlow * progress}`,
             } as Keyframe;
         });
-    }
-
-    private static buildKaraokeGlowKeyframes(word: KaraokeWordRenderState) {
-        const totalDuration = word.effectiveDuration + word.releaseDuration;
-        const activeOffset = word.effectiveDuration / totalDuration;
-        const keyframes: Keyframe[] = [
-            {
-                offset: 0,
-                "--karaoke-glow": "0",
-            } as Keyframe,
-            {
-                offset: activeOffset,
-                "--karaoke-glow": `${word.peakGlow}`,
-            } as Keyframe,
-        ];
         for (let index = 1; index <= 10; index++) {
             const releaseProgress = index / 10;
             const eased = releaseProgress * releaseProgress * (3 - 2 * releaseProgress);
             keyframes.push({
                 offset: activeOffset + (1 - activeOffset) * releaseProgress,
+                "--karaoke-progress": "100",
+                "--karaoke-lift": "-0.07em",
+                "--karaoke-scale": "1.012",
                 "--karaoke-glow": `${word.peakGlow * (1 - eased)}`,
             } as Keyframe);
         }
@@ -1024,11 +1017,10 @@ export class Lyrics {
     }
 
     private static cancelKaraokeAnimations() {
-        this.karaokeWordsByLine.forEach((words) => {
-            words.forEach((word) => {
-                word.animations.forEach((animation) => animation.cancel());
-                word.animations = [];
-            });
+        const activeWords = this.karaokeWordsByLine[this.karaokeAnimationLine];
+        activeWords?.forEach((word) => {
+            word.animation?.cancel();
+            word.animation = null;
         });
         this.karaokeAnimationLine = -1;
         this.karaokeAnimationsPlaying = false;
@@ -1140,6 +1132,11 @@ export class Lyrics {
         this.lineNodes.forEach((node, idx) => {
             const t = transforms[idx];
             if (!t) return;
+            const scaledHeight = (this.lineHeights[idx] || fontSize) * t.scale;
+            const overscan = containerHeight * this.LINE_RENDER_OVERSCAN;
+            const outsideViewport =
+                t.top + scaledHeight < -overscan || t.top > containerHeight + overscan;
+            node.classList.toggle("rnp-lyrics-line-outside", outsideViewport);
             const duration = skipAnimation ? 0 : 520;
             node.style.transitionDuration = `${duration}ms`;
             node.style.transitionDelay = `${skipAnimation ? 0 : t.delay}ms`;

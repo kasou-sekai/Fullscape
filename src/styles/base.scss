@@ -242,12 +242,19 @@
             width: calc(100% - 60px - var(--lyrics-left-bleed));
             max-width: calc(100% - 60px - var(--lyrics-left-bleed));
             box-sizing: border-box;
-            will-change: transform, filter, opacity;
             transition:
                 transform 0.5s var(--lyric-timing-function),
                 filter 0.5s ease,
                 opacity 0.5s ease;
             opacity: 0.55;
+        }
+        .rnp-lyrics-line:not(.rnp-lyrics-line-outside) {
+            will-change: transform, filter, opacity;
+        }
+        .rnp-lyrics-line.rnp-lyrics-line-outside {
+            visibility: hidden;
+            pointer-events: none;
+            transition: none !important;
         }
         .rnp-lyrics-line > div {
             line-height: 1.32;
@@ -310,10 +317,10 @@
             vertical-align: baseline;
             transform: translateY(var(--karaoke-lift, 0em)) scale(var(--karaoke-scale, 1));
             transform-origin: center bottom;
+            transition: color 0.2s ease;
+        }
+        .rnp-lyrics-line.active .rnp-karaoke-word {
             will-change: transform;
-            transition:
-                color 0.2s ease,
-                transform 0.08s linear;
         }
         .rnp-karaoke-word > span {
             background: linear-gradient(
