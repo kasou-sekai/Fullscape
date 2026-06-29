@@ -47,6 +47,12 @@ type KaraokeWordRenderState = {
     releaseDuration: number;
     animations: Animation[];
 };
+type TimedKaraokeSegment = {
+    text: string;
+    time: number;
+    duration: number;
+    start: number;
+};
 
 export class Lyrics {
     private static readonly REQUEST_TIMEOUT_MS = 12000;
@@ -507,25 +513,38 @@ export class Lyrics {
         showFurigana: boolean,
         furiganaContext?: FuriganaContext | null,
     ) {
-        const groups: string[] = [];
-        let group = "";
-        words.forEach((word) => {
-            const segments = this.splitTimedKaraokeWord(word);
-            segments.forEach((segment) => {
-                group += this.renderKaraokeWordSegment(
-                    segment.text,
-                    segment.time,
-                    segment.duration,
-                    showFurigana,
-                    furiganaContext,
-                );
-                if (!this.hasPreferredBreakAtEnd(segment.text)) return;
-                groups.push(group);
-                group = "";
-            });
+        const text = words.map((word) => word.text).join("");
+        const wordStarts = this.getSemanticWordStarts(text);
+        const segments = this.splitKaraokeSegmentsAtOffsets(
+            words.flatMap((word) => this.splitTimedKaraokeWord(word)),
+            wordStarts,
+        );
+        const phraseGroups: string[] = [];
+        let phrase = "";
+        let semanticWord = "";
+
+        const flushSemanticWord = () => {
+            if (!semanticWord) return;
+            phrase += `<span class="rnp-karaoke-semantic-word">${semanticWord}</span>`;
+            semanticWord = "";
+        };
+        segments.forEach((segment) => {
+            if (wordStarts.has(segment.start)) flushSemanticWord();
+            semanticWord += this.renderKaraokeWordSegment(
+                segment.text,
+                segment.time,
+                segment.duration,
+                showFurigana,
+                furiganaContext,
+            );
+            if (!this.hasPreferredBreakAtEnd(segment.text)) return;
+            flushSemanticWord();
+            phraseGroups.push(phrase);
+            phrase = "";
         });
-        if (group) groups.push(group);
-        return groups
+        flushSemanticWord();
+        if (phrase) phraseGroups.push(phrase);
+        return phraseGroups
             .map(
                 (content) =>
                     `<span class="rnp-lyrics-break-segment rnp-karaoke-break-segment">${content}</span>`,
@@ -552,6 +571,77 @@ export class Lyrics {
             offset += duration;
             return segment;
         });
+    }
+
+    private static getSemanticWordStarts(text: string) {
+        const starts = new Set<number>();
+        if (!("Segmenter" in Intl)) return starts;
+        try {
+            const segmenter = new Intl.Segmenter(this.getSegmentationLocale(text), {
+                granularity: "word",
+            });
+            let foundFirstWord = false;
+            for (const segment of segmenter.segment(text)) {
+                if (!segment.isWordLike) continue;
+                if (foundFirstWord) starts.add(segment.index);
+                foundFirstWord = true;
+            }
+        } catch {
+            // Keep the punctuation-based wrapping fallback on older Chromium builds.
+        }
+        return starts;
+    }
+
+    private static getSegmentationLocale(text: string) {
+        if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return "ja";
+        if (/\p{Script=Hangul}/u.test(text)) return "ko";
+        if (/\p{Script=Thai}/u.test(text)) return "th";
+        if (/\p{Script=Han}/u.test(text)) return "zh";
+        return undefined;
+    }
+
+    private static splitKaraokeSegmentsAtOffsets(
+        segments: Array<Omit<TimedKaraokeSegment, "start">>,
+        splitOffsets: Set<number>,
+    ) {
+        const result: TimedKaraokeSegment[] = [];
+        let globalOffset = 0;
+
+        segments.forEach((segment) => {
+            const segmentStart = globalOffset;
+            const segmentEnd = segmentStart + segment.text.length;
+            const localOffsets = Array.from(splitOffsets)
+                .filter((offset) => offset > segmentStart && offset < segmentEnd)
+                .map((offset) => offset - segmentStart)
+                .sort((first, second) => first - second);
+            const boundaries = [0, ...localOffsets, segment.text.length];
+            const texts = boundaries
+                .slice(0, -1)
+                .map((start, index) => segment.text.slice(start, boundaries[index + 1]))
+                .filter(Boolean);
+            const weights = texts.map((text) => this.getTextTimingWeight(text));
+            const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+            let timeOffset = 0;
+            let textOffset = 0;
+
+            texts.forEach((text, index) => {
+                const remaining = Math.max(0, segment.duration - timeOffset);
+                const duration =
+                    index === texts.length - 1
+                        ? remaining
+                        : (segment.duration * weights[index]) / totalWeight;
+                result.push({
+                    text,
+                    time: segment.time + timeOffset,
+                    duration,
+                    start: segmentStart + textOffset,
+                });
+                timeOffset += duration;
+                textOffset += text.length;
+            });
+            globalOffset = segmentEnd;
+        });
+        return result;
     }
 
     private static hasPreferredBreakAtEnd(text: string) {

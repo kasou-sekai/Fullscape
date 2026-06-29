@@ -359,6 +359,11 @@
         .rnp-karaoke-break-segment {
             white-space: break-spaces;
         }
+        .rnp-karaoke-semantic-word {
+            display: inline-block;
+            max-width: 100%;
+            white-space: break-spaces;
+        }
         .rnp-karaoke-word {
             display: inline-block;
             margin: 0;
