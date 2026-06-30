@@ -274,6 +274,22 @@
             word-break: keep-all;
             overflow-wrap: normal;
         }
+        .rnp-lyrics-has-furigana {
+            line-height: 1.55 !important;
+            padding-top: 0.12em;
+        }
+        .rnp-lyrics-has-furigana ruby {
+            ruby-align: center;
+            ruby-position: over;
+        }
+        .rnp-lyrics-has-furigana rt {
+            color: var(--secondary-color);
+            font-size: 0.42em;
+            font-weight: 500;
+            line-height: 1;
+            opacity: 0.86;
+            text-shadow: none;
+        }
         .rnp-lyrics-break-segment {
             display: inline-block;
             max-width: 100%;
@@ -335,6 +351,11 @@
             color: transparent;
         }
         .rnp-karaoke-word > span rt {
+            color: var(--secondary-color);
+            background: none;
+            -webkit-text-fill-color: var(--secondary-color);
+        }
+        .rnp-karaoke-ruby > rt {
             color: var(--secondary-color);
             background: none;
             -webkit-text-fill-color: var(--secondary-color);
@@ -613,8 +634,7 @@
 
     #fsd-background-debug.beat-active .fsd-debug-beat-dot {
         background: #63d2ff;
-        box-shadow: 0 0 calc(5px + var(--debug-beat-strength) * 10px)
-            rgba(99, 210, 255, 0.9);
+        box-shadow: 0 0 calc(5px + var(--debug-beat-strength) * 10px) rgba(99, 210, 255, 0.9);
     }
 
     .fsd-debug-meter {

@@ -17,6 +17,8 @@ import {
     setCachedLyrics,
 } from "../../../services/lyrics-cache";
 import type { LyricsCacheKind } from "../../../services/lyrics-cache";
+import { parseFuriganaMarkup } from "../../../utils/furigana";
+import type { FuriganaAnnotation } from "../../../utils/furigana";
 
 type LyricLine = EnhancedLyricLine;
 type LyricsTrack = TrackInfo & {
@@ -488,9 +490,13 @@ export class Lyrics {
     private static renderLineContent(line: LyricLine) {
         const showKaraoke = Boolean(CFM.get("karaokeLyrics")) && Boolean(line.words?.length);
         const words = line.words ?? [];
+        const furigana = parseFuriganaMarkup(line.text, line.furigana);
+        const karaokeText = words.map((word) => word.text).join("");
+        const annotations = karaokeText === furigana.text ? furigana.annotations : [];
+        const furiganaClass = annotations.length ? " rnp-lyrics-has-furigana" : "";
         const original = showKaraoke
-            ? `<div class="rnp-lyrics-line-karaoke">${this.renderKaraokeLine(words)}</div>`
-            : `<div class="rnp-lyrics-line-original">${this.formatLyricText(line.text)}</div>`;
+            ? `<div class="rnp-lyrics-line-karaoke${furiganaClass}">${this.renderKaraokeLine(words, annotations)}</div>`
+            : `<div class="rnp-lyrics-line-original${furigana.annotations.length ? " rnp-lyrics-has-furigana" : ""}">${this.formatLyricText(furigana.text, furigana.annotations)}</div>`;
 
         const romanization =
             CFM.get("showLyricsRomanization") && line.romanization
@@ -504,16 +510,31 @@ export class Lyrics {
         return `${original}${romanization}${translation}`;
     }
 
-    private static renderKaraokeLine(words: NonNullable<LyricLine["words"]>) {
+    private static renderKaraokeLine(
+        words: NonNullable<LyricLine["words"]>,
+        annotations: FuriganaAnnotation[],
+    ) {
         const text = words.map((word) => word.text).join("");
         const wordStarts = this.getSemanticWordStarts(text);
+        annotations.forEach((annotation) => {
+            for (const offset of wordStarts) {
+                if (offset > annotation.start && offset < annotation.end) {
+                    wordStarts.delete(offset);
+                }
+            }
+        });
+        const splitOffsets = new Set([
+            ...wordStarts,
+            ...annotations.flatMap((annotation) => [annotation.start, annotation.end]),
+        ]);
         const segments = this.splitKaraokeSegmentsAtOffsets(
             words.flatMap((word) => this.splitTimedKaraokeWord(word)),
-            wordStarts,
+            splitOffsets,
         );
         const phraseGroups: string[] = [];
         let phrase = "";
         let semanticWord = "";
+        let activeAnnotation: FuriganaAnnotation | null = null;
 
         const flushSemanticWord = () => {
             if (!semanticWord) return;
@@ -527,11 +548,21 @@ export class Lyrics {
                 phrase = "";
             }
             if (wordStarts.has(segment.start)) flushSemanticWord();
+            const annotation = annotations.find((item) => item.start === segment.start);
+            if (annotation) {
+                activeAnnotation = annotation;
+                semanticWord += '<ruby class="rnp-karaoke-ruby">';
+            }
             semanticWord += this.renderKaraokeWordSegment(
                 segment.text,
                 segment.time,
                 segment.duration,
             );
+            const segmentEnd = segment.start + segment.text.length;
+            if (activeAnnotation && segmentEnd >= activeAnnotation.end) {
+                semanticWord += `<rt>${this.escapeHtml(activeAnnotation.reading)}</rt></ruby>`;
+                activeAnnotation = null;
+            }
             if (!this.hasPreferredBreakAtEnd(segment.text)) return;
             flushSemanticWord();
             phraseGroups.push(phrase);
@@ -578,10 +609,9 @@ export class Lyrics {
             let foundFirstWord = false;
             for (const segment of segmenter.segment(text)) {
                 if (!segment.isWordLike) continue;
-                const followsOpeningQuote =
-                    /[“‘「『《〈«‹][\p{White_Space}\u200b\ufeff]*$/u.test(
-                        text.slice(0, segment.index),
-                    );
+                const followsOpeningQuote = /[“‘「『《〈«‹][\p{White_Space}\u200b\ufeff]*$/u.test(
+                    text.slice(0, segment.index),
+                );
                 if (foundFirstWord && !followsOpeningQuote) starts.add(segment.index);
                 foundFirstWord = true;
             }
@@ -658,12 +688,11 @@ export class Lyrics {
     }
 
     private static splitLyricTextAtPreferredBreaks(text: string) {
-        const trailingBreakSegments =
-            text
-                .match(
-                    /.*?(?:[\p{White_Space}\u200b\ufeff]+|[,.;:!?，。！？、；：…~～\-‐‑‒–—―/\\|)\]）】」』》〉]+|$)/gu,
-                )
-                ?.filter(Boolean) ?? [text];
+        const trailingBreakSegments = text
+            .match(
+                /.*?(?:[\p{White_Space}\u200b\ufeff]+|[,.;:!?，。！？、；：…~～\-‐‑‒–—―/\\|)\]）】」』》〉]+|$)/gu,
+            )
+            ?.filter(Boolean) ?? [text];
         return trailingBreakSegments.flatMap((segment) =>
             segment.split(/(?=[“‘「『《〈«‹])/u).filter(Boolean),
         );
@@ -686,12 +715,19 @@ export class Lyrics {
             .replace(/'/g, "&#039;");
     }
 
-    private static formatLyricText(text: string) {
-        return this.stripInlineFurigana(text);
+    private static formatLyricText(text: string, annotations: FuriganaAnnotation[] = []) {
+        return this.formatPlainLyricText(text, annotations);
     }
 
-    private static formatPlainLyricText(text: string) {
+    private static formatPlainLyricText(text: string, annotations: FuriganaAnnotation[] = []) {
         const wordStarts = this.getSemanticWordStarts(text);
+        annotations.forEach((annotation) => {
+            for (const offset of wordStarts) {
+                if (offset > annotation.start && offset < annotation.end) {
+                    wordStarts.delete(offset);
+                }
+            }
+        });
         let globalOffset = 0;
         return this.splitLyricTextAtPreferredBreaks(text)
             .map((segment) => {
@@ -701,28 +737,34 @@ export class Lyrics {
                     .filter((offset) => offset > segmentStart && offset < segmentEnd)
                     .map((offset) => offset - segmentStart)
                     .sort((first, second) => first - second);
-                const boundaries = [0, ...localStarts, segment.length];
+                const annotationBoundaries = annotations
+                    .flatMap((annotation) => [annotation.start, annotation.end])
+                    .filter((offset) => offset > segmentStart && offset < segmentEnd)
+                    .map((offset) => offset - segmentStart);
+                const boundaries = Array.from(
+                    new Set([0, ...localStarts, ...annotationBoundaries, segment.length]),
+                ).sort((first, second) => first - second);
                 const semanticWords = boundaries
                     .slice(0, -1)
-                    .map((start, index) => segment.slice(start, boundaries[index + 1]))
-                    .filter(Boolean)
-                    .map(
-                        (word) =>
-                            `<span class="rnp-lyrics-semantic-word">${this.escapeHtml(word)}</span>`,
-                    )
+                    .map((start, index) => {
+                        const end = boundaries[index + 1];
+                        const word = segment.slice(start, end);
+                        if (!word) return "";
+                        const absoluteStart = segmentStart + start;
+                        const absoluteEnd = segmentStart + end;
+                        const annotation = annotations.find(
+                            (item) => item.start === absoluteStart && item.end === absoluteEnd,
+                        );
+                        const content = annotation
+                            ? `<ruby>${this.escapeHtml(word)}<rt>${this.escapeHtml(annotation.reading)}</rt></ruby>`
+                            : this.escapeHtml(word);
+                        return `<span class="rnp-lyrics-semantic-word">${content}</span>`;
+                    })
                     .join("");
                 globalOffset = segmentEnd;
                 return `<span class="rnp-lyrics-break-segment">${semanticWords}</span>`;
             })
             .join("<wbr>");
-    }
-
-    private static stripInlineFurigana(text: string) {
-        const plainText = text
-            .replace(/｜([^《》]+?)《[ぁ-ゖァ-ヺーゝゞヽヾ]+?》/gu, "$1")
-            .replace(/([一-龯々〆ヶ]+)《[ぁ-ゖァ-ヺーゝゞヽヾ]+?》/gu, "$1")
-            .replace(/([一-龯々〆ヶ]+)[（(][ぁ-ゖァ-ヺーゝゞヽヾ]+?[）)]/gu, "$1");
-        return this.formatPlainLyricText(plainText);
     }
 
     private static startLoop() {
