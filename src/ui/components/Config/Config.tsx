@@ -411,6 +411,83 @@ export class ConfigManager {
         return section;
     }
 
+    private static createBeatSettings(LOCALE: string) {
+        const strings = translations[LOCALE].settings.beatControls;
+        const section = document.createElement("section");
+        section.classList.add("fsd-beat-settings");
+        section.hidden = !CFM.get("beatBounce");
+        section.append(
+            headerText(strings.header, strings.description),
+            createAdjust(
+                strings.scale.setting,
+                "beatScaleAmount",
+                "%",
+                Number(CFM.get("beatScaleAmount")) * 100,
+                1,
+                0,
+                40,
+                (value) => CFM.set("beatScaleAmount", Number(value) / 100),
+                strings.scale.description,
+            ),
+            createAdjust(
+                strings.warp.setting,
+                "beatWarpAmount",
+                "%",
+                Number(CFM.get("beatWarpAmount")) * 100,
+                1,
+                0,
+                18,
+                (value) => CFM.set("beatWarpAmount", Number(value) / 100),
+                strings.warp.description,
+            ),
+            createAdjust(
+                strings.saturation.setting,
+                "beatSaturationAmount",
+                "%",
+                Number(CFM.get("beatSaturationAmount")) * 100,
+                1,
+                0,
+                60,
+                (value) => CFM.set("beatSaturationAmount", Number(value) / 100),
+                strings.saturation.description,
+            ),
+            createAdjust(
+                strings.speed.setting,
+                "beatSpeedAmount",
+                "%",
+                Number(CFM.get("beatSpeedAmount")) * 100,
+                1,
+                0,
+                60,
+                (value) => CFM.set("beatSpeedAmount", Number(value) / 100),
+                strings.speed.description,
+            ),
+            createAdjust(
+                strings.attack.setting,
+                "beatAttack",
+                "%",
+                Number(CFM.get("beatAttack")) * 100,
+                5,
+                5,
+                100,
+                (value) => CFM.set("beatAttack", Number(value) / 100),
+                strings.attack.description,
+            ),
+            createAdjust(
+                strings.release.setting,
+                "beatRelease",
+                "%",
+                Number(CFM.get("beatRelease")) * 100,
+                1,
+                1,
+                50,
+                (value) => CFM.set("beatRelease", Number(value) / 100),
+                strings.release.description,
+            ),
+        );
+        return section;
+    }
+
     static openConfig(evt: Event | null = null): void {
         evt?.preventDefault();
         const LOCALE = CFM.getGlobal("locale") as Config["locale"];
@@ -574,9 +651,15 @@ export class ConfigManager {
             this.createToggle(
                 translations[LOCALE].settings.beatBounce,
                 "beatBounce",
-                (value) => this.saveOption("beatBounce", value),
+                (value) => {
+                    const section =
+                        this.configContainer.querySelector<HTMLElement>(".fsd-beat-settings");
+                    if (section) section.hidden = !value;
+                    this.saveOption("beatBounce", value);
+                },
                 translations[LOCALE].settings.beatBounceDescription,
             ),
+            this.createBeatSettings(LOCALE),
             createAdjust(
                 translations[LOCALE].settings.animationSpeed,
                 "animationSpeed",
@@ -606,7 +689,7 @@ export class ConfigManager {
             createAdjust(
                 translations[LOCALE].settings.backgroundBlur,
                 "blurSize",
-                "px",
+                "",
                 CFM.get("blurSize") as Settings["blurSize"],
                 4,
                 0,

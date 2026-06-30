@@ -31,6 +31,12 @@ export type Settings = {
     backAnimationTime: number;
     animationSpeed: number;
     beatBounce: boolean;
+    beatScaleAmount: number;
+    beatWarpAmount: number;
+    beatSaturationAmount: number;
+    beatSpeedAmount: number;
+    beatAttack: number;
+    beatRelease: number;
     upnextTimeToShow: number;
     blurSize: number;
     backgroundBrightness: number;

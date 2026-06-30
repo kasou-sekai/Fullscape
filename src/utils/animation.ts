@@ -21,13 +21,8 @@ let fluidSmoothedWarpPulse = 0;
 const FLUID_RENDER_SCALE = 0.7;
 const FLUID_MOTION_INTERVAL_MS = 80;
 const FLUID_BASE_WARP_INTENSITY = 0.82;
-const FLUID_BEAT_WARP_AMOUNT = 0.08;
 const FLUID_BASE_SCALE = 1.1;
-const FLUID_BEAT_SCALE_AMOUNT = 0.18;
 const FLUID_BASE_SATURATION = 1.45;
-const FLUID_BEAT_SATURATION_AMOUNT = 0.2;
-const FLUID_MOTION_ATTACK = 0.8;
-const FLUID_MOTION_RELEASE = 0.08;
 
 function cancelTransitionAnimation() {
     if (transitionFrameId !== null) {
@@ -217,8 +212,23 @@ function disposeFluidAnimation() {
     fluidSmoothedWarpPulse = 0;
 }
 
-function smoothMotionValue(current: number, target: number) {
-    const rate = target > current ? FLUID_MOTION_ATTACK : FLUID_MOTION_RELEASE;
+function getBeatMotionSettings() {
+    const getValue = (key: keyof Settings, fallback: number, min: number, max: number) => {
+        const value = Number(CFM.get(key));
+        return Math.min(max, Math.max(min, Number.isFinite(value) ? value : fallback));
+    };
+    return {
+        scaleAmount: getValue("beatScaleAmount", 0.18, 0, 0.4),
+        warpAmount: getValue("beatWarpAmount", 0.08, 0, 0.18),
+        saturationAmount: getValue("beatSaturationAmount", 0.2, 0, 0.6),
+        speedAmount: getValue("beatSpeedAmount", 0.2, 0, 0.6),
+        attack: getValue("beatAttack", 0.8, 0.05, 1),
+        release: getValue("beatRelease", 0.08, 0.01, 0.5),
+    };
+}
+
+function smoothMotionValue(current: number, target: number, attack: number, release: number) {
+    const rate = target > current ? attack : release;
     return current + (target - current) * rate;
 }
 
@@ -272,13 +282,23 @@ function syncFluidMotion() {
     const currentTime = Spicetify.Player.getProgress() / 1000;
     const motion = fluidAnalysis
         ? getAudioMotion(fluidAnalysis, currentTime)
-        : { ambientSpeedMultiplier: 1, speedMultiplier: 1, warpPulse: 0 };
+        : { ambientSpeedMultiplier: 1, warpPulse: 0 };
     const beatBounce = Boolean(CFM.get("beatBounce"));
+    const motionSettings = getBeatMotionSettings();
+    const targetSpeedMultiplier =
+        motion.ambientSpeedMultiplier + (beatBounce ? motion.warpPulse * motionSettings.speedAmount : 0);
     fluidSmoothedSpeedMultiplier = smoothMotionValue(
         fluidSmoothedSpeedMultiplier,
-        beatBounce ? motion.speedMultiplier : motion.ambientSpeedMultiplier,
+        Math.min(1.65, Math.max(0.7, targetSpeedMultiplier)),
+        motionSettings.attack,
+        motionSettings.release,
     );
-    fluidSmoothedWarpPulse = smoothMotionValue(fluidSmoothedWarpPulse, motion.warpPulse);
+    fluidSmoothedWarpPulse = smoothMotionValue(
+        fluidSmoothedWarpPulse,
+        motion.warpPulse,
+        motionSettings.attack,
+        motionSettings.release,
+    );
     const baseSpeed = getFluidBaseSpeed();
     const animationSpeed = Math.min(
         3,
@@ -287,12 +307,12 @@ function syncFluidMotion() {
     const effectPulse = beatBounce ? fluidSmoothedWarpPulse : 0;
     const warpIntensity = Math.min(
         1,
-        FLUID_BASE_WARP_INTENSITY + effectPulse * FLUID_BEAT_WARP_AMOUNT,
+        FLUID_BASE_WARP_INTENSITY + effectPulse * motionSettings.warpAmount,
     );
-    const scale = Math.min(1.4, FLUID_BASE_SCALE + effectPulse * FLUID_BEAT_SCALE_AMOUNT);
+    const scale = Math.min(1.5, FLUID_BASE_SCALE + effectPulse * motionSettings.scaleAmount);
     const saturation = Math.min(
-        2,
-        FLUID_BASE_SATURATION + effectPulse * FLUID_BEAT_SATURATION_AMOUNT,
+        2.2,
+        FLUID_BASE_SATURATION + effectPulse * motionSettings.saturationAmount,
     );
     fluidRenderer.setOptions({
         animationSpeed,

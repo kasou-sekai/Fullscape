@@ -137,6 +137,8 @@
         },
         "appearanceHeader": "高级/外观",
         "appearanceSubHeader": "*(不要动除非你知道自己在做什么)*",
+        "backgroundHeader": "流体背景",
+        "backgroundSubHeader": "调整基础流动、节拍响应、切歌过渡、模糊强度和亮度。",
         "backgroundColor": {
             "setting": "纯色背景的颜色配置",
             "vibrant": "Vibrant",
@@ -154,12 +156,40 @@
             "always": "总是",
             "auto": "自动(基于背景)"
         },
-        "backAnimationTime": "背景动画时间",
-        "animationSpeed": "动画速度",
+        "backAnimationTime": "切歌颜色过渡时间",
+        "animationSpeed": "基础流动速度",
         "beatBounce": "节拍弹跳",
         "beatBounceDescription": "Motion 较高时向外延展背景色块，较低时平滑恢复。",
+        "beatControls": {
+            "header": "节拍响应",
+            "description": "以下参数仅在“节拍弹跳”开启时生效。",
+            "scale": {
+                "setting": "向外延展强度",
+                "description": "Motion 较高时，背景色块向外扩张的幅度。"
+            },
+            "warp": {
+                "setting": "色块形变强度",
+                "description": "节拍对流体色块形状的扭曲程度。"
+            },
+            "saturation": {
+                "setting": "颜色增强强度",
+                "description": "节拍触发时增加颜色饱和度的程度。"
+            },
+            "speed": {
+                "setting": "流动加速强度",
+                "description": "节拍触发时临时加快背景流动的程度。"
+            },
+            "attack": {
+                "setting": "扩张响应速度",
+                "description": "数值越高，Motion 上升时响应越快。"
+            },
+            "release": {
+                "setting": "回落恢复速度",
+                "description": "数值越高，Motion 降低后恢复得越快。"
+            }
+        },
         "upnextTime": "下一首提示显示时间",
-        "backgroundBlur": "背景模糊",
+        "backgroundBlur": "背景模糊强度",
         "backgroundBrightness": "背景亮度",
         "configReset": "重置配置"
     },

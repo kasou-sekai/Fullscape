@@ -22,7 +22,6 @@ export type AudioAnalysis = {
 
 export type AudioMotion = {
     ambientSpeedMultiplier: number;
-    speedMultiplier: number;
     warpPulse: number;
 };
 
@@ -136,7 +135,6 @@ export function getAudioMotion(analysis: AudioAnalysis, currentTime: number): Au
     const ambientSpeedMultiplier = clamp(tempoFactor * loudnessFactor, 0.7, 1.65);
     return {
         ambientSpeedMultiplier,
-        speedMultiplier: clamp(ambientSpeedMultiplier + beatPulse * 0.2, 0.7, 1.65),
         warpPulse: beatPulse,
     };
 }
