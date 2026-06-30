@@ -1,15 +1,9 @@
 import CFM from "./config";
-import { Settings } from "../types/fullscreen";
 import Utils from "./utils";
 import { DOM } from "../ui/elements";
 import ColorExtractor from "./colors";
 import WebAPI from "../services/web-api";
-import {
-    animateCanvas,
-    animateColor,
-    animatedRotatedCanvas,
-    modifyIsAnimationRunning,
-} from "./animation";
+import { animatedFluidCanvas, animatedRotatedCanvas, modifyIsAnimationRunning } from "./animation";
 
 export class Background {
     private static updateSequence = 0;
@@ -21,90 +15,21 @@ export class Background {
 
     static async updateBackground(meta: Partial<Record<string, unknown>> = {}, fromResize = false) {
         const sequence = ++this.updateSequence;
-        const previousImg = DOM.backgroundImg.cloneNode() as HTMLImageElement;
-        const settingValue = CFM.get("backgroundChoice") as Settings["backgroundChoice"];
-
-        DOM.back.classList.toggle("animated", settingValue === "animated_album");
-        modifyIsAnimationRunning(settingValue === "animated_album");
-
-        switch (settingValue) {
-            case "dynamic_color": {
-                const nextColor = await Utils.getNextColor(
-                    CFM.get("coloredBackChoice") as Settings["coloredBackChoice"],
-                );
-                if (sequence !== this.updateSequence) return;
-                const imageUrl = Spicetify.Player.data.item?.metadata.image_xlarge_url;
-                void this.updateMainColor(
-                    imageUrl,
-                    meta as Partial<Record<string, string>>,
-                    sequence,
-                );
-                void this.updateThemeColor(imageUrl, sequence);
-                animateColor(nextColor, DOM.back, fromResize);
-                break;
-            }
-            case "static_color": {
-                const imageUrl = Spicetify.Player.data.item?.metadata.image_xlarge_url;
-                void this.updateMainColor(
-                    imageUrl,
-                    meta as Partial<Record<string, string>>,
-                    sequence,
-                );
-                void this.updateThemeColor(imageUrl, sequence);
-                animateColor(
-                    CFM.get("staticBackChoice") as Settings["staticBackChoice"],
-                    DOM.back,
-                    fromResize,
-                );
-                break;
-            }
-            case "artist_art": {
-                const imageUrl = await Utils.getImageAndLoad(
-                    meta as Partial<Record<string, string>>,
-                );
-                if (sequence !== this.updateSequence) return;
-                this.loadBackgroundImage(
-                    imageUrl,
-                    previousImg,
-                    meta as Partial<Record<string, string>>,
-                    sequence,
-                    fromResize,
-                    false,
-                );
-                break;
-            }
-            case "animated_album": {
-                this.loadBackgroundImage(
-                    meta?.image_xlarge_url as string,
-                    previousImg,
-                    meta as Partial<Record<string, string>>,
-                    sequence,
-                    fromResize,
-                    true,
-                );
-                break;
-            }
-            case "album_art":
-            default:
-                this.loadBackgroundImage(
-                    meta?.image_xlarge_url as string,
-                    previousImg,
-                    meta as Partial<Record<string, string>>,
-                    sequence,
-                    fromResize,
-                    false,
-                );
-                break;
-        }
+        DOM.back.classList.add("animated");
+        modifyIsAnimationRunning(true);
+        this.loadBackgroundImage(
+            meta?.image_xlarge_url as string,
+            meta as Partial<Record<string, string>>,
+            sequence,
+            fromResize,
+        );
     }
 
     private static loadBackgroundImage(
         imageUrl: string,
-        previousImg: HTMLImageElement,
         meta: Spicetify.Metadata,
         sequence: number,
         fromResize: boolean,
-        animated: boolean,
     ) {
         if (!imageUrl) return;
         const render = () => {
@@ -113,8 +38,14 @@ export class Background {
                 void this.updateMainColor(imageUrl, meta, sequence);
                 void this.updateThemeColor(imageUrl, sequence);
             }
-            if (animated) animatedRotatedCanvas(DOM.back, DOM.backgroundImg);
-            else animateCanvas(previousImg, DOM.backgroundImg, DOM.back, fromResize);
+            const fluidRendered = animatedFluidCanvas(
+                DOM.back,
+                DOM.fluidBack,
+                DOM.backgroundImg,
+                Spicetify.Player.data.item?.uri ?? "",
+                fromResize,
+            );
+            if (!fluidRendered) animatedRotatedCanvas(DOM.back, DOM.backgroundImg);
         };
 
         DOM.backgroundImg.onload = render;
@@ -158,13 +89,7 @@ export class Background {
 
     //Set main theme color for the display
     static async updateThemeColor(imageURL: string, sequence = this.updateSequence) {
-        if (
-            !(
-                CFM.get("backgroundChoice") == "dynamic_color" &&
-                CFM.get("coloredBackChoice") == "VIBRANT"
-            ) &&
-            (CFM.get("themedButtons") || CFM.get("themedIcons"))
-        ) {
+        if (CFM.get("themedButtons") || CFM.get("themedIcons")) {
             DOM.container.classList.toggle("themed-buttons", Boolean(CFM.get("themedButtons")));
             DOM.container.classList.toggle("themed-icons", Boolean(CFM.get("themedIcons")));
             let themeVibrantColor;

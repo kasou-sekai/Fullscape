@@ -17,6 +17,8 @@ import {
     setCachedLyrics,
 } from "../../../services/lyrics-cache";
 import type { LyricsCacheKind } from "../../../services/lyrics-cache";
+import { parseFuriganaMarkup } from "../../../utils/furigana";
+import type { FuriganaAnnotation } from "../../../utils/furigana";
 
 type LyricLine = EnhancedLyricLine;
 type LyricsTrack = TrackInfo & {
@@ -33,7 +35,8 @@ type KaraokeWordRenderState = {
     effectiveDuration: number;
     peakGlow: number;
     releaseDuration: number;
-    animations: Animation[];
+    animation: Animation | null;
+    visualState: number;
 };
 type TimedKaraokeSegment = {
     text: string;
@@ -54,6 +57,7 @@ export class Lyrics {
     private static readonly RETRY_DELAYS_MS = [0, 900, 1800, 3200];
     private static readonly REFETCH_DELAYS_MS = [15000, 45000, 120000];
     private static readonly PREFETCH_WINDOW_MS = 10000;
+    private static readonly LINE_RENDER_OVERSCAN = 0.5;
     private static readonly spotifyRequests = new Map<string, Promise<LyricLine[]>>();
     private static readonly enhancedRequests = new Map<string, Promise<LyricLine[]>>();
     private static container: HTMLElement | null = null;
@@ -486,9 +490,14 @@ export class Lyrics {
     private static renderLineContent(line: LyricLine) {
         const showKaraoke = Boolean(CFM.get("karaokeLyrics")) && Boolean(line.words?.length);
         const words = line.words ?? [];
+        const furigana = parseFuriganaMarkup(line.text, line.furigana);
+        const visibleAnnotations = CFM.get("showLyricsFurigana") ? furigana.annotations : [];
+        const karaokeText = words.map((word) => word.text).join("");
+        const annotations = karaokeText === furigana.text ? visibleAnnotations : [];
+        const furiganaClass = annotations.length ? " rnp-lyrics-has-furigana" : "";
         const original = showKaraoke
-            ? `<div class="rnp-lyrics-line-karaoke">${this.renderKaraokeLine(words)}</div>`
-            : `<div class="rnp-lyrics-line-original">${this.formatLyricText(line.text)}</div>`;
+            ? `<div class="rnp-lyrics-line-karaoke${furiganaClass}">${this.renderKaraokeLine(words, annotations)}</div>`
+            : `<div class="rnp-lyrics-line-original${visibleAnnotations.length ? " rnp-lyrics-has-furigana" : ""}">${this.formatLyricText(furigana.text, visibleAnnotations)}</div>`;
 
         const romanization =
             CFM.get("showLyricsRomanization") && line.romanization
@@ -502,16 +511,31 @@ export class Lyrics {
         return `${original}${romanization}${translation}`;
     }
 
-    private static renderKaraokeLine(words: NonNullable<LyricLine["words"]>) {
+    private static renderKaraokeLine(
+        words: NonNullable<LyricLine["words"]>,
+        annotations: FuriganaAnnotation[],
+    ) {
         const text = words.map((word) => word.text).join("");
         const wordStarts = this.getSemanticWordStarts(text);
+        annotations.forEach((annotation) => {
+            for (const offset of wordStarts) {
+                if (offset > annotation.start && offset < annotation.end) {
+                    wordStarts.delete(offset);
+                }
+            }
+        });
+        const splitOffsets = new Set([
+            ...wordStarts,
+            ...annotations.flatMap((annotation) => [annotation.start, annotation.end]),
+        ]);
         const segments = this.splitKaraokeSegmentsAtOffsets(
             words.flatMap((word) => this.splitTimedKaraokeWord(word)),
-            wordStarts,
+            splitOffsets,
         );
         const phraseGroups: string[] = [];
         let phrase = "";
         let semanticWord = "";
+        let activeAnnotation: FuriganaAnnotation | null = null;
 
         const flushSemanticWord = () => {
             if (!semanticWord) return;
@@ -525,11 +549,21 @@ export class Lyrics {
                 phrase = "";
             }
             if (wordStarts.has(segment.start)) flushSemanticWord();
+            const annotation = annotations.find((item) => item.start === segment.start);
+            if (annotation) {
+                activeAnnotation = annotation;
+                semanticWord += '<ruby class="rnp-karaoke-ruby">';
+            }
             semanticWord += this.renderKaraokeWordSegment(
                 segment.text,
                 segment.time,
                 segment.duration,
             );
+            const segmentEnd = segment.start + segment.text.length;
+            if (activeAnnotation && segmentEnd >= activeAnnotation.end) {
+                semanticWord += `<rt>${this.escapeHtml(activeAnnotation.reading)}</rt></ruby>`;
+                activeAnnotation = null;
+            }
             if (!this.hasPreferredBreakAtEnd(segment.text)) return;
             flushSemanticWord();
             phraseGroups.push(phrase);
@@ -576,10 +610,9 @@ export class Lyrics {
             let foundFirstWord = false;
             for (const segment of segmenter.segment(text)) {
                 if (!segment.isWordLike) continue;
-                const followsOpeningQuote =
-                    /[“‘「『《〈«‹][\p{White_Space}\u200b\ufeff]*$/u.test(
-                        text.slice(0, segment.index),
-                    );
+                const followsOpeningQuote = /[“‘「『《〈«‹][\p{White_Space}\u200b\ufeff]*$/u.test(
+                    text.slice(0, segment.index),
+                );
                 if (foundFirstWord && !followsOpeningQuote) starts.add(segment.index);
                 foundFirstWord = true;
             }
@@ -656,12 +689,11 @@ export class Lyrics {
     }
 
     private static splitLyricTextAtPreferredBreaks(text: string) {
-        const trailingBreakSegments =
-            text
-                .match(
-                    /.*?(?:[\p{White_Space}\u200b\ufeff]+|[,.;:!?，。！？、；：…~～\-‐‑‒–—―/\\|)\]）】」』》〉]+|$)/gu,
-                )
-                ?.filter(Boolean) ?? [text];
+        const trailingBreakSegments = text
+            .match(
+                /.*?(?:[\p{White_Space}\u200b\ufeff]+|[,.;:!?，。！？、；：…~～\-‐‑‒–—―/\\|)\]）】」』》〉]+|$)/gu,
+            )
+            ?.filter(Boolean) ?? [text];
         return trailingBreakSegments.flatMap((segment) =>
             segment.split(/(?=[“‘「『《〈«‹])/u).filter(Boolean),
         );
@@ -684,12 +716,19 @@ export class Lyrics {
             .replace(/'/g, "&#039;");
     }
 
-    private static formatLyricText(text: string) {
-        return this.stripInlineFurigana(text);
+    private static formatLyricText(text: string, annotations: FuriganaAnnotation[] = []) {
+        return this.formatPlainLyricText(text, annotations);
     }
 
-    private static formatPlainLyricText(text: string) {
+    private static formatPlainLyricText(text: string, annotations: FuriganaAnnotation[] = []) {
         const wordStarts = this.getSemanticWordStarts(text);
+        annotations.forEach((annotation) => {
+            for (const offset of wordStarts) {
+                if (offset > annotation.start && offset < annotation.end) {
+                    wordStarts.delete(offset);
+                }
+            }
+        });
         let globalOffset = 0;
         return this.splitLyricTextAtPreferredBreaks(text)
             .map((segment) => {
@@ -699,28 +738,34 @@ export class Lyrics {
                     .filter((offset) => offset > segmentStart && offset < segmentEnd)
                     .map((offset) => offset - segmentStart)
                     .sort((first, second) => first - second);
-                const boundaries = [0, ...localStarts, segment.length];
+                const annotationBoundaries = annotations
+                    .flatMap((annotation) => [annotation.start, annotation.end])
+                    .filter((offset) => offset > segmentStart && offset < segmentEnd)
+                    .map((offset) => offset - segmentStart);
+                const boundaries = Array.from(
+                    new Set([0, ...localStarts, ...annotationBoundaries, segment.length]),
+                ).sort((first, second) => first - second);
                 const semanticWords = boundaries
                     .slice(0, -1)
-                    .map((start, index) => segment.slice(start, boundaries[index + 1]))
-                    .filter(Boolean)
-                    .map(
-                        (word) =>
-                            `<span class="rnp-lyrics-semantic-word">${this.escapeHtml(word)}</span>`,
-                    )
+                    .map((start, index) => {
+                        const end = boundaries[index + 1];
+                        const word = segment.slice(start, end);
+                        if (!word) return "";
+                        const absoluteStart = segmentStart + start;
+                        const absoluteEnd = segmentStart + end;
+                        const annotation = annotations.find(
+                            (item) => item.start === absoluteStart && item.end === absoluteEnd,
+                        );
+                        const content = annotation
+                            ? `<ruby>${this.escapeHtml(word)}<rt>${this.escapeHtml(annotation.reading)}</rt></ruby>`
+                            : this.escapeHtml(word);
+                        return `<span class="rnp-lyrics-semantic-word">${content}</span>`;
+                    })
                     .join("");
                 globalOffset = segmentEnd;
                 return `<span class="rnp-lyrics-break-segment">${semanticWords}</span>`;
             })
             .join("<wbr>");
-    }
-
-    private static stripInlineFurigana(text: string) {
-        const plainText = text
-            .replace(/｜([^《》]+?)《[ぁ-ゖァ-ヺーゝゞヽヾ]+?》/gu, "$1")
-            .replace(/([一-龯々〆ヶ]+)《[ぁ-ゖァ-ヺーゝゞヽヾ]+?》/gu, "$1")
-            .replace(/([一-龯々〆ヶ]+)[（(][ぁ-ゖァ-ヺーゝゞヽヾ]+?[）)]/gu, "$1");
-        return this.formatPlainLyricText(plainText);
     }
 
     private static startLoop() {
@@ -835,7 +880,8 @@ export class Lyrics {
                         effectiveDuration,
                         peakGlow,
                         releaseDuration: Math.max(700, peakGlow * 1000),
-                        animations: [],
+                        animation: null,
+                        visualState: 0,
                     },
                 ];
             });
@@ -879,13 +925,14 @@ export class Lyrics {
     private static resetKaraokeLine(lineIndex: number) {
         if (lineIndex < 0) return;
         this.karaokeWordsByLine[lineIndex]?.forEach((word) => {
-            word.animations.forEach((animation) => animation.cancel());
-            word.animations = [];
+            word.animation?.cancel();
+            word.animation = null;
             word.node.classList.remove("active", "finished", "glowing");
             word.node.style.removeProperty("--karaoke-progress");
             word.node.style.removeProperty("--karaoke-lift");
             word.node.style.removeProperty("--karaoke-scale");
             word.node.style.removeProperty("--karaoke-glow");
+            word.visualState = 0;
         });
         if (this.karaokeAnimationLine === lineIndex) {
             this.karaokeAnimationLine = -1;
@@ -894,7 +941,9 @@ export class Lyrics {
     }
 
     private static scheduleKaraokeLine(progress: number, isPlaying: boolean) {
-        this.cancelKaraokeAnimations();
+        if (this.karaokeAnimationLine >= 0) {
+            this.resetKaraokeLine(this.karaokeAnimationLine);
+        }
         const words = this.karaokeWordsByLine[this.activeIndex];
         const lineTime = this.lines[this.activeIndex]?.time;
         if (!words?.length || lineTime === null || lineTime === undefined) return;
@@ -903,24 +952,16 @@ export class Lyrics {
         const lineProgress = Math.max(0, progress - lineTime);
         words.forEach((word) => {
             const delay = Math.max(0, word.time - lineTime);
-            const motion = word.node.animate(this.buildKaraokeMotionKeyframes(), {
-                delay,
-                duration: word.effectiveDuration,
-                fill: "both",
-                easing: "linear",
-            });
-            const glow = word.node.animate(this.buildKaraokeGlowKeyframes(word), {
+            const animation = word.node.animate(this.buildKaraokeKeyframes(word), {
                 delay,
                 duration: word.effectiveDuration + word.releaseDuration,
                 fill: "both",
                 easing: "linear",
             });
-            word.animations = [motion, glow];
-            word.animations.forEach((animation) => {
-                animation.pause();
-                animation.currentTime = lineProgress;
-                if (isPlaying) animation.play();
-            });
+            word.animation = animation;
+            animation.pause();
+            animation.currentTime = lineProgress;
+            if (isPlaying) animation.play();
         });
         this.karaokeAnimationLine = this.activeIndex;
         this.karaokeAnimationsPlaying = isPlaying;
@@ -939,11 +980,11 @@ export class Lyrics {
         if (!shouldResync) return;
 
         words.forEach((word) => {
-            word.animations.forEach((animation) => {
-                animation.pause();
-                animation.currentTime = expectedTime;
-                if (isPlaying) animation.play();
-            });
+            const animation = word.animation;
+            if (!animation) return;
+            animation.pause();
+            animation.currentTime = expectedTime;
+            if (isPlaying) animation.play();
         });
         this.karaokeAnimationsPlaying = isPlaying;
     }
@@ -951,48 +992,43 @@ export class Lyrics {
     private static updateKaraokeWordClasses(words: KaraokeWordRenderState[], progress: number) {
         words.forEach((word) => {
             const active = progress >= word.time && progress < word.effectiveEnd;
-            const releasing =
-                progress >= word.effectiveEnd &&
-                progress < word.effectiveEnd + word.releaseDuration;
-            word.node.classList.toggle("active", active);
-            word.node.classList.toggle("finished", progress >= word.effectiveEnd);
-            word.node.classList.toggle("glowing", active || releasing);
+            const finished = progress >= word.effectiveEnd;
+            const releasing = finished && progress < word.effectiveEnd + word.releaseDuration;
+            const visualState =
+                (active ? 1 : 0) | (finished ? 2 : 0) | (active || releasing ? 4 : 0);
+            const changed = word.visualState ^ visualState;
+            if (!changed) return;
+            if (changed & 1) word.node.classList.toggle("active", active);
+            if (changed & 2) word.node.classList.toggle("finished", finished);
+            if (changed & 4) word.node.classList.toggle("glowing", active || releasing);
+            word.visualState = visualState;
         });
     }
 
-    private static buildKaraokeMotionKeyframes() {
-        return Array.from({ length: 21 }, (_, index) => {
+    private static buildKaraokeKeyframes(word: KaraokeWordRenderState) {
+        const totalDuration = word.effectiveDuration + word.releaseDuration;
+        const activeOffset = word.effectiveDuration / totalDuration;
+        const keyframes = Array.from({ length: 21 }, (_, index) => {
             const progress = index / 20;
             const eased = progress * progress * (3 - 2 * progress);
             const lift = 0.05 + (-0.07 - 0.05) * eased;
             const scale = 0.998 + (1.012 - 0.998) * eased;
             return {
-                offset: progress,
+                offset: progress * activeOffset,
                 "--karaoke-progress": `${progress * 100}`,
                 "--karaoke-lift": `${lift}em`,
                 "--karaoke-scale": `${scale}`,
+                "--karaoke-glow": `${word.peakGlow * progress}`,
             } as Keyframe;
         });
-    }
-
-    private static buildKaraokeGlowKeyframes(word: KaraokeWordRenderState) {
-        const totalDuration = word.effectiveDuration + word.releaseDuration;
-        const activeOffset = word.effectiveDuration / totalDuration;
-        const keyframes: Keyframe[] = [
-            {
-                offset: 0,
-                "--karaoke-glow": "0",
-            } as Keyframe,
-            {
-                offset: activeOffset,
-                "--karaoke-glow": `${word.peakGlow}`,
-            } as Keyframe,
-        ];
         for (let index = 1; index <= 10; index++) {
             const releaseProgress = index / 10;
             const eased = releaseProgress * releaseProgress * (3 - 2 * releaseProgress);
             keyframes.push({
                 offset: activeOffset + (1 - activeOffset) * releaseProgress,
+                "--karaoke-progress": "100",
+                "--karaoke-lift": "-0.07em",
+                "--karaoke-scale": "1.012",
                 "--karaoke-glow": `${word.peakGlow * (1 - eased)}`,
             } as Keyframe);
         }
@@ -1024,11 +1060,10 @@ export class Lyrics {
     }
 
     private static cancelKaraokeAnimations() {
-        this.karaokeWordsByLine.forEach((words) => {
-            words.forEach((word) => {
-                word.animations.forEach((animation) => animation.cancel());
-                word.animations = [];
-            });
+        const activeWords = this.karaokeWordsByLine[this.karaokeAnimationLine];
+        activeWords?.forEach((word) => {
+            word.animation?.cancel();
+            word.animation = null;
         });
         this.karaokeAnimationLine = -1;
         this.karaokeAnimationsPlaying = false;
@@ -1140,6 +1175,11 @@ export class Lyrics {
         this.lineNodes.forEach((node, idx) => {
             const t = transforms[idx];
             if (!t) return;
+            const scaledHeight = (this.lineHeights[idx] || fontSize) * t.scale;
+            const overscan = containerHeight * this.LINE_RENDER_OVERSCAN;
+            const outsideViewport =
+                t.top + scaledHeight < -overscan || t.top > containerHeight + overscan;
+            node.classList.toggle("rnp-lyrics-line-outside", outsideViewport);
             const duration = skipAnimation ? 0 : 520;
             node.style.transitionDuration = `${duration}ms`;
             node.style.transitionDelay = `${skipAnimation ? 0 : t.delay}ms`;

@@ -22,12 +22,18 @@
             "btns": "Buttons Only",
             "keys": "Keyboard Shortcuts Only"
         },
+        "debugMode": {
+            "setting": "Debug Mode",
+            "description": "Show lyric diagnostics in settings and visualize background beat responses on the playback screen."
+        },
+        "lyricsDebugHeader": "Lyric Debugging",
         "lyricsHeader": "Lyrics Settings",
         "lyrics": "Lyrics",
         "lyricsDescription": ["**Tip:** Uses Spotify's built-in lyrics when available."],
-        "thirdPartyLyrics": "Enhance Lyrics from NetEase",
+        "thirdPartyLyrics": "Enhance Lyrics from NetEase and QQ Music",
         "showLyricsTranslation": "Show Lyric Translation",
         "showLyricsRomanization": "Show Romanized Lyrics",
+        "showLyricsFurigana": "Show Furigana",
         "karaokeLyrics": "Use Word-by-word Lyrics",
         "refreshLyrics": {
             "setting": "Refresh Lyrics",
@@ -47,7 +53,7 @@
             "translation": "translation",
             "romanization": "romanization",
             "karaoke": "word-by-word",
-            "provider": "NetEase",
+            "provider": "NetEase / QQ Music",
             "candidates": "Candidates",
             "matched": "Matched song",
             "reason": "Details",
@@ -134,8 +140,8 @@
         },
         "appearanceHeader": "Advanced/Appearance",
         "appearanceSubHeader": "*(Only change if you know what you are doing!)*",
-        "backgroundHeader": "Background Modifications",
-        "backgroundSubHeader": "Comes with reasonable defaults, *(Only change if you know what you are doing!)*",
+        "backgroundHeader": "Fluid Background",
+        "backgroundSubHeader": "Tune the base motion, beat response, transition, blur strength, and brightness.",
         "backgroundColor": {
             "setting": "Color Choice (for dynamic colored background)",
             "vibrant": "Vibrant",
@@ -156,10 +162,40 @@
         },
         "verticalMonitorSupport": "Vertical Monitor Support",
         "verticalMonitorSupportDescription": "Enable this if you have a vertical monitor setup. Lyrics will be shown in the bottom, when the window height is greater than the width.",
-        "backAnimationTime": "Background Animation Time (for image background)",
-        "animationSpeed": "⭐ Animation Speed (for animated background)",
+        "backAnimationTime": "Track Color Transition Time",
+        "animationSpeed": "Base Flow Speed",
+        "beatBounce": "Beat-responsive Background",
+        "beatBounceDescription": "Expand color shapes when motion is high and let them settle back when it is low.",
+        "beatControls": {
+            "header": "Beat Response",
+            "description": "These controls apply only while Beat-responsive Background is enabled.",
+            "scale": {
+                "setting": "Expansion Strength",
+                "description": "How far color shapes expand outward at high motion values."
+            },
+            "warp": {
+                "setting": "Shape Distortion",
+                "description": "How strongly beats deform the fluid color shapes."
+            },
+            "saturation": {
+                "setting": "Color Boost",
+                "description": "How much color saturation increases on beats."
+            },
+            "speed": {
+                "setting": "Flow Speed Boost",
+                "description": "How much beats temporarily accelerate the background flow."
+            },
+            "attack": {
+                "setting": "Expansion Response",
+                "description": "Higher values react faster when motion rises."
+            },
+            "release": {
+                "setting": "Return Speed",
+                "description": "Higher values return to the resting state faster when motion falls."
+            }
+        },
         "upnextTime": "Upnext Time to Show",
-        "backgroundBlur": "Background Blur",
+        "backgroundBlur": "Background Blur Strength",
         "backgroundBrightness": "Background Brightness",
         "configReset": "Reset Config"
     },

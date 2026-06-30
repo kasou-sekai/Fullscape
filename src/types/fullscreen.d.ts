@@ -11,9 +11,11 @@ export type Settings = {
     thirdPartyLyrics: boolean;
     showLyricsTranslation: boolean;
     showLyricsRomanization: boolean;
+    showLyricsFurigana: boolean;
     karaokeLyrics: boolean;
     lyricsSize: number;
     autoHideLyrics: boolean;
+    debugMode: boolean;
     progressBarDisplay: "never" | "mousemove" | "always";
     playerControls: "never" | "mousemove" | "always";
     trimTitle: boolean;
@@ -23,21 +25,20 @@ export type Settings = {
     icons: boolean;
     titleMovingIcon: boolean;
     enableFullscreen: boolean;
-    backgroundChoice:
-        | "static_color"
-        | "dynamic_color"
-        | "album_art"
-        | "artist_art"
-        | "animated_album";
     upnextDisplay: "always" | "never" | "smart";
     themedButtons: boolean;
     themedIcons: boolean;
     invertColors: "never" | "always" | "auto";
     backAnimationTime: number;
     animationSpeed: number;
+    beatBounce: boolean;
+    beatScaleAmount: number;
+    beatWarpAmount: number;
+    beatSaturationAmount: number;
+    beatSpeedAmount: number;
+    beatAttack: number;
+    beatRelease: number;
     upnextTimeToShow: number;
-    coloredBackChoice: string;
-    staticBackChoice: string;
     blurSize: number;
     backgroundBrightness: number;
     verticalMonitorSupport: boolean;

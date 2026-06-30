@@ -4,6 +4,27 @@ import CFM from "../utils/config";
 export const getHtmlContent = () => {
     return `
         <canvas id="fsd-background"></canvas>
+        <canvas id="fsd-fluid-background" aria-hidden="true"></canvas>
+        ${
+            CFM.get("debugMode")
+                ? `<aside id="fsd-background-debug" aria-label="Background motion debug">
+            <div class="fsd-debug-title">
+                <span class="fsd-debug-beat-dot"></span>
+                <strong>BACKGROUND MOTION</strong>
+                <span data-debug-status>WAITING</span>
+            </div>
+            <div class="fsd-debug-meter"><span></span></div>
+            <div class="fsd-debug-values">
+                <span>BEAT <b data-debug-beat>0.00</b></span>
+                <span>SMOOTH <b data-debug-smooth>0.00</b></span>
+                <span>SPEED <b data-debug-speed>0.00</b></span>
+                <span>WARP <b data-debug-warp>0.00</b></span>
+                <span>SCALE <b data-debug-scale>0.00</b></span>
+                <span>TIME <b data-debug-time>0:00.0</b></span>
+            </div>
+        </aside>`
+                : ""
+        }
  ${
      CFM.get("upnextDisplay") !== "never"
          ? `

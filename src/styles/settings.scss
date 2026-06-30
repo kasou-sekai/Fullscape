@@ -34,6 +34,12 @@
     --theme-color: var(--spice-button);
     color: var(--main-text-color);
 
+    .fsd-debug-settings[hidden] {
+        display: none;
+    }
+    .fsd-beat-settings[hidden] {
+        display: none;
+    }
     .setting-card {
         background-color: var(--secondary-background-color);
         border-radius: 10px;

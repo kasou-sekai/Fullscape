@@ -3,6 +3,7 @@ export class DOM {
     static style: HTMLStyleElement;
     static cover: HTMLElement;
     static back: HTMLCanvasElement;
+    static fluidBack: HTMLCanvasElement;
     static title: HTMLElement;
     static artist: HTMLElement;
     static album: HTMLElement;

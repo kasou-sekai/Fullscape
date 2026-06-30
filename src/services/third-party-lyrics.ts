@@ -1,3 +1,5 @@
+import { decryptQrc } from "qrc-decoder";
+
 export type LyricWord = {
     time: number;
     duration: number;
@@ -23,6 +25,45 @@ type NetEaseSong = {
     artists?: { name: string }[];
     al?: { name?: string };
     album?: { name?: string };
+};
+
+type QQMusicSong = {
+    provider: "qqmusic";
+    id: string;
+    mid: string;
+    name: string;
+    duration?: number;
+    artists: string;
+    album: string;
+};
+
+type QQMusicDesktopSearchItem = {
+    id?: number | string;
+    mid?: string;
+    name?: string;
+    title?: string;
+    interval?: number;
+    singer?: Array<{ name?: string; title?: string }>;
+    album?: { name?: string; title?: string };
+};
+
+type QQMusicSmartboxSearchItem = {
+    id?: number | string;
+    docid?: number | string;
+    mid?: string;
+    name?: string;
+    singer?: string;
+};
+
+type ProviderSong = {
+    provider: "netease" | "qqmusic";
+    id: number | string;
+    mid?: string;
+    name: string;
+    duration?: number;
+    artists: string;
+    album: string;
+    raw?: NetEaseSong;
 };
 
 type NetEaseLyricsResponse = {
@@ -51,9 +92,17 @@ type ThirdPartyLyrics = {
     romanizations: EnhancedLyricLine[];
     furigana: EnhancedLyricLine[];
     dynamicLines: EnhancedLyricLine[];
+    hasFurigana?: boolean;
 };
 
 type ThirdPartyCandidateDebug = ThirdPartyLyricsDebug["candidates"][number];
+
+type MatchedLyricsCandidate = {
+    song: ProviderSong;
+    parsed: ThirdPartyLyrics;
+    lines: EnhancedLyricLine[];
+    debug: ThirdPartyCandidateDebug;
+};
 
 export type ThirdPartyLyricsDebug = {
     enabled: boolean;
@@ -71,7 +120,8 @@ export type ThirdPartyLyricsDebug = {
         karaoke: number;
     };
     candidates: Array<{
-        id: number;
+        provider: "netease" | "qqmusic";
+        id: number | string;
         name: string;
         artists: string;
         album: string;
@@ -92,6 +142,9 @@ export type ThirdPartyLyricsDebug = {
 
 const NETEASE_SEARCH_URL = "https://music.163.com/api/cloudsearch/pc";
 const NETEASE_LYRIC_URL = "https://music.163.com/api/song/lyric";
+const QQ_SEARCH_URL = "https://u.y.qq.com/cgi-bin/musicu.fcg";
+const QQ_SMARTBOX_URL = "https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg";
+const QQ_LYRIC_URL = "https://c.y.qq.com/qqmusic/fcgi-bin/lyric_download.fcg";
 const REQUEST_TIMEOUT_MS = 6000;
 const FIRST_LINE_TIME_TOLERANCE_MS = 2500;
 const MERGE_TIME_TOLERANCE_MS = 1500;
@@ -124,83 +177,62 @@ export async function enhanceWithThirdPartyLyrics(
         return spotifyLines;
     }
 
-    let debug = createDebug("searching", "正在搜索网易云候选歌词", true, track, spotifyLines);
+    let debug = createDebug(
+        "searching",
+        "正在同时搜索网易云与 QQ 音乐候选歌词",
+        true,
+        track,
+        spotifyLines,
+    );
     if (publishDebug) lastDebug = debug;
 
     try {
-        const songs = await searchNetEase(track);
-        for (const song of songs) {
-            const candidateDebug: ThirdPartyCandidateDebug = {
-                id: song.id,
-                name: song.name,
-                artists: getSongArtists(song),
-                album: getSongAlbum(song),
-                plausible: false,
-                match: false,
-                reason: "",
+        const searchResults = await Promise.allSettled([
+            searchNetEase(track),
+            searchQQMusic(track),
+        ]);
+        const songs = searchResults.flatMap((result) =>
+            result.status === "fulfilled" ? result.value : [],
+        );
+        const searchErrors = searchResults.flatMap((result, index) =>
+            result.status === "rejected"
+                ? [`${index === 0 ? "网易云" : "QQ 音乐"}搜索失败：${formatError(result.reason)}`]
+                : [],
+        );
+
+        const matched = (
+            await Promise.all(
+                songs.map((song) => evaluateLyricsCandidate(song, track, spotifyLines, debug)),
+            )
+        ).filter((candidate): candidate is MatchedLyricsCandidate => candidate !== null);
+        const selected = matched.sort(compareMatchedLyrics)[0];
+
+        if (selected) {
+            const features = countMergedFeatures(selected.lines);
+            debug = {
+                ...debug,
+                status: searchErrors.length ? "error" : "matched",
+                reason: searchErrors.length
+                    ? `暂时使用${providerName(selected.song.provider)}候选；${searchErrors.join("；")}`
+                    : `已比较网易云与 QQ 音乐候选，选择${providerName(selected.song.provider)}的最高质量版本`,
+                matchedSong: `${providerName(selected.song.provider)}：${selected.song.name} - ${selected.song.artists}`,
+                matchedFirst: selected.debug.first,
+                merged: features,
             };
-            debug.candidates.push(candidateDebug);
-
-            if (!isBaseTitleMatch(song.name, track.title)) {
-                candidateDebug.reason = `纯歌名不匹配：${getBaseTrackTitle(song.name)} ≠ ${getBaseTrackTitle(track.title)}`;
-                continue;
-            }
-
-            const durationResult = getDurationMatchResult(song, track);
-            if (!durationResult.match) {
-                candidateDebug.reason = durationResult.reason;
-                continue;
-            }
-            candidateDebug.plausible = true;
-            const preliminaryReason = `纯歌名匹配；${durationResult.reason}`;
-            candidateDebug.reason = preliminaryReason;
-
-            const rawLyrics = await fetchNetEaseLyrics(song.id);
-            const parsed = parseNetEaseLyrics(rawLyrics);
-            candidateDebug.counts = {
-                lrc: parsed.lines.length,
-                translation: parsed.translations.length,
-                romanization: parsed.romanizations.length,
-                furigana: parsed.furigana.length,
-                dynamic: parsed.dynamicLines.length,
-            };
-            if (!parsed.lines.length && !parsed.dynamicLines.length) {
-                candidateDebug.reason = `${preliminaryReason}；候选没有可解析的原文歌词`;
-                continue;
-            }
-
-            const candidateLines = parsed.dynamicLines.length ? parsed.dynamicLines : parsed.lines;
-            candidateDebug.first = firstMeaningfulLine(candidateLines) ?? null;
-            candidateDebug.preview = previewMeaningfulLines(candidateLines);
-            const matchResult = getLyricsMatchResult(spotifyLines, candidateLines);
-            candidateDebug.reason = `${preliminaryReason}；${matchResult.reason}`;
-            if (!matchResult.match) continue;
-
-            const identityResult = getArtistOrAlbumMatchResult(song, track);
-            candidateDebug.match = identityResult.match;
-            candidateDebug.reason = `${preliminaryReason}；${matchResult.reason}；${identityResult.reason}`;
-
-            if (identityResult.match) {
-                const merged = buildThirdPartyLyrics(parsed);
-                debug = {
-                    ...debug,
-                    status: "matched",
-                    reason: "已匹配，当前使用第三方歌词作为主歌词",
-                    matchedSong: `${song.name} - ${getSongArtists(song)}`,
-                    matchedFirst: candidateDebug.first,
-                    merged: countMergedFeatures(merged),
-                };
-                if (publishDebug) lastDebug = debug;
-                captureDebug?.(debug);
-                return merged;
-            }
+            if (publishDebug) lastDebug = debug;
+            captureDebug?.(debug);
+            return selected.lines;
         }
+
         debug = {
             ...debug,
-            status: "not-matched",
-            reason: songs.length
-                ? "没有候选依次通过纯歌名、时长、首句及歌手/专辑匹配"
-                : "网易云未返回候选歌曲",
+            status: searchErrors.length ? "error" : "not-matched",
+            reason: [
+                songs.length
+                    ? "两个来源均没有候选依次通过纯歌名、时长、首句及歌手/专辑匹配"
+                    : "网易云与 QQ 音乐均未返回候选歌曲",
+                ...searchErrors,
+            ].join("；"),
         };
     } catch (err) {
         debug = {
@@ -258,7 +290,128 @@ function getCurrentTrackInfo(): TrackInfo | null {
     return { title, artists, album, duration };
 }
 
-async function searchNetEase(track: TrackInfo): Promise<NetEaseSong[]> {
+async function evaluateLyricsCandidate(
+    song: ProviderSong,
+    track: TrackInfo,
+    spotifyLines: EnhancedLyricLine[],
+    debug: ThirdPartyLyricsDebug,
+): Promise<MatchedLyricsCandidate | null> {
+    const candidateDebug: ThirdPartyCandidateDebug = {
+        provider: song.provider,
+        id: song.id,
+        name: song.name,
+        artists: song.artists,
+        album: song.album,
+        plausible: false,
+        match: false,
+        reason: "",
+    };
+    debug.candidates.push(candidateDebug);
+
+    if (!isBaseTitleMatch(song.name, track.title)) {
+        candidateDebug.reason = `纯歌名不匹配：${getBaseTrackTitle(song.name)} ≠ ${getBaseTrackTitle(track.title)}`;
+        return null;
+    }
+
+    const durationResult = getDurationMatchResult(song, track);
+    if (!durationResult.match) {
+        candidateDebug.reason = durationResult.reason;
+        return null;
+    }
+    const identityResult = getArtistOrAlbumMatchResult(song, track);
+    if (!identityResult.match) {
+        candidateDebug.reason = `纯歌名匹配；${durationResult.reason}；${identityResult.reason}`;
+        return null;
+    }
+
+    candidateDebug.plausible = true;
+    const preliminaryReason = `纯歌名匹配；${durationResult.reason}；${identityResult.reason}`;
+    candidateDebug.reason = preliminaryReason;
+
+    try {
+        const parsed =
+            song.provider === "netease"
+                ? parseNetEaseLyrics(await fetchNetEaseLyrics(Number(song.id)))
+                : await fetchQQMusicLyrics(song);
+        parsed.lines = trimLeadingProviderMetadata(parsed.lines, song);
+        parsed.dynamicLines = trimLeadingProviderMetadata(parsed.dynamicLines, song);
+        candidateDebug.counts = {
+            lrc: parsed.lines.length,
+            translation: parsed.translations.length,
+            romanization: parsed.romanizations.length,
+            furigana: parsed.furigana.length || Number(Boolean(parsed.hasFurigana)),
+            dynamic: parsed.dynamicLines.length,
+        };
+        if (!parsed.lines.length && !parsed.dynamicLines.length) {
+            candidateDebug.reason = `${preliminaryReason}；候选没有可解析的原文歌词`;
+            return null;
+        }
+
+        const candidateLines = parsed.dynamicLines.length ? parsed.dynamicLines : parsed.lines;
+        candidateDebug.first = firstMeaningfulLine(candidateLines) ?? null;
+        candidateDebug.preview = previewMeaningfulLines(candidateLines);
+        const matchResult = getLyricsMatchResult(spotifyLines, candidateLines);
+        candidateDebug.match = matchResult.match;
+        candidateDebug.reason = `${preliminaryReason}；${matchResult.reason}`;
+        if (!matchResult.match) return null;
+
+        const lines = buildThirdPartyLyrics(parsed);
+        return { song, parsed, lines, debug: candidateDebug };
+    } catch (err) {
+        candidateDebug.reason = `${preliminaryReason}；获取或解析失败：${formatError(err)}`;
+        return null;
+    }
+}
+
+function compareMatchedLyrics(first: MatchedLyricsCandidate, second: MatchedLyricsCandidate) {
+    const firstFeatures = getCandidateQuality(first);
+    const secondFeatures = getCandidateQuality(second);
+    for (let index = 0; index < firstFeatures.length; index++) {
+        if (firstFeatures[index] !== secondFeatures[index]) {
+            return secondFeatures[index] - firstFeatures[index];
+        }
+    }
+    return 0;
+}
+
+function getCandidateQuality(candidate: MatchedLyricsCandidate) {
+    const features = countMergedFeatures(candidate.lines);
+    return [
+        Number(features.karaoke > 0),
+        Number(features.furigana > 0 || (candidate.debug.counts?.furigana ?? 0) > 0),
+        Number(features.translation > 0),
+        features.karaoke,
+        features.furigana,
+        features.translation,
+        features.romanization,
+    ];
+}
+
+function providerName(provider: ProviderSong["provider"]) {
+    return provider === "netease" ? "网易云" : "QQ 音乐";
+}
+
+function trimLeadingProviderMetadata(lines: EnhancedLyricLine[], song: ProviderSong) {
+    const firstLyricIndex = lines.findIndex(
+        (line) => !isProviderMetadataLine(line.text, song) && isMeaningfulLyric(line.text),
+    );
+    return firstLyricIndex > 0 ? lines.slice(firstLyricIndex) : lines;
+}
+
+function isProviderMetadataLine(text: string, song: ProviderSong) {
+    if (!isMeaningfulLyric(text)) return true;
+    const normalized = normalizeLyricText(text);
+    const title = normalizeLyricText(song.name);
+    const artists = normalizeLyricText(song.artists);
+    return Boolean(
+        title &&
+            (normalized === title ||
+                (artists && normalized === `${title}${artists}`) ||
+                (artists && normalized === `${artists}${title}`)),
+    );
+}
+
+async function searchNetEase(track: TrackInfo): Promise<ProviderSong[]> {
     const params = new URLSearchParams({
         s: `${getBaseTrackTitle(track.title)} ${track.artists}`.trim(),
         type: "1",
@@ -271,7 +424,15 @@ async function searchNetEase(track: TrackInfo): Promise<NetEaseSong[]> {
         "GET",
         "搜索网易云候选",
     );
-    return data?.result?.songs ?? [];
+    return (data?.result?.songs ?? []).map((song: NetEaseSong) => ({
+        provider: "netease" as const,
+        id: song.id,
+        name: song.name,
+        duration: song.dt ?? song.duration,
+        artists: getNetEaseSongArtists(song),
+        album: getNetEaseSongAlbum(song),
+        raw: song,
+    }));
 }
 
 async function fetchNetEaseLyrics(id: number): Promise<NetEaseLyricsResponse> {
@@ -288,21 +449,157 @@ async function fetchNetEaseLyrics(id: number): Promise<NetEaseLyricsResponse> {
     return requestJson(`${NETEASE_LYRIC_URL}?${params.toString()}`, "GET", `获取网易云歌词 ${id}`);
 }
 
-async function requestJson(url: string, method: "GET" | "POST", stage: string) {
-    const headers = {
-        Referer: "https://music.163.com/",
+async function searchQQMusic(track: TrackInfo): Promise<ProviderSong[]> {
+    const query = `${getBaseTrackTitle(track.title)} ${track.artists}`.trim();
+    const requestBody = {
+        req_1: {
+            method: "DoSearchForQQMusicDesktop",
+            module: "music.search.SearchCgiService",
+            param: {
+                num_per_page: 8,
+                page_num: 1,
+                query,
+                search_type: 0,
+            },
+        },
     };
+    const [desktopResult, smartboxResult] = await Promise.allSettled([
+        requestJson(QQ_SEARCH_URL, "POST", "搜索 QQ 音乐候选", requestBody, {
+            "Content-Type": "application/json",
+            Referer: "https://y.qq.com/",
+        }),
+        requestJson(
+            `${QQ_SMARTBOX_URL}?${new URLSearchParams({ key: query }).toString()}`,
+            "GET",
+            "搜索 QQ 音乐候选（Smartbox）",
+            undefined,
+            { Referer: "https://y.qq.com/" },
+        ),
+    ]);
+    if (desktopResult.status === "rejected" && smartboxResult.status === "rejected") {
+        throw new Error(
+            `QQ 音乐搜索失败: MusicU=${formatError(desktopResult.reason)}; Smartbox=${formatError(smartboxResult.reason)}`,
+        );
+    }
 
+    const songs = new Map<string, QQMusicSong>();
+    if (desktopResult.status === "fulfilled") {
+        const items = (desktopResult.value?.req_1?.data?.body?.song?.list ??
+            []) as QQMusicDesktopSearchItem[];
+        items.forEach((item) => {
+            const id = `${item.id ?? ""}`;
+            const mid = `${item.mid ?? ""}`;
+            if (!id || !mid) return;
+            songs.set(id, {
+                provider: "qqmusic",
+                id,
+                mid,
+                name: `${item.name ?? item.title ?? ""}`,
+                duration: Number(item.interval ?? 0) * 1000 || undefined,
+                artists: (item.singer ?? [])
+                    .map((artist: { name?: string; title?: string }) => artist.name ?? artist.title)
+                    .filter(Boolean)
+                    .join(", "),
+                album: `${item.album?.name ?? item.album?.title ?? ""}`,
+            });
+        });
+    }
+    if (smartboxResult.status === "fulfilled") {
+        const items = (smartboxResult.value?.data?.song?.itemlist ??
+            []) as QQMusicSmartboxSearchItem[];
+        items.forEach((item) => {
+            const id = `${item.id ?? item.docid ?? ""}`;
+            const mid = `${item.mid ?? ""}`;
+            if (!id || !mid || songs.has(id)) return;
+            songs.set(id, {
+                provider: "qqmusic",
+                id,
+                mid,
+                name: `${item.name ?? ""}`,
+                artists: `${item.singer ?? ""}`,
+                album: "",
+            });
+        });
+    }
+    return Array.from(songs.values());
+}
+
+async function fetchQQMusicLyrics(song: ProviderSong): Promise<ThirdPartyLyrics> {
+    const params = new URLSearchParams({
+        musicid: String(song.id),
+        version: "15",
+        miniversion: "82",
+        lrctype: "4",
+    });
+    const raw = await requestText(
+        `${QQ_LYRIC_URL}?${params.toString()}`,
+        "GET",
+        `获取 QQ 音乐歌词 ${song.id}`,
+        undefined,
+        { Referer: "https://c.y.qq.com/" },
+    );
+    return parseQQMusicLyrics(raw);
+}
+
+async function requestJson(
+    url: string,
+    method: "GET" | "POST",
+    stage: string,
+    body?: Record<string, unknown>,
+    headers: Record<string, string> = { Referer: "https://music.163.com/" },
+) {
+    return parseResponseBody(await requestBody(url, method, stage, body, headers));
+}
+
+async function requestText(
+    url: string,
+    method: "GET" | "POST",
+    stage: string,
+    body?: Record<string, unknown>,
+    headers: Record<string, string> = {},
+) {
+    const proxyTemplate =
+        localStorage.getItem("spicetify:corsProxyTemplate") ??
+        "https://cors-proxy.spicetify.app/{url}";
+    const proxyUrl = proxyTemplate.replace(/{url}/, new URL(url).toString());
+    try {
+        const response = await fetchWithTimeout(proxyUrl, {
+            method,
+            headers: {
+                "Content-Type": "application/json",
+                ...headers,
+            },
+            body: method === "POST" && body ? JSON.stringify(body) : undefined,
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.text();
+    } catch (proxyErr) {
+        throw new Error(`${stage}失败: CORS proxy=${formatError(proxyErr)}`);
+    }
+}
+
+async function requestBody(
+    url: string,
+    method: "GET" | "POST",
+    stage: string,
+    body: Record<string, unknown> | undefined,
+    headers: Record<string, string>,
+) {
     try {
         const cosmosPromise =
             method === "POST"
-                ? Spicetify.CosmosAsync.post(url, {}, headers)
+                ? Spicetify.CosmosAsync.post(url, body ?? {}, headers)
                 : Spicetify.CosmosAsync.get(url, {}, headers);
-        return parseResponseBody(await withTimeout(cosmosPromise, REQUEST_TIMEOUT_MS));
+        return await withTimeout(cosmosPromise, REQUEST_TIMEOUT_MS);
     } catch (cosmosErr) {
         try {
-            const response = await fetchWithTimeout(url, { method, headers });
-            return response.json();
+            const response = await fetchWithTimeout(url, {
+                method,
+                headers,
+                body: method === "POST" && body ? JSON.stringify(body) : undefined,
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return response.text();
         } catch (fetchErr) {
             throw new Error(
                 `${stage}失败: Cosmos=${formatError(cosmosErr)}; fetch=${formatError(fetchErr)}`,
@@ -367,6 +664,191 @@ function parseNetEaseLyrics(raw: NetEaseLyricsResponse): ThirdPartyLyrics {
         furigana: parseLrc(furigana).concat(parseLrcAttachment(lrc, "fu")),
         dynamicLines: parseDynamicLyrics(yrc, "yrc").concat(parseDynamicLyrics(klyric, "klyric")),
     };
+}
+
+export function parseQQMusicLyrics(raw: string): ThirdPartyLyrics {
+    const original = decodeQQMusicLyricContent(extractQQMusicContent(raw, "content"));
+    const translation = decodeQQMusicLyricContent(extractQQMusicContent(raw, "contentts"));
+    const romanization = decodeQQMusicLyricContent(extractQQMusicContent(raw, "contentroma"));
+    const normalizedOriginal = normalizeExtendedLrcTimestamps(original);
+    const dynamicLines = parseQQMusicQrc(normalizedOriginal);
+    const furigana = buildQQMusicFurigana(
+        dynamicLines,
+        extractQQMusicKana(`${original}\n${translation}\n${romanization}`),
+    );
+
+    return {
+        lines: parseLrc(normalizedOriginal),
+        translations: parseLrc(normalizeExtendedLrcTimestamps(translation)),
+        romanizations: parseLrc(normalizeExtendedLrcTimestamps(romanization)),
+        furigana,
+        dynamicLines,
+        hasFurigana: furigana.length > 0,
+    };
+}
+
+function extractQQMusicContent(raw: string, tag: string) {
+    const escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const cdataMatch = raw.match(
+        new RegExp(
+            `<${escapedTag}\\b[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${escapedTag}>`,
+            "i",
+        ),
+    );
+    if (cdataMatch) return cdataMatch[1].trim();
+    const textMatch = raw.match(
+        new RegExp(`<${escapedTag}\\b[^>]*>([\\s\\S]*?)</${escapedTag}>`, "i"),
+    );
+    return textMatch?.[1]?.trim() ?? "";
+}
+
+function decodeQQMusicLyricContent(content: string) {
+    if (!content) return "";
+    let decoded = decodeXmlEntities(content.trim());
+    if (/^[\da-f]+$/i.test(decoded) && decoded.length % 2 === 0) {
+        decoded = decryptQrc(decoded);
+    }
+    if (!decoded.includes("<?xml")) return decoded;
+
+    const marker = 'LyricContent="';
+    const markerIndex = decoded.indexOf(marker);
+    if (markerIndex < 0) return decoded;
+    const start = markerIndex + marker.length;
+    let escaped = false;
+    for (let index = start; index < decoded.length; index++) {
+        const character = decoded[index];
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (character === "\\") {
+            escaped = true;
+            continue;
+        }
+        if (character !== '"') continue;
+        return normalizeQQMusicContent(
+            decodeXmlEntities(decoded.slice(start, index))
+                .replace(/\\"/g, '"')
+                .replace(/\\r\\n|\\n|\\r/g, "\n"),
+        );
+    }
+    return decoded;
+}
+
+function decodeXmlEntities(text: string) {
+    return text.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (entity, value: string) => {
+        const normalized = value.toLowerCase();
+        if (normalized === "amp") return "&";
+        if (normalized === "lt") return "<";
+        if (normalized === "gt") return ">";
+        if (normalized === "quot") return '"';
+        if (normalized === "apos") return "'";
+        const radix = normalized.startsWith("#x") ? 16 : 10;
+        const rawNumber = normalized.replace(/^#x?/, "");
+        const codePoint = Number.parseInt(rawNumber, radix);
+        return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : entity;
+    });
+}
+
+function normalizeQQMusicContent(content: string) {
+    return content
+        .replace(/\s+(?=\[\d+,\d+\])/g, "\n")
+        .replace(/\]\s+\[/g, "]\n[")
+        .trim();
+}
+
+function normalizeExtendedLrcTimestamps(content: string) {
+    return content.replace(
+        /\[(\d+):(\d{2}):(\d{2}(?:\.\d+)?)\]/g,
+        (_tag, hours: string, minutes: string, seconds: string) =>
+            `[${Number(hours) * 60 + Number(minutes)}:${seconds}]`,
+    );
+}
+
+function extractQQMusicKana(content: string) {
+    return content.match(/^\[kana:([^\]]+)\]/im)?.[1] ?? "";
+}
+
+function buildQQMusicFurigana(lines: EnhancedLyricLine[], kana: string) {
+    const compactKana = kana.replace(/\(\d+,\d+\)/g, "");
+    const annotations = Array.from(
+        compactKana.matchAll(/(\d+)([ぁ-ゖァ-ヺーゝゞヽヾ]+)/gu),
+        (match) => ({ length: Number(match[1]), reading: match[2] }),
+    ).filter((annotation) => annotation.length > 0 && annotation.reading);
+    if (!annotations.length) return [];
+
+    let annotationIndex = 0;
+    return lines.flatMap((line) => {
+        const characters = Array.from(line.text);
+        const output: string[] = [];
+        let annotated = false;
+        for (let index = 0; index < characters.length; index++) {
+            const character = characters[index];
+            if (!isJapaneseKanji(character) || annotationIndex >= annotations.length) {
+                output.push(character);
+                continue;
+            }
+
+            const annotation = annotations[annotationIndex++];
+            const baseCharacters: string[] = [];
+            let cursor = index;
+            while (
+                cursor < characters.length &&
+                baseCharacters.length < annotation.length &&
+                isJapaneseKanji(characters[cursor])
+            ) {
+                baseCharacters.push(characters[cursor]);
+                cursor += 1;
+            }
+            if (baseCharacters.length !== annotation.length) {
+                output.push(character);
+                annotationIndex -= 1;
+                continue;
+            }
+            output.push(`${baseCharacters.join("")}《${annotation.reading}》`);
+            index = cursor - 1;
+            annotated = true;
+        }
+        return annotated ? [{ time: line.time, text: output.join("") }] : [];
+    });
+}
+
+function isJapaneseKanji(character: string) {
+    return /^[\p{Script=Han}々〆ヶ]$/u.test(character);
+}
+
+function parseQQMusicQrc(content: string): EnhancedLyricLine[] {
+    const lines: EnhancedLyricLine[] = [];
+    for (const rawLine of content.split(/\r?\n/)) {
+        const lineMatch = rawLine.match(/^\[(\d+),(\d+)\](.*)$/);
+        if (!lineMatch) continue;
+        const lineStart = Number(lineMatch[1]);
+        const lineDuration = Number(lineMatch[2]);
+        const body = lineMatch[3] ?? "";
+        const words: LyricWord[] = [];
+        const fragmentRegex = /(.*?)\((\d+),(\d+)\)/g;
+        let match: RegExpExecArray | null;
+        while ((match = fragmentRegex.exec(body)) !== null) {
+            const text = match[1];
+            const time = Number(match[2]);
+            const duration = Number(match[3]);
+            if (!text || !Number.isFinite(time) || !Number.isFinite(duration)) continue;
+            appendLyricWord(words, { time, duration, text });
+        }
+        const timedWords = mergeUntimedDecorations(words);
+        const text = timedWords
+            .map((word) => word.text)
+            .join("")
+            .trim();
+        if (!text || !timedWords.length) continue;
+        lines.push({
+            time: lineStart,
+            duration: lineDuration,
+            text,
+            words: timedWords,
+        });
+    }
+    return lines.sort((first, second) => (first.time ?? 0) - (second.time ?? 0));
 }
 
 function parseLrc(lrc: string): EnhancedLyricLine[] {
@@ -474,10 +956,7 @@ function mergeUntimedDecorations(words: LyricWord[]) {
     const merged: LyricWord[] = [];
     let leadingDecoration = "";
     words.forEach((word) => {
-        if (
-            word.duration <= UNTIMED_DECORATION_MAX_DURATION_MS &&
-            isLyricDecoration(word.text)
-        ) {
+        if (word.duration <= UNTIMED_DECORATION_MAX_DURATION_MS && isLyricDecoration(word.text)) {
             const previous = merged[merged.length - 1];
             if (previous) previous.text += word.text;
             else leadingDecoration += word.text;
@@ -499,10 +978,7 @@ function mergeUntimedDecorations(words: LyricWord[]) {
 }
 
 function isLyricDecoration(text: string) {
-    return (
-        Boolean(text) &&
-        /^[\p{P}\p{S}\p{White_Space}\u200b\ufeff]+$/u.test(text)
-    );
+    return Boolean(text) && /^[\p{P}\p{S}\p{White_Space}\u200b\ufeff]+$/u.test(text);
 }
 
 function buildThirdPartyLyrics(thirdParty: ThirdPartyLyrics): EnhancedLyricLine[] {
@@ -525,6 +1001,11 @@ function buildThirdPartyLyrics(thirdParty: ThirdPartyLyrics): EnhancedLyricLine[
         thirdParty.romanizations,
         MERGE_TIME_TOLERANCE_MS,
     );
+    const furiganaByPlainLine = alignTimedLines(
+        thirdParty.lines,
+        thirdParty.furigana,
+        MERGE_TIME_TOLERANCE_MS,
+    );
     const directTranslations = alignTimedLines(
         renderLines,
         thirdParty.translations,
@@ -533,6 +1014,11 @@ function buildThirdPartyLyrics(thirdParty: ThirdPartyLyrics): EnhancedLyricLine[
     const directRomanizations = alignTimedLines(
         renderLines,
         thirdParty.romanizations,
+        MERGE_TIME_TOLERANCE_MS,
+    );
+    const directFurigana = alignTimedLines(
+        renderLines,
+        thirdParty.furigana,
         MERGE_TIME_TOLERANCE_MS,
     );
 
@@ -546,12 +1032,15 @@ function buildThirdPartyLyrics(thirdParty: ThirdPartyLyrics): EnhancedLyricLine[
         const romanization =
             (plainIndex >= 0 ? romanizationsByPlainLine[plainIndex] : null) ??
             directRomanizations[index];
+        const furigana =
+            (plainIndex >= 0 ? furiganaByPlainLine[plainIndex] : null) ?? directFurigana[index];
         const synchronizedLine = synchronizeDynamicPunctuation(line, plain?.text);
         return {
             ...synchronizedLine,
             text: synchronizedLine.text || plain?.text || "",
             translation: translation?.text,
             romanization: romanization?.text,
+            furigana: furigana?.text,
         };
     });
 }
@@ -776,7 +1265,7 @@ function previewMeaningfulLines(lines: EnhancedLyricLine[]) {
 function isMeaningfulLyric(text: string) {
     const normalized = normalizeLyricText(text);
     if (normalized.length < 2) return false;
-    return !/^(作词|作曲|编曲|制作人|监制|出品|录音|混音|母带|词版权|曲版权|录音作品|联合出品|人声|吉他|贝斯|鼓|弦乐|和声|OP|SP|纯音乐|instrumental)/i.test(
+    return !/^(?:作?词|作?曲|编曲|制作人|监制|出品|录音|混音|母带|词版权|曲版权|录音作品|联合出品|人声|吉他|贝斯|鼓|弦乐|和声|OP|SP|纯音乐|instrumental)\s*[:：]?/i.test(
         text.trim(),
     );
 }
@@ -807,10 +1296,10 @@ function isBaseTitleMatch(candidateTitle: string, trackTitle: string) {
     return Boolean(candidate && current && candidate === current);
 }
 
-function getDurationMatchResult(song: NetEaseSong, track: TrackInfo) {
-    const candidateDuration = song.dt ?? song.duration ?? 0;
+function getDurationMatchResult(song: ProviderSong, track: TrackInfo) {
+    const candidateDuration = song.duration ?? 0;
     if (!candidateDuration || !track.duration) {
-        return { match: false, reason: "缺少歌曲时长，无法匹配" };
+        return { match: true, reason: "缺少歌曲时长，改用歌手/专辑与歌词校验" };
     }
     const difference = Math.abs(candidateDuration - track.duration);
     return difference <= 12000
@@ -818,13 +1307,13 @@ function getDurationMatchResult(song: NetEaseSong, track: TrackInfo) {
         : { match: false, reason: `歌曲时长不匹配，差值 ${difference}ms` };
 }
 
-function getArtistOrAlbumMatchResult(song: NetEaseSong, track: TrackInfo) {
-    const candidateArtists = getSongArtists(song);
+function getArtistOrAlbumMatchResult(song: ProviderSong, track: TrackInfo) {
+    const candidateArtists = song.artists;
     if (candidateArtists && track.artists && isLooseTextMatch(candidateArtists, track.artists)) {
         return { match: true, reason: "歌手匹配" };
     }
 
-    const candidateAlbum = getSongAlbum(song);
+    const candidateAlbum = song.album;
     if (candidateAlbum && track.album && isLooseTextMatch(candidateAlbum, track.album)) {
         return { match: true, reason: "歌手不匹配，但专辑名称匹配" };
     }
@@ -835,11 +1324,11 @@ function getArtistOrAlbumMatchResult(song: NetEaseSong, track: TrackInfo) {
     };
 }
 
-function getSongArtists(song: NetEaseSong) {
+function getNetEaseSongArtists(song: NetEaseSong) {
     return (song.ar ?? song.artists ?? []).map((artist) => artist.name).join(", ");
 }
 
-function getSongAlbum(song: NetEaseSong) {
+function getNetEaseSongAlbum(song: NetEaseSong) {
     return `${song.al?.name ?? song.album?.name ?? ""}`.trim();
 }
 

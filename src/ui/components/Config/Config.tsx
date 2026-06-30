@@ -8,7 +8,7 @@ import Utils from "../../../utils/utils";
 import { DOM } from "../../elements";
 import { headerText, getSettingCard, createAdjust } from "../../../utils/setting";
 import SeekableProgressBar from "../ProgressBar/ProgressBar";
-import { modifyRotationSpeed, animateColor } from "../../../utils/animation";
+import { modifyRotationSpeed } from "../../../utils/animation";
 import { Lyrics } from "../Lyrics/Lyrics";
 
 export class ConfigManager {
@@ -22,7 +22,6 @@ export class ConfigManager {
         fromResize?: boolean,
     ) => Promise<void>;
     static updateUpNextShow: () => void;
-    static updateMainColor: (imageURL: string, meta: Spicetify.Metadata) => Promise<void>;
 
     static init(
         render: () => void,
@@ -33,18 +32,16 @@ export class ConfigManager {
             fromResize?: boolean,
         ) => Promise<void>,
         updateUpNextShow: () => void,
-        updateMainColor: (imageURL: string, meta: Spicetify.Metadata) => Promise<void>,
     ) {
         this.render = render;
         this.activate = activate;
         this.deactivate = deactivate;
         this.updateBackground = updateBackground;
         this.updateUpNextShow = updateUpNextShow;
-        this.updateMainColor = updateMainColor;
     }
 
-    static saveOption(key: keyof Settings, value: Settings[keyof Settings]) {
-        CFM.set(key, value);
+    static saveOption(key: keyof Settings, value: unknown) {
+        CFM.set(key, value as never);
         this.render();
         if (Utils.isModeActivated()) this.activate();
     }
@@ -321,7 +318,7 @@ export class ConfigManager {
             candidateElement.classList.add("lyrics-diagnostics-candidate");
             appendHeading(
                 candidateElement,
-                `${index + 1}. ${candidate.name} - ${candidate.artists || strings.none}`,
+                `${index + 1}. [${candidate.provider === "netease" ? "NetEase" : "QQ Music"}] ${candidate.name} - ${candidate.artists || strings.none}`,
             );
             appendRow(candidateElement, strings.album, candidate.album || strings.none);
             appendRow(candidateElement, strings.id, candidate.id);
@@ -402,6 +399,95 @@ export class ConfigManager {
         return card;
     }
 
+    private static createDebugSettings(LOCALE: string) {
+        const section = document.createElement("section");
+        section.classList.add("fsd-debug-settings");
+        section.hidden = !CFM.get("debugMode");
+        section.append(
+            headerText(translations[LOCALE].settings.lyricsDebugHeader),
+            this.createLyricsRefreshCard(LOCALE),
+            this.createLyricsDiagnosticsCard(LOCALE),
+        );
+        return section;
+    }
+
+    private static createBeatSettings(LOCALE: string) {
+        const strings = translations[LOCALE].settings.beatControls;
+        const section = document.createElement("section");
+        section.classList.add("fsd-beat-settings");
+        section.hidden = !CFM.get("beatBounce");
+        section.append(
+            headerText(strings.header, strings.description),
+            createAdjust(
+                strings.scale.setting,
+                "beatScaleAmount",
+                "%",
+                Number(CFM.get("beatScaleAmount")) * 100,
+                1,
+                0,
+                40,
+                (value) => CFM.set("beatScaleAmount", Number(value) / 100),
+                strings.scale.description,
+            ),
+            createAdjust(
+                strings.warp.setting,
+                "beatWarpAmount",
+                "%",
+                Number(CFM.get("beatWarpAmount")) * 100,
+                1,
+                0,
+                18,
+                (value) => CFM.set("beatWarpAmount", Number(value) / 100),
+                strings.warp.description,
+            ),
+            createAdjust(
+                strings.saturation.setting,
+                "beatSaturationAmount",
+                "%",
+                Number(CFM.get("beatSaturationAmount")) * 100,
+                1,
+                0,
+                60,
+                (value) => CFM.set("beatSaturationAmount", Number(value) / 100),
+                strings.saturation.description,
+            ),
+            createAdjust(
+                strings.speed.setting,
+                "beatSpeedAmount",
+                "%",
+                Number(CFM.get("beatSpeedAmount")) * 100,
+                1,
+                0,
+                60,
+                (value) => CFM.set("beatSpeedAmount", Number(value) / 100),
+                strings.speed.description,
+            ),
+            createAdjust(
+                strings.attack.setting,
+                "beatAttack",
+                "%",
+                Number(CFM.get("beatAttack")) * 100,
+                5,
+                5,
+                100,
+                (value) => CFM.set("beatAttack", Number(value) / 100),
+                strings.attack.description,
+            ),
+            createAdjust(
+                strings.release.setting,
+                "beatRelease",
+                "%",
+                Number(CFM.get("beatRelease")) * 100,
+                1,
+                1,
+                50,
+                (value) => CFM.set("beatRelease", Number(value) / 100),
+                strings.release.description,
+            ),
+        );
+        return section;
+    }
+
     static openConfig(evt: Event | null = null): void {
         evt?.preventDefault();
         const LOCALE = CFM.getGlobal("locale") as Config["locale"];
@@ -436,6 +522,17 @@ export class ConfigManager {
                 },
                 translations[LOCALE].settings.activationTypes.description,
             ),
+            this.createToggle(
+                translations[LOCALE].settings.debugMode.setting,
+                "debugMode",
+                (value) => {
+                    const section =
+                        this.configContainer.querySelector<HTMLElement>(".fsd-debug-settings");
+                    if (section) section.hidden = !value;
+                    this.saveOption("debugMode", value);
+                },
+                translations[LOCALE].settings.debugMode.description,
+            ),
             headerText(translations[LOCALE].settings.lyricsHeader),
             this.createToggle(
                 translations[LOCALE].settings.lyrics,
@@ -455,6 +552,10 @@ export class ConfigManager {
                 translations[LOCALE].settings.showLyricsRomanization,
                 "showLyricsRomanization",
             ),
+            this.createToggle(
+                translations[LOCALE].settings.showLyricsFurigana,
+                "showLyricsFurigana",
+            ),
             this.createToggle(translations[LOCALE].settings.karaokeLyrics, "karaokeLyrics"),
             this.createToggle(translations[LOCALE].settings.autoHideLyrics, "autoHideLyrics"),
             createAdjust(
@@ -469,8 +570,7 @@ export class ConfigManager {
                     this.saveOption("lyricsSize", value as unknown as Settings["lyricsSize"]),
                 translations[LOCALE].settings.lyricsSize.description,
             ),
-            this.createLyricsRefreshCard(LOCALE),
-            this.createLyricsDiagnosticsCard(LOCALE),
+            this.createDebugSettings(LOCALE),
             headerText(translations[LOCALE].settings.generalHeader),
             this.createOptions(
                 translations[LOCALE].settings.progressBar,
@@ -552,25 +652,18 @@ export class ConfigManager {
                 translations[LOCALE].settings.backgroundHeader,
                 translations[LOCALE].settings.backgroundSubHeader,
             ),
-            this.createOptions(
-                translations[LOCALE].settings.backgroundChoice.setting,
-                {
-                    album_art: translations[LOCALE].settings.backgroundChoice.artwork,
-                    animated_album: translations[LOCALE].settings.backgroundChoice.animatedArt,
-                    dynamic_color: translations[LOCALE].settings.backgroundChoice.dynamicColor,
-                    static_color: translations[LOCALE].settings.backgroundChoice.staticColor,
-                    artist_art: translations[LOCALE].settings.backgroundChoice.artist,
+            this.createToggle(
+                translations[LOCALE].settings.beatBounce,
+                "beatBounce",
+                (value) => {
+                    const section =
+                        this.configContainer.querySelector<HTMLElement>(".fsd-beat-settings");
+                    if (section) section.hidden = !value;
+                    this.saveOption("beatBounce", value);
                 },
-                CFM.get("backgroundChoice") as Settings["backgroundChoice"],
-                "backgroundChoice",
-                (value: string) => {
-                    CFM.set("backgroundChoice", value as Settings["backgroundChoice"]);
-                    if (Utils.isModeActivated()) {
-                        this.updateBackground(Spicetify.Player.data.item?.metadata);
-                    }
-                },
-                translations[LOCALE].settings.backgroundChoice.description.join("<br>"),
+                translations[LOCALE].settings.beatBounceDescription,
             ),
+            this.createBeatSettings(LOCALE),
             createAdjust(
                 translations[LOCALE].settings.animationSpeed,
                 "animationSpeed",
@@ -597,50 +690,10 @@ export class ConfigManager {
                     DOM.container.style.setProperty("--fs-transition", `${state}s`);
                 },
             ),
-            this.createOptions(
-                translations[LOCALE].settings.backgroundColor.setting,
-                {
-                    VIBRANT: translations[LOCALE].settings.backgroundColor.vibrant,
-                    PROMINENT: translations[LOCALE].settings.backgroundColor.prominent,
-                    DESATURATED: translations[LOCALE].settings.backgroundColor.desaturated,
-                    LIGHT_VIBRANT: translations[LOCALE].settings.backgroundColor.lightVibrant,
-                    DARK_VIBRANT: translations[LOCALE].settings.backgroundColor.darkVibrant,
-                    VIBRANT_NON_ALARMING:
-                        translations[LOCALE].settings.backgroundColor.vibrantNonAlarming,
-                },
-                CFM.get("coloredBackChoice") as Settings["coloredBackChoice"],
-                "coloredBackChoice",
-                (value: string) => {
-                    CFM.set("coloredBackChoice", value);
-                    if (Utils.isModeActivated()) {
-                        this.updateBackground(Spicetify.Player.data.item?.metadata, true);
-                    }
-                },
-            ),
-            this.createInputElement(
-                translations[LOCALE].settings.staticColor,
-                "staticBackChoice",
-                "color",
-                (value) => {
-                    CFM.set("staticBackChoice", value);
-                    if (CFM.get("backgroundChoice") === "static_color" && Utils.isModeActivated()) {
-                        Utils.overlayBack();
-                        animateColor(value, DOM.back, true);
-                        this.updateMainColor(
-                            Spicetify.Player.data.item?.metadata.image_xlarge_url,
-                            Spicetify.Player.data.item?.metadata,
-                        );
-                        if (this.overlayTimout) clearTimeout(this.overlayTimout);
-                        this.overlayTimout = setTimeout(() => {
-                            Utils.overlayBack(false);
-                        }, 1500);
-                    }
-                },
-            ),
             createAdjust(
                 translations[LOCALE].settings.backgroundBlur,
                 "blurSize",
-                "px",
+                "",
                 CFM.get("blurSize") as Settings["blurSize"],
                 4,
                 0,
