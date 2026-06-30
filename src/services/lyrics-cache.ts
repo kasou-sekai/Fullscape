@@ -12,13 +12,17 @@ type LyricsCacheEntry = {
 };
 
 type LyricsCacheStore = {
-    version: 3;
+    version: 4;
     entries: Record<string, LyricsCacheEntry>;
 };
 
-const STORAGE_KEY = "full-screen:lyrics-cache-v3";
-const LEGACY_STORAGE_KEYS = ["full-screen:lyrics-cache-v1", "full-screen:lyrics-cache-v2"];
-const CACHE_VERSION = 3;
+const STORAGE_KEY = "full-screen:lyrics-cache-v4";
+const LEGACY_STORAGE_KEYS = [
+    "full-screen:lyrics-cache-v1",
+    "full-screen:lyrics-cache-v2",
+    "full-screen:lyrics-cache-v3",
+];
+const CACHE_VERSION = 4;
 const READY_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const EMPTY_TTL_MS = 30 * 60 * 1000;
 const MAX_ENTRIES = 40;

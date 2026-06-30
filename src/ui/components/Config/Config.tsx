@@ -318,7 +318,7 @@ export class ConfigManager {
             candidateElement.classList.add("lyrics-diagnostics-candidate");
             appendHeading(
                 candidateElement,
-                `${index + 1}. ${candidate.name} - ${candidate.artists || strings.none}`,
+                `${index + 1}. [${candidate.provider === "netease" ? "NetEase" : "QQ Music"}] ${candidate.name} - ${candidate.artists || strings.none}`,
             );
             appendRow(candidateElement, strings.album, candidate.album || strings.none);
             appendRow(candidateElement, strings.id, candidate.id);

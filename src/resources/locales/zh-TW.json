@@ -24,6 +24,7 @@
         "lyricsHeader": "歌詞設定",
         "lyrics": "歌詞",
         "lyricsDescription": ["**注意:** 預設使用 Spotify 內建的歌詞。"],
+        "thirdPartyLyrics": "使用網易雲與 QQ 音樂增強歌詞",
         "lyricsDiagnostics": {
             "setting": "歌詞診斷",
             "description": "用於排查歌詞載入與匹配問題的詳細執行資訊。",
@@ -34,7 +35,7 @@
             "translation": "翻譯",
             "romanization": "羅馬音",
             "karaoke": "逐字",
-            "provider": "網易雲",
+            "provider": "網易雲 / QQ 音樂",
             "candidates": "候選數",
             "matched": "匹配歌曲",
             "reason": "詳情",
