@@ -552,6 +552,10 @@ export class ConfigManager {
                 translations[LOCALE].settings.showLyricsRomanization,
                 "showLyricsRomanization",
             ),
+            this.createToggle(
+                translations[LOCALE].settings.showLyricsFurigana,
+                "showLyricsFurigana",
+            ),
             this.createToggle(translations[LOCALE].settings.karaokeLyrics, "karaokeLyrics"),
             this.createToggle(translations[LOCALE].settings.autoHideLyrics, "autoHideLyrics"),
             createAdjust(

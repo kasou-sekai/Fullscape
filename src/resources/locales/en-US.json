@@ -33,6 +33,7 @@
         "thirdPartyLyrics": "Enhance Lyrics from NetEase and QQ Music",
         "showLyricsTranslation": "Show Lyric Translation",
         "showLyricsRomanization": "Show Romanized Lyrics",
+        "showLyricsFurigana": "Show Furigana",
         "karaokeLyrics": "Use Word-by-word Lyrics",
         "refreshLyrics": {
             "setting": "Refresh Lyrics",

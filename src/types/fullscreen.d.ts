@@ -11,6 +11,7 @@ export type Settings = {
     thirdPartyLyrics: boolean;
     showLyricsTranslation: boolean;
     showLyricsRomanization: boolean;
+    showLyricsFurigana: boolean;
     karaokeLyrics: boolean;
     lyricsSize: number;
     autoHideLyrics: boolean;

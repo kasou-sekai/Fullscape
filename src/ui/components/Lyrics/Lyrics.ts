@@ -491,12 +491,13 @@ export class Lyrics {
         const showKaraoke = Boolean(CFM.get("karaokeLyrics")) && Boolean(line.words?.length);
         const words = line.words ?? [];
         const furigana = parseFuriganaMarkup(line.text, line.furigana);
+        const visibleAnnotations = CFM.get("showLyricsFurigana") ? furigana.annotations : [];
         const karaokeText = words.map((word) => word.text).join("");
-        const annotations = karaokeText === furigana.text ? furigana.annotations : [];
+        const annotations = karaokeText === furigana.text ? visibleAnnotations : [];
         const furiganaClass = annotations.length ? " rnp-lyrics-has-furigana" : "";
         const original = showKaraoke
             ? `<div class="rnp-lyrics-line-karaoke${furiganaClass}">${this.renderKaraokeLine(words, annotations)}</div>`
-            : `<div class="rnp-lyrics-line-original${furigana.annotations.length ? " rnp-lyrics-has-furigana" : ""}">${this.formatLyricText(furigana.text, furigana.annotations)}</div>`;
+            : `<div class="rnp-lyrics-line-original${visibleAnnotations.length ? " rnp-lyrics-has-furigana" : ""}">${this.formatLyricText(furigana.text, visibleAnnotations)}</div>`;
 
         const romanization =
             CFM.get("showLyricsRomanization") && line.romanization

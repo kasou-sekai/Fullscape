@@ -6,6 +6,7 @@ export const DEFAULTS: Config = {
         thirdPartyLyrics: true,
         showLyricsTranslation: true,
         showLyricsRomanization: true,
+        showLyricsFurigana: true,
         karaokeLyrics: true,
         lyricsSize: 30,
         autoHideLyrics: true,

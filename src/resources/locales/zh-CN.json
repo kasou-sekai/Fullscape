@@ -33,6 +33,7 @@
         "thirdPartyLyrics": "使用网易云与 QQ 音乐增强歌词",
         "showLyricsTranslation": "显示歌词翻译",
         "showLyricsRomanization": "显示罗马音歌词",
+        "showLyricsFurigana": "显示假名注音",
         "karaokeLyrics": "使用逐字歌词",
         "refreshLyrics": {
             "setting": "重新获取歌词",
