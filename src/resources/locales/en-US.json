@@ -34,6 +34,13 @@
         "showLyricsTranslation": "Show Lyric Translation",
         "showLyricsRomanization": "Show Romanized Lyrics",
         "showLyricsFurigana": "Show Furigana",
+        "lyricsChineseConversion": {
+            "setting": "Chinese Character Form",
+            "description": "Convert displayed lyrics and translations to simplified or traditional Chinese.",
+            "original": "Original",
+            "simplified": "Simplified Chinese",
+            "traditional": "Traditional Chinese"
+        },
         "karaokeLyrics": "Use Word-by-word Lyrics",
         "refreshLyrics": {
             "setting": "Refresh Lyrics",

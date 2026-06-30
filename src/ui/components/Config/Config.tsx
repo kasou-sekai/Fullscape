@@ -556,6 +556,22 @@ export class ConfigManager {
                 translations[LOCALE].settings.showLyricsFurigana,
                 "showLyricsFurigana",
             ),
+            this.createOptions(
+                translations[LOCALE].settings.lyricsChineseConversion.setting,
+                {
+                    original: translations[LOCALE].settings.lyricsChineseConversion.original,
+                    simplified: translations[LOCALE].settings.lyricsChineseConversion.simplified,
+                    traditional: translations[LOCALE].settings.lyricsChineseConversion.traditional,
+                },
+                CFM.get("lyricsChineseConversion") as Settings["lyricsChineseConversion"],
+                "lyricsChineseConversion",
+                (value) =>
+                    this.saveOption(
+                        "lyricsChineseConversion",
+                        value as Settings["lyricsChineseConversion"],
+                    ),
+                translations[LOCALE].settings.lyricsChineseConversion.description,
+            ),
             this.createToggle(translations[LOCALE].settings.karaokeLyrics, "karaokeLyrics"),
             this.createToggle(translations[LOCALE].settings.autoHideLyrics, "autoHideLyrics"),
             createAdjust(

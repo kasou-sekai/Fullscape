@@ -12,6 +12,7 @@
     },
     "dependencies": {
         "@kawarp/core": "^1.2.0",
+        "opencc-js": "1.3.1",
         "qrc-decoder": "1.0.2",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",

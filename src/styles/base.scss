@@ -307,8 +307,37 @@
         .rnp-lyrics-line-translated {
             font-size: 0.66em;
             font-family: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC",
-                "Source Han Sans SC", sans-serif;
+                "Noto Sans SC", "Source Han Sans SC", "Source Han Sans CN", "Hiragino Sans GB",
+                "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Droid Sans Fallback", "SimHei",
+                "Arial Unicode MS", sans-serif;
             font-weight: 400;
+        }
+        .rnp-lyrics-script-simplified .rnp-lyrics-line > div {
+            font-family: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC",
+                "Noto Sans SC", "Source Han Sans SC", "Source Han Sans CN", "Hiragino Sans GB",
+                "Heiti SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Droid Sans Fallback",
+                "SimHei", "Arial Unicode MS", sans-serif;
+            font-feature-settings: "locl";
+        }
+        .rnp-lyrics-script-traditional .rnp-lyrics-line > div {
+            font-family: "PingFang TC", "Microsoft JhengHei UI", "Microsoft JhengHei",
+                "Noto Sans CJK TC", "Noto Sans TC", "Source Han Sans TC", "Source Han Sans TW",
+                "Heiti TC", "STHeiti TC", "WenQuanYi Zen Hei", "Droid Sans Fallback",
+                "Arial Unicode MS", sans-serif;
+            font-feature-settings: "locl";
+        }
+        .rnp-lyrics-script-simplified .rnp-lyrics-line > .rnp-lyrics-line-original,
+        .rnp-lyrics-script-simplified .rnp-lyrics-line > .rnp-lyrics-line-karaoke,
+        .rnp-lyrics-script-traditional .rnp-lyrics-line > .rnp-lyrics-line-original,
+        .rnp-lyrics-script-traditional .rnp-lyrics-line > .rnp-lyrics-line-karaoke {
+            font-weight: 400;
+            transition:
+                opacity 0.4s ease,
+                text-shadow 0.45s ease;
+        }
+        .rnp-lyrics-script-simplified rt,
+        .rnp-lyrics-script-traditional rt {
+            font-family: "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", "Noto Sans JP", sans-serif;
         }
         .rnp-lyrics-line > .rnp-lyrics-line-karaoke {
             line-height: 1.32;
@@ -408,6 +437,18 @@
             font-weight: 500;
             text-shadow: none;
             animation: none;
+        }
+        .rnp-lyrics-script-simplified .rnp-lyrics-line.active > .rnp-lyrics-line-original,
+        .rnp-lyrics-script-simplified .rnp-lyrics-line.active > .rnp-lyrics-line-karaoke,
+        .rnp-lyrics-script-traditional .rnp-lyrics-line.active > .rnp-lyrics-line-original,
+        .rnp-lyrics-script-traditional .rnp-lyrics-line.active > .rnp-lyrics-line-karaoke {
+            font-weight: 700;
+        }
+        .rnp-lyrics-script-simplified .rnp-lyrics-line.active .rnp-karaoke-word,
+        .rnp-lyrics-script-simplified .rnp-lyrics-line.active .rnp-karaoke-word > span,
+        .rnp-lyrics-script-traditional .rnp-lyrics-line.active .rnp-karaoke-word,
+        .rnp-lyrics-script-traditional .rnp-lyrics-line.active .rnp-karaoke-word > span {
+            font-weight: 700;
         }
         @keyframes rnp-lyric-glow {
             0%,

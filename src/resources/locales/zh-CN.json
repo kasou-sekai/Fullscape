@@ -34,6 +34,13 @@
         "showLyricsTranslation": "显示歌词翻译",
         "showLyricsRomanization": "显示罗马音歌词",
         "showLyricsFurigana": "显示假名注音",
+        "lyricsChineseConversion": {
+            "setting": "歌词繁简字形",
+            "description": "将显示的原文和翻译转换为简体或繁体中文。",
+            "original": "保持原文",
+            "simplified": "简体中文",
+            "traditional": "繁体中文"
+        },
         "karaokeLyrics": "使用逐字歌词",
         "refreshLyrics": {
             "setting": "重新获取歌词",

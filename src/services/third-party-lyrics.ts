@@ -1,4 +1,5 @@
 import { decryptQrc } from "qrc-decoder";
+import { normalizeChineseForMatch } from "../utils/chinese-conversion";
 
 export type LyricWord = {
     time: number;
@@ -679,12 +680,18 @@ export function parseQQMusicLyrics(raw: string): ThirdPartyLyrics {
 
     return {
         lines: parseLrc(normalizedOriginal),
-        translations: parseLrc(normalizeExtendedLrcTimestamps(translation)),
+        translations: parseLrc(normalizeExtendedLrcTimestamps(translation)).filter(
+            (line) => !isQQMusicTranslationPlaceholder(line.text),
+        ),
         romanizations: parseLrc(normalizeExtendedLrcTimestamps(romanization)),
         furigana,
         dynamicLines,
         hasFurigana: furigana.length > 0,
     };
+}
+
+function isQQMusicTranslationPlaceholder(text: string) {
+    return /^\/{2}$/.test(text.trim());
 }
 
 function extractQQMusicContent(raw: string, tag: string) {
@@ -1282,7 +1289,7 @@ function isCompatibleText(a: string, b: string) {
 }
 
 function normalizeLyricText(text: string) {
-    return text
+    return normalizeChineseForMatch(text)
         .toLowerCase()
         .replace(/\[[^\]]+\]/g, "")
         .replace(/\([^)]*\)/g, "")

@@ -12,6 +12,7 @@ export type Settings = {
     showLyricsTranslation: boolean;
     showLyricsRomanization: boolean;
     showLyricsFurigana: boolean;
+    lyricsChineseConversion: "original" | "simplified" | "traditional";
     karaokeLyrics: boolean;
     lyricsSize: number;
     autoHideLyrics: boolean;

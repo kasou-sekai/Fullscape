@@ -26,6 +26,13 @@
         "lyricsDescription": ["**注意:** 預設使用 Spotify 內建的歌詞。"],
         "thirdPartyLyrics": "使用網易雲與 QQ 音樂增強歌詞",
         "showLyricsFurigana": "顯示假名注音",
+        "lyricsChineseConversion": {
+            "setting": "歌詞繁簡字形",
+            "description": "將顯示的原文和翻譯轉換為簡體或繁體中文。",
+            "original": "保持原文",
+            "simplified": "簡體中文",
+            "traditional": "繁體中文"
+        },
         "lyricsDiagnostics": {
             "setting": "歌詞診斷",
             "description": "用於排查歌詞載入與匹配問題的詳細執行資訊。",

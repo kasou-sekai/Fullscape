@@ -7,6 +7,7 @@ export const DEFAULTS: Config = {
         showLyricsTranslation: true,
         showLyricsRomanization: true,
         showLyricsFurigana: true,
+        lyricsChineseConversion: "original",
         karaokeLyrics: true,
         lyricsSize: 30,
         autoHideLyrics: true,
