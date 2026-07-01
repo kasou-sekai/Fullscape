@@ -147,7 +147,9 @@ const QQ_SEARCH_URL = "https://u.y.qq.com/cgi-bin/musicu.fcg";
 const QQ_SMARTBOX_URL = "https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg";
 const QQ_LYRIC_URL = "https://c.y.qq.com/qqmusic/fcgi-bin/lyric_download.fcg";
 const REQUEST_TIMEOUT_MS = 6000;
+const DURATION_TOLERANCE_MS = 12000;
 const FIRST_LINE_TIME_TOLERANCE_MS = 2500;
+const RELAXED_FIRST_LINE_EARLY_TIME_MS = 1000;
 const MERGE_TIME_TOLERANCE_MS = 1500;
 const UNTIMED_DECORATION_MAX_DURATION_MS = 20;
 
@@ -167,6 +169,7 @@ export function publishThirdPartyLyricsDebug(debug: ThirdPartyLyricsDebug, fromC
 export async function enhanceWithThirdPartyLyrics(
     spotifyLines: EnhancedLyricLine[],
     trackOverride?: TrackInfo,
+    relaxedMatching = false,
     publishDebug = true,
     captureDebug?: (debug: ThirdPartyLyricsDebug) => void,
 ): Promise<EnhancedLyricLine[]> {
@@ -203,7 +206,9 @@ export async function enhanceWithThirdPartyLyrics(
 
         const matched = (
             await Promise.all(
-                songs.map((song) => evaluateLyricsCandidate(song, track, spotifyLines, debug)),
+                songs.map((song) =>
+                    evaluateLyricsCandidate(song, track, spotifyLines, debug, relaxedMatching),
+                ),
             )
         ).filter((candidate): candidate is MatchedLyricsCandidate => candidate !== null);
         const selected = matched.sort(compareMatchedLyrics)[0];
@@ -230,7 +235,9 @@ export async function enhanceWithThirdPartyLyrics(
             status: searchErrors.length ? "error" : "not-matched",
             reason: [
                 songs.length
-                    ? "两个来源均没有候选依次通过纯歌名、时长、首句及歌手/专辑匹配"
+                    ? relaxedMatching
+                        ? "两个来源均没有候选通过严格匹配或时长与首句宽松匹配"
+                        : "两个来源均没有候选依次通过纯歌名、时长、首句及歌手/专辑匹配"
                     : "网易云与 QQ 音乐均未返回候选歌曲",
                 ...searchErrors,
             ].join("；"),
@@ -296,6 +303,7 @@ async function evaluateLyricsCandidate(
     track: TrackInfo,
     spotifyLines: EnhancedLyricLine[],
     debug: ThirdPartyLyricsDebug,
+    relaxedMatching: boolean,
 ): Promise<MatchedLyricsCandidate | null> {
     const candidateDebug: ThirdPartyCandidateDebug = {
         provider: song.provider,
@@ -309,24 +317,37 @@ async function evaluateLyricsCandidate(
     };
     debug.candidates.push(candidateDebug);
 
-    if (!isBaseTitleMatch(song.name, track.title)) {
-        candidateDebug.reason = `纯歌名不匹配：${getBaseTrackTitle(song.name)} ≠ ${getBaseTrackTitle(track.title)}`;
+    const titleMatches = isBaseTitleMatch(song.name, track.title);
+    const titleReason = titleMatches
+        ? "纯歌名匹配"
+        : `纯歌名不匹配：${getBaseTrackTitle(song.name)} ≠ ${getBaseTrackTitle(track.title)}`;
+    if (!titleMatches && !relaxedMatching) {
+        candidateDebug.reason = titleReason;
         return null;
     }
-
     const durationResult = getDurationMatchResult(song, track);
     if (!durationResult.match) {
-        candidateDebug.reason = durationResult.reason;
+        candidateDebug.reason = `${titleReason}；${durationResult.reason}`;
         return null;
     }
     const identityResult = getArtistOrAlbumMatchResult(song, track);
-    if (!identityResult.match) {
-        candidateDebug.reason = `纯歌名匹配；${durationResult.reason}；${identityResult.reason}`;
+    if (!identityResult.match && !relaxedMatching) {
+        candidateDebug.reason = `${titleReason}；${durationResult.reason}；${identityResult.reason}`;
+        return null;
+    }
+    const strictMetadataMatches = titleMatches && identityResult.match;
+    const relaxedDurationResult = relaxedMatching
+        ? getRelaxedDurationMatchResult(song, track)
+        : { match: false, reason: "宽松匹配未开启" };
+    if (!strictMetadataMatches && !relaxedDurationResult.match) {
+        candidateDebug.reason = `${titleReason}；${durationResult.reason}；${identityResult.reason}；${relaxedDurationResult.reason}`;
         return null;
     }
 
     candidateDebug.plausible = true;
-    const preliminaryReason = `纯歌名匹配；${durationResult.reason}；${identityResult.reason}`;
+    const preliminaryReason = strictMetadataMatches
+        ? `${titleReason}；${durationResult.reason}；${identityResult.reason}`
+        : `${titleReason}；${relaxedDurationResult.reason}；忽略歌名、歌手与专辑，尝试宽松首句匹配`;
     candidateDebug.reason = preliminaryReason;
 
     try {
@@ -334,8 +355,12 @@ async function evaluateLyricsCandidate(
             song.provider === "netease"
                 ? parseNetEaseLyrics(await fetchNetEaseLyrics(Number(song.id)))
                 : await fetchQQMusicLyrics(song);
-        parsed.lines = trimLeadingProviderMetadata(parsed.lines, song);
-        parsed.dynamicLines = trimLeadingProviderMetadata(parsed.dynamicLines, song);
+        parsed.lines = trimLeadingProviderMetadata(parsed.lines, song, spotifyLines);
+        parsed.dynamicLines = trimLeadingProviderMetadata(
+            parsed.dynamicLines,
+            song,
+            spotifyLines,
+        );
         candidateDebug.counts = {
             lrc: parsed.lines.length,
             translation: parsed.translations.length,
@@ -351,9 +376,28 @@ async function evaluateLyricsCandidate(
         const candidateLines = parsed.dynamicLines.length ? parsed.dynamicLines : parsed.lines;
         candidateDebug.first = firstMeaningfulLine(candidateLines) ?? null;
         candidateDebug.preview = previewMeaningfulLines(candidateLines);
-        const matchResult = getLyricsMatchResult(spotifyLines, candidateLines);
+        const strictMatchResult = strictMetadataMatches
+            ? getLyricsMatchResult(spotifyLines, candidateLines)
+            : null;
+        const relaxedMatchResult =
+            relaxedMatching && !strictMatchResult?.match && relaxedDurationResult.match
+                ? getRelaxedLyricsMatchResult(spotifyLines, candidateLines)
+                : null;
+        const matchResult = strictMatchResult?.match
+            ? strictMatchResult
+            : (relaxedMatchResult ?? strictMatchResult);
+        if (!matchResult) {
+            candidateDebug.reason = `${preliminaryReason}；无法执行宽松首句匹配`;
+            return null;
+        }
         candidateDebug.match = matchResult.match;
-        candidateDebug.reason = `${preliminaryReason}；${matchResult.reason}`;
+        candidateDebug.reason = [
+            preliminaryReason,
+            strictMatchResult && !strictMatchResult.match ? strictMatchResult.reason : "",
+            matchResult.reason,
+        ]
+            .filter(Boolean)
+            .join("；");
         if (!matchResult.match) return null;
 
         const lines = buildThirdPartyLyrics(parsed);
@@ -392,11 +436,26 @@ function providerName(provider: ProviderSong["provider"]) {
     return provider === "netease" ? "网易云" : "QQ 音乐";
 }
 
-function trimLeadingProviderMetadata(lines: EnhancedLyricLine[], song: ProviderSong) {
+function trimLeadingProviderMetadata(
+    lines: EnhancedLyricLine[],
+    song: ProviderSong,
+    spotifyLines: EnhancedLyricLine[],
+) {
+    const spotifyFirst = firstMeaningfulLine(spotifyLines);
     const firstLyricIndex = lines.findIndex(
-        (line) => !isProviderMetadataLine(line.text, song) && isMeaningfulLyric(line.text),
+        (line) =>
+            isMeaningfulLyric(line.text) &&
+            (!isProviderMetadataLine(line.text, song) ||
+                isSameNormalizedLyric(line.text, spotifyFirst?.text)),
     );
     return firstLyricIndex > 0 ? lines.slice(firstLyricIndex) : lines;
+}
+
+function isSameNormalizedLyric(first: string, second?: string) {
+    if (!second) return false;
+    const normalizedFirst = normalizeLyricText(first);
+    const normalizedSecond = normalizeLyricText(second);
+    return Boolean(normalizedFirst && normalizedFirst === normalizedSecond);
 }
 
 function isProviderMetadataLine(text: string, song: ProviderSong) {
@@ -1247,6 +1306,38 @@ function getLyricsMatchResult(
     return { match: true, reason: `第一句匹配，时间差 ${timeDiff}ms` };
 }
 
+function getRelaxedLyricsMatchResult(
+    spotifyLines: EnhancedLyricLine[],
+    thirdPartyLines: EnhancedLyricLine[],
+) {
+    const spotifyFirst = firstMeaningfulLine(spotifyLines);
+    const thirdPartyFirst = firstMeaningfulLine(thirdPartyLines);
+    if (!spotifyFirst || !thirdPartyFirst) {
+        return { match: false, reason: "宽松匹配失败：缺少双方第一句有效歌词" };
+    }
+    if (spotifyFirst.time === null || thirdPartyFirst.time === null) {
+        return { match: false, reason: "宽松匹配失败：第一句有效歌词缺少时间轴" };
+    }
+    if (!isContainedLyricText(spotifyFirst.text, thirdPartyFirst.text)) {
+        return { match: false, reason: "宽松匹配失败：第一句有效歌词不是包含关系" };
+    }
+
+    const timeDiff = Math.abs(spotifyFirst.time - thirdPartyFirst.time);
+    if (timeDiff <= FIRST_LINE_TIME_TOLERANCE_MS) {
+        return { match: true, reason: `宽松匹配成功：首句互相包含，时间差 ${timeDiff}ms` };
+    }
+
+    const spotifyStartsEarly = isWithinRelaxedEarlyTime(spotifyFirst.time);
+    const thirdPartyStartsEarly = isWithinRelaxedEarlyTime(thirdPartyFirst.time);
+    if (spotifyStartsEarly || thirdPartyStartsEarly) {
+        return {
+            match: true,
+            reason: `宽松匹配成功：首句互相包含，时间差 ${timeDiff}ms，但一方首句在前 1 秒内`,
+        };
+    }
+    return { match: false, reason: `宽松匹配失败：第一句时间差过大（${timeDiff}ms）` };
+}
+
 function hasSyncedLyrics(lines: EnhancedLyricLine[]) {
     return lines.some((line) => line.time !== null && (line.time ?? 0) > 0);
 }
@@ -1288,6 +1379,16 @@ function isCompatibleText(a: string, b: string) {
     return first.includes(second) || second.includes(first);
 }
 
+function isContainedLyricText(a: string, b: string) {
+    const first = normalizeLyricText(a);
+    const second = normalizeLyricText(b);
+    return Boolean(first && second && (first.includes(second) || second.includes(first)));
+}
+
+function isWithinRelaxedEarlyTime(time: number) {
+    return time >= 0 && time <= RELAXED_FIRST_LINE_EARLY_TIME_MS;
+}
+
 function normalizeLyricText(text: string) {
     return normalizeChineseForMatch(text)
         .toLowerCase()
@@ -1309,9 +1410,20 @@ function getDurationMatchResult(song: ProviderSong, track: TrackInfo) {
         return { match: true, reason: "缺少歌曲时长，改用歌手/专辑与歌词校验" };
     }
     const difference = Math.abs(candidateDuration - track.duration);
-    return difference <= 12000
+    return difference <= DURATION_TOLERANCE_MS
         ? { match: true, reason: `时长匹配，差值 ${difference}ms` }
         : { match: false, reason: `歌曲时长不匹配，差值 ${difference}ms` };
+}
+
+function getRelaxedDurationMatchResult(song: ProviderSong, track: TrackInfo) {
+    const candidateDuration = song.duration ?? 0;
+    if (!candidateDuration || !track.duration) {
+        return { match: false, reason: "宽松模式要求双方都有歌曲时长" };
+    }
+    const difference = Math.abs(candidateDuration - track.duration);
+    return difference <= DURATION_TOLERANCE_MS
+        ? { match: true, reason: `宽松模式时长匹配，差值 ${difference}ms` }
+        : { match: false, reason: `宽松模式歌曲时长不匹配，差值 ${difference}ms` };
 }
 
 function getArtistOrAlbumMatchResult(song: ProviderSong, track: TrackInfo) {

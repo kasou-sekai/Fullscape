@@ -9,6 +9,7 @@ export type Config = {
 export type Settings = {
     lyricsDisplay: boolean;
     thirdPartyLyrics: boolean;
+    relaxedLyricsMatching: boolean;
     showLyricsTranslation: boolean;
     showLyricsRomanization: boolean;
     showLyricsFurigana: boolean;

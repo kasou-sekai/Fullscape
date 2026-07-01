@@ -25,6 +25,10 @@
         "lyrics": "歌詞",
         "lyricsDescription": ["**注意:** 預設使用 Spotify 內建的歌詞。"],
         "thirdPartyLyrics": "使用網易雲與 QQ 音樂增強歌詞",
+        "relaxedLyricsMatching": {
+            "setting": "寬鬆歌詞匹配",
+            "description": "開啟後，時長和首句歌詞符合條件的候選可忽略歌名、歌手與專輯差異。"
+        },
         "showLyricsFurigana": "顯示假名注音",
         "lyricsChineseConversion": {
             "setting": "歌詞繁簡字形",

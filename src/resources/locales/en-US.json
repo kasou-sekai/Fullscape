@@ -31,6 +31,10 @@
         "lyrics": "Lyrics",
         "lyricsDescription": ["**Tip:** Uses Spotify's built-in lyrics when available."],
         "thirdPartyLyrics": "Enhance Lyrics from NetEase and QQ Music",
+        "relaxedLyricsMatching": {
+            "setting": "Relaxed Lyrics Matching",
+            "description": "Allow candidates with a similar duration and compatible first lyric line to match even when the title, artist, or album differs."
+        },
         "showLyricsTranslation": "Show Lyric Translation",
         "showLyricsRomanization": "Show Romanized Lyrics",
         "showLyricsFurigana": "Show Furigana",

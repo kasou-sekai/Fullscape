@@ -31,6 +31,10 @@
         "lyrics": "歌词",
         "lyricsDescription": ["**提示:** 默认使用 Spotify 自带的歌词。"],
         "thirdPartyLyrics": "使用网易云与 QQ 音乐增强歌词",
+        "relaxedLyricsMatching": {
+            "setting": "宽松歌词匹配",
+            "description": "开启后，时长和首句歌词符合条件的候选可忽略歌名、歌手与专辑差异。"
+        },
         "showLyricsTranslation": "显示歌词翻译",
         "showLyricsRomanization": "显示罗马音歌词",
         "showLyricsFurigana": "显示假名注音",

@@ -545,6 +545,12 @@ export class ConfigManager {
             ),
             this.createToggle(translations[LOCALE].settings.thirdPartyLyrics, "thirdPartyLyrics"),
             this.createToggle(
+                translations[LOCALE].settings.relaxedLyricsMatching.setting,
+                "relaxedLyricsMatching",
+                undefined,
+                translations[LOCALE].settings.relaxedLyricsMatching.description,
+            ),
+            this.createToggle(
                 translations[LOCALE].settings.showLyricsTranslation,
                 "showLyricsTranslation",
             ),

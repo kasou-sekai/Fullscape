@@ -1,6 +1,6 @@
 import type { EnhancedLyricLine, ThirdPartyLyricsDebug } from "./third-party-lyrics";
 
-export type LyricsCacheKind = "spotify" | "enhanced";
+export type LyricsCacheKind = "spotify" | "enhanced" | "enhanced-relaxed";
 
 type LyricsCacheEntry = {
     kind: LyricsCacheKind;
@@ -12,17 +12,18 @@ type LyricsCacheEntry = {
 };
 
 type LyricsCacheStore = {
-    version: 4;
+    version: 5;
     entries: Record<string, LyricsCacheEntry>;
 };
 
-const STORAGE_KEY = "full-screen:lyrics-cache-v4";
+const STORAGE_KEY = "full-screen:lyrics-cache-v5";
 const LEGACY_STORAGE_KEYS = [
     "full-screen:lyrics-cache-v1",
     "full-screen:lyrics-cache-v2",
     "full-screen:lyrics-cache-v3",
+    "full-screen:lyrics-cache-v4",
 ];
-const CACHE_VERSION = 4;
+const CACHE_VERSION = 5;
 const READY_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const EMPTY_TTL_MS = 30 * 60 * 1000;
 const MAX_ENTRIES = 40;
@@ -34,8 +35,8 @@ export function getCachedLyrics(trackUri: string, kind: LyricsCacheKind) {
     return getCachedLyricsEntry(trackUri, kind)?.lines ?? null;
 }
 
-export function getCachedLyricsDebug(trackUri: string) {
-    return getCachedLyricsEntry(trackUri, "enhanced")?.debug ?? null;
+export function getCachedLyricsDebug(trackUri: string, kind: LyricsCacheKind) {
+    return getCachedLyricsEntry(trackUri, kind)?.debug ?? null;
 }
 
 function getCachedLyricsEntry(trackUri: string, kind: LyricsCacheKind) {
@@ -73,7 +74,9 @@ export function setCachedLyrics(
 
 export function deleteCachedLyrics(trackUri: string, kind?: LyricsCacheKind) {
     const cache = getStore();
-    const kinds: LyricsCacheKind[] = kind ? [kind] : ["spotify", "enhanced"];
+    const kinds: LyricsCacheKind[] = kind
+        ? [kind]
+        : ["spotify", "enhanced", "enhanced-relaxed"];
     let changed = false;
     kinds.forEach((cacheKind) => {
         const key = getCacheKey(trackUri, cacheKind);

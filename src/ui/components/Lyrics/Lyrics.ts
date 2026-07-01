@@ -149,7 +149,10 @@ export class Lyrics {
             return;
         }
         if (force !== "none") {
-            deleteCachedLyrics(trackUri, force === "enhanced" ? "enhanced" : undefined);
+            deleteCachedLyrics(
+                trackUri,
+                force === "enhanced" ? this.getEnhancedCacheKind() : undefined,
+            );
         }
         const track = this.getCurrentTrack(trackUri);
         const cachedLines = this.getPreparedLyricsFromCache(track);
@@ -211,9 +214,11 @@ export class Lyrics {
     // ---- internal helpers ----
 
     private static getPreparedLyricsFromCache(track: LyricsTrack) {
-        const kind: LyricsCacheKind = CFM.get("thirdPartyLyrics") ? "enhanced" : "spotify";
+        const kind: LyricsCacheKind = CFM.get("thirdPartyLyrics")
+            ? this.getEnhancedCacheKind()
+            : "spotify";
         const cached = getCachedLyrics(track.uri, kind);
-        if (cached !== null && kind === "enhanced") {
+        if (cached !== null && kind !== "spotify") {
             this.publishCachedDebug(track.uri);
         }
         return cached;
@@ -221,10 +226,13 @@ export class Lyrics {
 
     private static async getPreparedLyrics(track: LyricsTrack, publishDebug: boolean) {
         const thirdPartyEnabled = Boolean(CFM.get("thirdPartyLyrics"));
-        const kind: LyricsCacheKind = thirdPartyEnabled ? "enhanced" : "spotify";
+        const relaxedMatching = Boolean(CFM.get("relaxedLyricsMatching"));
+        const kind: LyricsCacheKind = thirdPartyEnabled
+            ? this.getEnhancedCacheKind()
+            : "spotify";
         const cached = getCachedLyrics(track.uri, kind);
         if (cached !== null) {
-            if (publishDebug && kind === "enhanced") this.publishCachedDebug(track.uri);
+            if (publishDebug && kind !== "spotify") this.publishCachedDebug(track.uri);
             return cached;
         }
 
@@ -238,12 +246,13 @@ export class Lyrics {
             return spotifyLines;
         }
 
-        const enhancedCached = getCachedLyrics(track.uri, "enhanced");
+        const enhancedCached = getCachedLyrics(track.uri, kind);
         if (enhancedCached !== null) {
             if (publishDebug) this.publishCachedDebug(track.uri);
             return enhancedCached;
         }
-        const pending = this.enhancedRequests.get(track.uri);
+        const requestKey = `${kind}:${track.uri}`;
+        const pending = this.enhancedRequests.get(requestKey);
         if (pending) {
             const lines = await pending;
             if (publishDebug) this.publishCachedDebug(track.uri);
@@ -251,25 +260,35 @@ export class Lyrics {
         }
 
         let debugSnapshot: ThirdPartyLyricsDebug | undefined;
-        const request = enhanceWithThirdPartyLyrics(spotifyLines, track, publishDebug, (debug) => {
-            debugSnapshot = debug;
-        })
+        const request = enhanceWithThirdPartyLyrics(
+            spotifyLines,
+            track,
+            relaxedMatching,
+            publishDebug,
+            (debug) => {
+                debugSnapshot = debug;
+            },
+        )
             .then((lines) => {
                 if (debugSnapshot?.status !== "error") {
-                    setCachedLyrics(track.uri, "enhanced", lines, debugSnapshot);
+                    setCachedLyrics(track.uri, kind, lines, debugSnapshot);
                 }
                 return lines;
             })
             .finally(() => {
-                this.enhancedRequests.delete(track.uri);
+                this.enhancedRequests.delete(requestKey);
             });
-        this.enhancedRequests.set(track.uri, request);
+        this.enhancedRequests.set(requestKey, request);
         return request;
     }
 
     private static publishCachedDebug(trackUri: string) {
-        const debug = getCachedLyricsDebug(trackUri);
+        const debug = getCachedLyricsDebug(trackUri, this.getEnhancedCacheKind());
         if (debug) publishThirdPartyLyricsDebug(debug, true);
+    }
+
+    private static getEnhancedCacheKind(): LyricsCacheKind {
+        return CFM.get("relaxedLyricsMatching") ? "enhanced-relaxed" : "enhanced";
     }
 
     private static async getSpotifyLyrics(track: LyricsTrack) {
