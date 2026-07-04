@@ -522,6 +522,7 @@ export class Lyrics {
             this.lineNodes.forEach((node, idx) => node.classList.toggle("active", idx === 0));
             return;
         }
+        this.stabilizeLineWrapping();
         this.measureHeights();
         this.applyTransforms(true);
         this.setupResizeObserver();
@@ -1125,6 +1126,7 @@ export class Lyrics {
     private static applyTransforms(skipAnimation = false) {
         if (!this.isSynced) return;
         if (!this.lyricsRoot || !this.lineNodes.length) return;
+        const lyricsRoot = this.lyricsRoot;
         if (!this.lineHeights.length || this.lineHeights.length !== this.lineNodes.length) {
             this.measureHeights();
         }
@@ -1139,10 +1141,11 @@ export class Lyrics {
 
         const fontSize = this.getFontSize();
         if (Math.abs(fontSize - this.lastMeasuredFontSize) > 0.5) {
+            this.stabilizeLineWrapping();
             this.measureHeights();
         }
         const baseGap = Math.max(22, Math.min(58, fontSize * 1.0));
-        const containerHeight = this.containerHeight || this.lyricsRoot.clientHeight || 1;
+        const containerHeight = this.containerHeight || lyricsRoot.clientHeight || 1;
         const centerY = containerHeight * 0.38;
         const baseIndent = Math.max(12, Math.min(36, fontSize * 0.8));
 
@@ -1160,6 +1163,16 @@ export class Lyrics {
         const opacityByOffset = (offset: number) =>
             Math.max(0.32, 1 - Math.max(0, offset - 1) * 0.22);
         const translateByOffset = (offset: number) => Math.max(0, baseIndent - offset * 6);
+        const translateForLine = (index: number, offset: number) =>
+            Math.min(
+                translateByOffset(offset),
+                Math.max(
+                    0,
+                    lyricsRoot.clientWidth -
+                        this.lineNodes[index].offsetLeft -
+                        this.lineNodes[index].offsetWidth,
+                ),
+            );
         const delayByOffset = (offset: number) => Math.min(6, offset) * 45;
 
         if (!hasActive) {
@@ -1177,7 +1190,7 @@ export class Lyrics {
                     blur,
                     opacity,
                     delay: 0,
-                    translate: translateByOffset(offset),
+                    translate: translateForLine(i, offset),
                 };
                 const h = (this.lineHeights[i] || fontSize) * scale;
                 runningTop += h + baseGap;
@@ -1189,7 +1202,7 @@ export class Lyrics {
                 blur: 0,
                 opacity: 1,
                 delay: 0,
-                translate: translateByOffset(0),
+                translate: translateForLine(current, 0),
             };
 
             for (let i = current - 1; i >= 0; i--) {
@@ -1203,7 +1216,7 @@ export class Lyrics {
                     blur: blurByOffset(offset),
                     opacity: opacityByOffset(offset),
                     delay: delayByOffset(offset),
-                    translate: translateByOffset(offset),
+                    translate: translateForLine(i, offset),
                 };
             }
 
@@ -1218,7 +1231,7 @@ export class Lyrics {
                     blur: blurByOffset(offset),
                     opacity: opacityByOffset(offset),
                     delay: delayByOffset(offset),
-                    translate: translateByOffset(offset),
+                    translate: translateForLine(i, offset),
                 };
             }
         }
@@ -1241,6 +1254,73 @@ export class Lyrics {
         });
     }
 
+    private static stabilizeLineWrapping() {
+        if (!this.lyricsRoot) return;
+        const lyricsRoot = this.lyricsRoot;
+
+        this.lineNodes.forEach((node) => {
+            node.style.removeProperty("width");
+            node.style.removeProperty("max-width");
+        });
+
+        const rootWidth = lyricsRoot.clientWidth;
+        this.lineNodes.forEach((node) => {
+            const defaultWidth = node.offsetWidth;
+            const maxWidth = Math.max(defaultWidth, rootWidth - node.offsetLeft);
+            const normal = node.cloneNode(true) as HTMLElement;
+            const active = node.cloneNode(true) as HTMLElement;
+            const prepareClone = (clone: HTMLElement) => {
+                clone.classList.remove("rnp-lyrics-line-outside");
+                clone.style.position = "absolute";
+                clone.style.left = `${node.offsetLeft}px`;
+                clone.style.top = "0";
+                clone.style.maxWidth = "none";
+                clone.style.visibility = "hidden";
+                clone.style.pointerEvents = "none";
+                clone.style.transition = "none";
+                clone.style.transform = "none";
+                clone.style.filter = "none";
+            };
+            prepareClone(normal);
+            prepareClone(active);
+            normal.classList.remove("active");
+            active.classList.add("active");
+            lyricsRoot.append(normal, active);
+
+            const hasStableHeight = (width: number) => {
+                const measuredWidth = `${width}px`;
+                normal.style.width = measuredWidth;
+                active.style.width = measuredWidth;
+                return normal.offsetHeight === active.offsetHeight;
+            };
+
+            let stableWidth = defaultWidth;
+            if (!hasStableHeight(defaultWidth)) {
+                let found = false;
+                for (let width = Math.ceil(defaultWidth) + 1; width <= maxWidth; width += 1) {
+                    if (!hasStableHeight(width)) continue;
+                    stableWidth = width;
+                    found = true;
+                    break;
+                }
+                if (!found) {
+                    const minWidth = Math.floor(defaultWidth * 0.72);
+                    for (let width = Math.floor(defaultWidth) - 1; width >= minWidth; width -= 1) {
+                        if (!hasStableHeight(width)) continue;
+                        stableWidth = width;
+                        break;
+                    }
+                }
+            }
+
+            normal.remove();
+            active.remove();
+            if (Math.abs(stableWidth - defaultWidth) < 0.5) return;
+            node.style.width = `${stableWidth}px`;
+            node.style.maxWidth = `${stableWidth}px`;
+        });
+    }
+
     private static measureHeights() {
         if (!this.lyricsRoot) return;
         this.lineHeights = this.lineNodes.map(
@@ -1254,6 +1334,7 @@ export class Lyrics {
         if (!this.lyricsRoot || typeof ResizeObserver === "undefined") return;
         this.stopResizeObserver();
         this.resizeObserver = new ResizeObserver(() => {
+            this.stabilizeLineWrapping();
             this.measureHeights();
             this.applyTransforms(true);
         });

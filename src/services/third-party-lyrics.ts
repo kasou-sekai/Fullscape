@@ -416,7 +416,8 @@ function compareMatchedLyrics(first: MatchedLyricsCandidate, second: MatchedLyri
             return secondFeatures[index] - firstFeatures[index];
         }
     }
-    return 0;
+    if (first.song.provider === second.song.provider) return 0;
+    return first.song.provider === "qqmusic" ? -1 : 1;
 }
 
 function getCandidateQuality(candidate: MatchedLyricsCandidate) {
