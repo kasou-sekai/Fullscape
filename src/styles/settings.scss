@@ -35,6 +35,60 @@
     color: #162033 !important;
 }
 
+.main-trackCreditsModal-container button[aria-label="Close"],
+.main-trackCreditsModal-container button[aria-label="close"],
+.main-trackCreditsModal-container button[title="Close"],
+.main-trackCreditsModal-container [class*="closeButton"],
+.main-trackCreditsModal-container [class*="CloseButton"],
+.main-trackCreditsModal-container [class*="closeBtn"],
+.main-trackCreditsModal-container [class*="CloseBtn"] {
+    align-items: center;
+    background: rgba(255, 255, 255, 0.72) !important;
+    border: 1px solid rgba(22, 32, 51, 0.16) !important;
+    border-radius: 999px !important;
+    box-shadow:
+        0 10px 26px rgba(5, 12, 25, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.65);
+    color: #162033 !important;
+    display: inline-flex;
+    height: 36px;
+    justify-content: center;
+    min-height: 36px;
+    min-width: 36px;
+    opacity: 1 !important;
+    width: 36px;
+}
+
+.main-trackCreditsModal-container button[aria-label="Close"]:hover,
+.main-trackCreditsModal-container button[aria-label="close"]:hover,
+.main-trackCreditsModal-container button[title="Close"]:hover,
+.main-trackCreditsModal-container [class*="closeButton"]:hover,
+.main-trackCreditsModal-container [class*="CloseButton"]:hover,
+.main-trackCreditsModal-container [class*="closeBtn"]:hover,
+.main-trackCreditsModal-container [class*="CloseBtn"]:hover {
+    background: rgba(255, 255, 255, 0.92) !important;
+    border-color: rgba(22, 32, 51, 0.28) !important;
+    box-shadow:
+        0 12px 30px rgba(5, 12, 25, 0.24),
+        inset 0 1px 0 rgba(255, 255, 255, 0.78);
+    transform: scale(1.04);
+}
+
+.main-trackCreditsModal-container button[aria-label="Close"] svg,
+.main-trackCreditsModal-container button[aria-label="close"] svg,
+.main-trackCreditsModal-container button[title="Close"] svg,
+.main-trackCreditsModal-container [class*="closeButton"] svg,
+.main-trackCreditsModal-container [class*="CloseButton"] svg,
+.main-trackCreditsModal-container [class*="closeBtn"] svg,
+.main-trackCreditsModal-container [class*="CloseBtn"] svg {
+    color: #162033 !important;
+    fill: currentColor !important;
+    height: 18px;
+    stroke: currentColor !important;
+    stroke-width: 2.4px;
+    width: 18px;
+}
+
 .main-trackCreditsModal-mainSection {
     padding: 16px 18px 0;
 }
