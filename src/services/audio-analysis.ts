@@ -23,6 +23,7 @@ export type AudioAnalysis = {
 export type AudioMotion = {
     ambientSpeedMultiplier: number;
     warpPulse: number;
+    bpm: number | null;
 };
 
 const analysisCache = new Map<string, AudioAnalysis | null>();
@@ -117,11 +118,17 @@ function findActiveInterval<T extends AudioAnalysisInterval>(
     return candidate;
 }
 
-export function getAudioMotion(analysis: AudioAnalysis, currentTime: number): AudioMotion {
+export function getAudioMotion(
+    analysis: AudioAnalysis,
+    currentTime: number,
+    bpmDrivenMotion = true,
+): AudioMotion {
     const section = findActiveInterval(analysis.sections, currentTime);
-    const tempo = section?.tempo ?? analysis.track.tempo ?? 120;
+    const tempo = section?.tempo ?? analysis.track.tempo;
+    const bpm = tempo && Number.isFinite(tempo) ? tempo : null;
+    const motionTempo = bpm ?? 120;
     const loudness = section?.loudness ?? analysis.track.loudness ?? -18;
-    const tempoFactor = clamp(tempo / 120, 0.65, 1.5);
+    const tempoFactor = clamp(motionTempo / 120, 0.65, 1.5);
     const loudnessFactor = 0.8 + clamp((loudness + 40) / 40, 0, 1) * 0.4;
 
     let beatPulse = 0;
@@ -130,11 +137,18 @@ export function getAudioMotion(analysis: AudioAnalysis, currentTime: number): Au
     if (beat && confidence >= 0.35 && beat.duration > 0) {
         const beatProgress = clamp((currentTime - beat.start) / beat.duration, 0, 1);
         beatPulse = Math.exp(-4.5 * beatProgress) * confidence;
+    } else if (bpmDrivenMotion && bpm) {
+        const beatDuration = 60 / bpm;
+        const beatProgress = (currentTime % beatDuration) / beatDuration;
+        beatPulse = Math.exp(-5.2 * beatProgress) * 0.45;
     }
 
-    const ambientSpeedMultiplier = clamp(tempoFactor * loudnessFactor, 0.7, 1.65);
+    const ambientSpeedMultiplier = bpmDrivenMotion
+        ? clamp(tempoFactor * loudnessFactor, 0.7, 1.65)
+        : 1;
     return {
         ambientSpeedMultiplier,
         warpPulse: beatPulse,
+        bpm,
     };
 }

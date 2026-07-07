@@ -29,6 +29,8 @@ export const DEFAULTS: Config = {
         backAnimationTime: 1,
         animationSpeed: 0.25,
         beatBounce: true,
+        beatResponsePreset: "medium",
+        bpmDrivenMotion: true,
         beatScaleAmount: 0.18,
         beatWarpAmount: 0.08,
         beatSaturationAmount: 0.2,

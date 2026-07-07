@@ -16,6 +16,7 @@ export const getHtmlContent = () => {
             <div class="fsd-debug-meter"><span></span></div>
             <div class="fsd-debug-values">
                 <span>BEAT <b data-debug-beat>0.00</b></span>
+                <span>BPM <b data-debug-bpm>--</b></span>
                 <span>SMOOTH <b data-debug-smooth>0.00</b></span>
                 <span>SPEED <b data-debug-speed>0.00</b></span>
                 <span>WARP <b data-debug-warp>0.00</b></span>

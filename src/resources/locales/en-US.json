@@ -177,9 +177,20 @@
         "animationSpeed": "Base Flow Speed",
         "beatBounce": "Beat-responsive Background",
         "beatBounceDescription": "Expand color shapes when motion is high and let them settle back when it is low.",
+        "beatResponsePreset": {
+            "setting": "Beat Response",
+            "description": "Choose how strongly the background reacts to beats.",
+            "off": "Off",
+            "low": "Low",
+            "medium": "Medium",
+            "high": "High",
+            "custom": "Custom"
+        },
+        "bpmDrivenMotion": "BPM-driven Motion",
+        "bpmDrivenMotionDescription": "Use detected BPM to adjust flow speed and generate beat pulses when beat timing is unavailable. Turn this off to keep motion controlled by your settings.",
         "beatControls": {
             "header": "Beat Response",
-            "description": "These controls apply only while Beat-responsive Background is enabled.",
+            "description": "These controls apply only while Beat Response is set to Custom.",
             "scale": {
                 "setting": "Expansion Strength",
                 "description": "How far color shapes expand outward at high motion values."

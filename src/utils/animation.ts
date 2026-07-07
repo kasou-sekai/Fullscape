@@ -1,5 +1,5 @@
 import Kawarp from "@kawarp/core";
-import { Settings } from "../types/fullscreen";
+import { BeatResponsePreset, Settings } from "../types/fullscreen";
 import { AudioAnalysis, getAudioAnalysis, getAudioMotion } from "../services/audio-analysis";
 import CFM from "./config";
 
@@ -23,6 +23,44 @@ const FLUID_MOTION_INTERVAL_MS = 80;
 const FLUID_BASE_WARP_INTENSITY = 0.82;
 const FLUID_BASE_SCALE = 1.1;
 const FLUID_BASE_SATURATION = 1.45;
+const FLUID_PAUSED_SPEED_FACTOR = 0.22;
+
+const BEAT_RESPONSE_PRESETS: Record<
+    Exclude<BeatResponsePreset, "off" | "custom">,
+    {
+        scaleAmount: number;
+        warpAmount: number;
+        saturationAmount: number;
+        speedAmount: number;
+        attack: number;
+        release: number;
+    }
+> = {
+    low: {
+        scaleAmount: 0.1,
+        warpAmount: 0.04,
+        saturationAmount: 0.12,
+        speedAmount: 0.1,
+        attack: 0.55,
+        release: 0.06,
+    },
+    medium: {
+        scaleAmount: 0.18,
+        warpAmount: 0.08,
+        saturationAmount: 0.2,
+        speedAmount: 0.2,
+        attack: 0.8,
+        release: 0.08,
+    },
+    high: {
+        scaleAmount: 0.28,
+        warpAmount: 0.13,
+        saturationAmount: 0.36,
+        speedAmount: 0.38,
+        attack: 0.95,
+        release: 0.12,
+    },
+};
 
 function cancelTransitionAnimation() {
     if (transitionFrameId !== null) {
@@ -213,6 +251,14 @@ function disposeFluidAnimation() {
 }
 
 function getBeatMotionSettings() {
+    const preset = CFM.get("beatResponsePreset") as BeatResponsePreset;
+    if (preset === "off") {
+        return BEAT_RESPONSE_PRESETS.medium;
+    }
+    if (preset === "low" || preset === "medium" || preset === "high") {
+        return BEAT_RESPONSE_PRESETS[preset];
+    }
+
     const getValue = (key: keyof Settings, fallback: number, min: number, max: number) => {
         const value = Number(CFM.get(key));
         return Math.min(max, Math.max(min, Number.isFinite(value) ? value : fallback));
@@ -227,6 +273,13 @@ function getBeatMotionSettings() {
     };
 }
 
+function getBeatResponsePreset() {
+    const preset = CFM.get("beatResponsePreset") as BeatResponsePreset;
+    return preset === "off" || preset === "low" || preset === "medium" || preset === "high"
+        ? preset
+        : "custom";
+}
+
 function smoothMotionValue(current: number, target: number, attack: number, release: number) {
     const rate = target > current ? attack : release;
     return current + (target - current) * rate;
@@ -236,6 +289,7 @@ function updateFluidDebug(
     status: string,
     currentTime: number,
     rawBeat = 0,
+    bpm: number | null = null,
     speed = 0,
     warp = FLUID_BASE_WARP_INTENSITY,
     scale = FLUID_BASE_SCALE,
@@ -255,6 +309,7 @@ function updateFluidDebug(
     const seconds = (Math.max(0, currentTime) % 60).toFixed(1).padStart(4, "0");
     setText("[data-debug-status]", status);
     setText("[data-debug-beat]", rawBeat.toFixed(2));
+    setText("[data-debug-bpm]", bpm ? Math.round(bpm).toString() : "--");
     setText("[data-debug-smooth]", fluidSmoothedWarpPulse.toFixed(2));
     setText("[data-debug-speed]", speed.toFixed(2));
     setText("[data-debug-warp]", warp.toFixed(3));
@@ -266,11 +321,10 @@ function syncFluidMotion() {
     if (!fluidRenderer) return;
 
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const isPlaying = !reduceMotion && Spicetify.Player.isPlaying();
-    if (!isPlaying) {
+    if (reduceMotion) {
         if (fluidIsPlaying) fluidRenderer.stop();
         fluidIsPlaying = false;
-        updateFluidDebug(reduceMotion ? "REDUCED" : "PAUSED", Spicetify.Player.getProgress() / 1000);
+        updateFluidDebug("REDUCED", Spicetify.Player.getProgress() / 1000);
         return;
     }
 
@@ -279,31 +333,35 @@ function syncFluidMotion() {
         fluidIsPlaying = true;
     }
 
+    const isPlaying = Spicetify.Player.isPlaying();
     const currentTime = Spicetify.Player.getProgress() / 1000;
+    const bpmDrivenMotion = Boolean(CFM.get("bpmDrivenMotion"));
     const motion = fluidAnalysis
-        ? getAudioMotion(fluidAnalysis, currentTime)
-        : { ambientSpeedMultiplier: 1, warpPulse: 0 };
-    const beatBounce = Boolean(CFM.get("beatBounce"));
+        ? getAudioMotion(fluidAnalysis, currentTime, bpmDrivenMotion)
+        : { ambientSpeedMultiplier: 1, warpPulse: 0, bpm: null };
+    const beatResponsePreset = getBeatResponsePreset();
+    const beatBounce = beatResponsePreset !== "off";
     const motionSettings = getBeatMotionSettings();
+    const rawBeatPulse = isPlaying ? motion.warpPulse : 0;
+    const targetAmbientSpeed = isPlaying
+        ? motion.ambientSpeedMultiplier
+        : Math.min(0.32, Math.max(0.12, motion.ambientSpeedMultiplier * FLUID_PAUSED_SPEED_FACTOR));
     const targetSpeedMultiplier =
-        motion.ambientSpeedMultiplier + (beatBounce ? motion.warpPulse * motionSettings.speedAmount : 0);
+        targetAmbientSpeed + (beatBounce ? rawBeatPulse * motionSettings.speedAmount : 0);
     fluidSmoothedSpeedMultiplier = smoothMotionValue(
         fluidSmoothedSpeedMultiplier,
-        Math.min(1.65, Math.max(0.7, targetSpeedMultiplier)),
+        Math.min(1.65, Math.max(isPlaying ? 0.7 : 0.12, targetSpeedMultiplier)),
         motionSettings.attack,
         motionSettings.release,
     );
     fluidSmoothedWarpPulse = smoothMotionValue(
         fluidSmoothedWarpPulse,
-        motion.warpPulse,
+        rawBeatPulse,
         motionSettings.attack,
         motionSettings.release,
     );
     const baseSpeed = getFluidBaseSpeed();
-    const animationSpeed = Math.min(
-        3,
-        Math.max(0.1, baseSpeed * fluidSmoothedSpeedMultiplier),
-    );
+    const animationSpeed = Math.min(3, Math.max(0.1, baseSpeed * fluidSmoothedSpeedMultiplier));
     const effectPulse = beatBounce ? fluidSmoothedWarpPulse : 0;
     const warpIntensity = Math.min(
         1,
@@ -321,9 +379,10 @@ function syncFluidMotion() {
         saturation,
     });
     updateFluidDebug(
-        beatBounce ? (fluidAnalysis ? "ANALYSIS" : "BASE") : "BOUNCE OFF",
+        isPlaying ? (beatBounce ? (fluidAnalysis ? "ANALYSIS" : "BASE") : "BEAT OFF") : "PAUSED",
         currentTime,
-        motion.warpPulse,
+        rawBeatPulse,
+        motion.bpm,
         animationSpeed,
         warpIntensity,
         scale,
@@ -370,9 +429,7 @@ export function animatedFluidCanvas(
 
         if (!fromResize || !fluidHasImage) {
             const hadImage = fluidHasImage;
-            const shouldAnimate =
-                Spicetify.Player.isPlaying() &&
-                !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+            const shouldAnimate = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
             const transitionDuration = getFluidTransitionDuration();
             const renderImmediately = !shouldAnimate || !hadImage;
             if (renderImmediately) fluidRenderer.setOptions({ transitionDuration: 0 });

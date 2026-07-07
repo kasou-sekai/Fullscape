@@ -120,11 +120,13 @@ export class ConfigManager {
         content.classList.add("settings-content");
 
         const activateSection = (id: string) => {
-            navigation.querySelectorAll<HTMLButtonElement>(".settings-nav-button").forEach((tab) => {
-                const active = tab.dataset.sectionId === id;
-                tab.classList.toggle("active", active);
-                tab.setAttribute("aria-selected", String(active));
-            });
+            navigation
+                .querySelectorAll<HTMLButtonElement>(".settings-nav-button")
+                .forEach((tab) => {
+                    const active = tab.dataset.sectionId === id;
+                    tab.classList.toggle("active", active);
+                    tab.setAttribute("aria-selected", String(active));
+                });
             content.querySelectorAll<HTMLElement>(".settings-panel").forEach((panel) => {
                 panel.hidden = panel.dataset.sectionId !== id;
             });
@@ -477,7 +479,7 @@ export class ConfigManager {
         const strings = translations[LOCALE].settings.beatControls;
         const section = document.createElement("section");
         section.classList.add("fsd-beat-settings", "settings-nested-section");
-        section.hidden = !CFM.get("beatBounce");
+        section.hidden = CFM.get("beatResponsePreset") !== "custom";
         section.append(
             headerText(strings.header, strings.description),
             createAdjust(
@@ -548,6 +550,30 @@ export class ConfigManager {
             ),
         );
         return section;
+    }
+
+    private static createBeatResponsePresetSetting(LOCALE: string) {
+        const strings = translations[LOCALE].settings.beatResponsePreset;
+        return this.createOptions(
+            strings.setting,
+            {
+                off: strings.off,
+                low: strings.low,
+                medium: strings.medium,
+                high: strings.high,
+                custom: strings.custom,
+            },
+            CFM.get("beatResponsePreset") as Settings["beatResponsePreset"],
+            "beatResponsePreset",
+            (value) => {
+                const section =
+                    this.configContainer.querySelector<HTMLElement>(".fsd-beat-settings");
+                if (section) section.hidden = value !== "custom";
+                CFM.set("beatResponsePreset", value as Settings["beatResponsePreset"]);
+                CFM.set("beatBounce", value !== "off");
+            },
+            strings.description,
+        );
     }
 
     static openConfig(evt: Event | null = null): void {
@@ -805,18 +831,12 @@ export class ConfigManager {
                 section: this.createSettingsSection(
                     translations[LOCALE].settings.backgroundHeader,
                     translations[LOCALE].settings.backgroundSubHeader,
+                    this.createBeatResponsePresetSetting(LOCALE),
                     this.createToggle(
-                        translations[LOCALE].settings.beatBounce,
-                        "beatBounce",
-                        (value) => {
-                            const section =
-                                this.configContainer.querySelector<HTMLElement>(
-                                    ".fsd-beat-settings",
-                                );
-                            if (section) section.hidden = !value;
-                            this.saveOption("beatBounce", value);
-                        },
-                        translations[LOCALE].settings.beatBounceDescription,
+                        translations[LOCALE].settings.bpmDrivenMotion,
+                        "bpmDrivenMotion",
+                        (value) => CFM.set("bpmDrivenMotion", value),
+                        translations[LOCALE].settings.bpmDrivenMotionDescription,
                     ),
                     this.createBeatSettings(LOCALE),
                     createAdjust(
@@ -885,10 +905,7 @@ export class ConfigManager {
                         (value: string) => {
                             CFM.set("backgroundBrightness", Number(value));
                             if (Utils.isModeActivated()) {
-                                this.updateBackground(
-                                    Spicetify.Player.data.item?.metadata,
-                                    true,
-                                );
+                                this.updateBackground(Spicetify.Player.data.item?.metadata, true);
                             }
                         },
                     ),
@@ -900,10 +917,7 @@ export class ConfigManager {
                 section: this.createSettingsSection(
                     translations[LOCALE].settings.appearanceHeader,
                     translations[LOCALE].settings.appearanceSubHeader,
-                    this.createToggle(
-                        translations[LOCALE].settings.themedButtons,
-                        "themedButtons",
-                    ),
+                    this.createToggle(translations[LOCALE].settings.themedButtons, "themedButtons"),
                     this.createToggle(translations[LOCALE].settings.themedIcons, "themedIcons"),
                     this.createOptions(
                         translations[LOCALE].settings.invertColors.setting,

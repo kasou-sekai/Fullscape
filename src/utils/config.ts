@@ -34,6 +34,23 @@ function getConfig(defaultConfig: Config): Config {
         const legacyConfig = localStorage.getItem(LEGACY_STORAGE_KEY);
         const parsed: unknown = JSON.parse(storedConfig ?? legacyConfig ?? "{}");
         const config = mergeKnownValues(parsed, defaultConfig);
+        const parsedObject =
+            parsed && typeof parsed === "object" && !Array.isArray(parsed)
+                ? (parsed as Record<string, unknown>)
+                : {};
+        const storedSettings =
+            parsedObject.def &&
+            typeof parsedObject.def === "object" &&
+            !Array.isArray(parsedObject.def)
+                ? (parsedObject.def as Record<string, unknown>)
+                : undefined;
+        if (
+            storedSettings &&
+            typeof storedSettings === "object" &&
+            !("beatResponsePreset" in storedSettings)
+        ) {
+            config.def.beatResponsePreset = storedSettings.beatBounce === false ? "off" : "medium";
+        }
         if (config.autoLaunch !== "never" && config.autoLaunch !== "default") {
             config.autoLaunch = "default";
         }

@@ -172,9 +172,20 @@
         "animationSpeed": "基础流动速度",
         "beatBounce": "节拍弹跳",
         "beatBounceDescription": "Motion 较高时向外延展背景色块，较低时平滑恢复。",
+        "beatResponsePreset": {
+            "setting": "节拍响应",
+            "description": "选择背景跟随节拍响应的强度。",
+            "off": "关闭",
+            "low": "低强度",
+            "medium": "中强度",
+            "high": "高强度",
+            "custom": "自定义"
+        },
+        "bpmDrivenMotion": "BPM 驱动背景",
+        "bpmDrivenMotionDescription": "使用读取到的 BPM 调整流动速度，并在没有节拍时间点时生成节拍脉冲。关闭后，背景运动由你的设置控制。",
         "beatControls": {
             "header": "节拍响应",
-            "description": "以下参数仅在“节拍弹跳”开启时生效。",
+            "description": "以下参数仅在“节拍响应”设为“自定义”时生效。",
             "scale": {
                 "setting": "向外延展强度",
                 "description": "Motion 较高时，背景色块向外扩张的幅度。"

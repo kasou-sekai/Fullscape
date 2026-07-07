@@ -6,6 +6,8 @@ export type Config = {
     activationTypes: "both" | "btns" | "keys";
 };
 
+export type BeatResponsePreset = "off" | "low" | "medium" | "high" | "custom";
+
 export type Settings = {
     lyricsDisplay: boolean;
     thirdPartyLyrics: boolean;
@@ -34,6 +36,8 @@ export type Settings = {
     backAnimationTime: number;
     animationSpeed: number;
     beatBounce: boolean;
+    beatResponsePreset: BeatResponsePreset;
+    bpmDrivenMotion: boolean;
     beatScaleAmount: number;
     beatWarpAmount: number;
     beatSaturationAmount: number;
