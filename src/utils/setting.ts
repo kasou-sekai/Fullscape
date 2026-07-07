@@ -66,8 +66,8 @@ export function createAdjust(
 ) {
     let value = configValue;
 
-    function adjustValue(dir: number) {
-        let temp = Number(value) + dir * step;
+    function commitValue(nextValue: number) {
+        let temp = Number(nextValue);
         if (temp < min) {
             temp = min;
         } else if (temp > max) {
@@ -75,25 +75,41 @@ export function createAdjust(
         }
         value = Number(Number(temp).toFixed(step >= 1 ? 0 : 2));
         (settingCard.querySelector(".adjust-value") as HTMLElement).innerText = `${value}${unit}`;
+        const range = settingCard.querySelector<HTMLInputElement>(".adjust-range");
+        if (range) range.value = String(value);
         plus?.classList.toggle("disabled", value === max);
         minus?.classList.toggle("disabled", value === min);
         onChange(value);
     }
+
+    function adjustValue(dir: number) {
+        commitValue(Number(value) + dir * step);
+    }
+
     const settingCard = getSettingCard(
-        `<button class="switch small minus">${ICONS.MINUS}</button>
-            <p class="adjust-value">${value}${unit}</p>
-        <button class="switch small plus"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">${Spicetify.SVGIcons.plus2px}</button>`,
+        `<div class="adjust-control">
+            <div class="adjust-stepper">
+                <button class="switch small minus">${ICONS.MINUS}</button>
+                <p class="adjust-value">${value}${unit}</p>
+                <button class="switch small plus"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">${Spicetify.SVGIcons.plus2px}</svg></button>
+            </div>
+            <input class="adjust-range" type="range" min="${min}" max="${max}" step="${step}" value="${value}">
+        </div>`,
         title,
         key,
         extraDescription,
     );
     const minus = settingCard.querySelector<HTMLElement>(".minus");
     const plus = settingCard.querySelector<HTMLElement>(".plus");
+    const range = settingCard.querySelector<HTMLInputElement>(".adjust-range");
     if (minus && plus) {
         minus.classList.toggle("disabled", value === min);
         plus.classList.toggle("disabled", value === max);
         minus.onclick = () => adjustValue(-1);
         plus.onclick = () => adjustValue(1);
+    }
+    if (range) {
+        range.oninput = (event) => commitValue(Number((event.target as HTMLInputElement).value));
     }
     return settingCard;
 }

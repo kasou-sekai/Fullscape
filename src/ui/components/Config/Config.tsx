@@ -88,6 +88,68 @@ export class ConfigManager {
         return container;
     }
 
+    private static createSettingsSection(
+        title: string,
+        description = "",
+        ...items: Array<Node | string>
+    ) {
+        const section = document.createElement("section");
+        section.classList.add("settings-section");
+        section.append(headerText(title, description));
+
+        const grid = document.createElement("div");
+        grid.classList.add("settings-section-grid");
+        items.forEach((item) => {
+            if (item !== "") grid.append(item);
+        });
+        section.append(grid);
+        return section;
+    }
+
+    private static createSettingsShell(
+        sections: Array<{ id: string; title: string; section: HTMLElement }>,
+    ) {
+        const shell = document.createElement("div");
+        shell.classList.add("settings-shell");
+
+        const navigation = document.createElement("nav");
+        navigation.classList.add("settings-nav");
+        navigation.setAttribute("aria-label", "Settings sections");
+
+        const content = document.createElement("div");
+        content.classList.add("settings-content");
+
+        const activateSection = (id: string) => {
+            navigation.querySelectorAll<HTMLButtonElement>(".settings-nav-button").forEach((tab) => {
+                const active = tab.dataset.sectionId === id;
+                tab.classList.toggle("active", active);
+                tab.setAttribute("aria-selected", String(active));
+            });
+            content.querySelectorAll<HTMLElement>(".settings-panel").forEach((panel) => {
+                panel.hidden = panel.dataset.sectionId !== id;
+            });
+        };
+
+        sections.forEach(({ id, title, section }, index) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.classList.add("settings-nav-button");
+            button.dataset.sectionId = id;
+            button.textContent = title;
+            button.setAttribute("aria-selected", String(index === 0));
+            button.onclick = () => activateSection(id);
+            navigation.append(button);
+
+            section.classList.add("settings-panel");
+            section.dataset.sectionId = id;
+            section.hidden = index !== 0;
+            content.append(section);
+        });
+
+        shell.append(navigation, content);
+        return shell;
+    }
+
     static createOptions(
         title: string,
         options: Record<string, string>,
@@ -401,7 +463,7 @@ export class ConfigManager {
 
     private static createDebugSettings(LOCALE: string) {
         const section = document.createElement("section");
-        section.classList.add("fsd-debug-settings");
+        section.classList.add("fsd-debug-settings", "settings-nested-section");
         section.hidden = !CFM.get("debugMode");
         section.append(
             headerText(translations[LOCALE].settings.lyricsDebugHeader),
@@ -414,7 +476,7 @@ export class ConfigManager {
     private static createBeatSettings(LOCALE: string) {
         const strings = translations[LOCALE].settings.beatControls;
         const section = document.createElement("section");
-        section.classList.add("fsd-beat-settings");
+        section.classList.add("fsd-beat-settings", "settings-nested-section");
         section.hidden = !CFM.get("beatBounce");
         section.append(
             headerText(strings.header, strings.description),
@@ -493,314 +555,372 @@ export class ConfigManager {
         const LOCALE = CFM.getGlobal("locale") as Config["locale"];
         this.configContainer = document.createElement("div");
         this.configContainer.id = "full-screen-config-container";
-        this.configContainer.append(
-            Utils.isModeActivated() ? this.getSettingTopHeader(LOCALE) : "",
-            headerText(translations[LOCALE].settings.pluginSettings),
-            this.createOptions(
-                translations[LOCALE].settings.language,
-                Utils.getAvailableLanguages(translations),
-                CFM.getGlobal("locale") as Config["locale"],
-                "locale",
-                (value: string) => {
-                    this.saveGlobalOption("locale", value);
-                    document.querySelector("body > generic-modal")?.remove();
-                    this.openConfig();
-                },
-            ),
-            this.createOptions(
-                translations[LOCALE].settings.activationTypes.setting,
-                {
-                    both: translations[LOCALE].settings.activationTypes.both,
-                    btns: translations[LOCALE].settings.activationTypes.btns,
-                    keys: translations[LOCALE].settings.activationTypes.keys,
-                },
-                CFM.getGlobal("activationTypes") as Config["activationTypes"],
-                "activationTypes",
-                (value: string) => {
-                    this.saveGlobalOption("activationTypes", value);
-                    location.reload();
-                },
-                translations[LOCALE].settings.activationTypes.description,
-            ),
-            this.createToggle(
-                translations[LOCALE].settings.debugMode.setting,
-                "debugMode",
-                (value) => {
-                    const section =
-                        this.configContainer.querySelector<HTMLElement>(".fsd-debug-settings");
-                    if (section) section.hidden = !value;
-                    this.saveOption("debugMode", value);
-                },
-                translations[LOCALE].settings.debugMode.description,
-            ),
-            headerText(translations[LOCALE].settings.lyricsHeader),
-            this.createToggle(
-                translations[LOCALE].settings.lyrics,
-                "lyricsDisplay",
-                (value) => {
-                    this.saveOption("lyricsDisplay", value);
-                    DOM.container.classList.remove("lyrics-unavailable");
-                },
-                translations[LOCALE].settings.lyricsDescription.join("<br>"),
-            ),
-            this.createToggle(translations[LOCALE].settings.thirdPartyLyrics, "thirdPartyLyrics"),
-            this.createToggle(
-                translations[LOCALE].settings.relaxedLyricsMatching.setting,
-                "relaxedLyricsMatching",
-                undefined,
-                translations[LOCALE].settings.relaxedLyricsMatching.description,
-            ),
-            this.createToggle(
-                translations[LOCALE].settings.showLyricsTranslation,
-                "showLyricsTranslation",
-            ),
-            this.createToggle(
-                translations[LOCALE].settings.showLyricsRomanization,
-                "showLyricsRomanization",
-            ),
-            this.createToggle(
-                translations[LOCALE].settings.showLyricsFurigana,
-                "showLyricsFurigana",
-            ),
-            this.createOptions(
-                translations[LOCALE].settings.lyricsChineseConversion.setting,
-                {
-                    original: translations[LOCALE].settings.lyricsChineseConversion.original,
-                    simplified: translations[LOCALE].settings.lyricsChineseConversion.simplified,
-                    traditional: translations[LOCALE].settings.lyricsChineseConversion.traditional,
-                },
-                CFM.get("lyricsChineseConversion") as Settings["lyricsChineseConversion"],
-                "lyricsChineseConversion",
-                (value) =>
-                    this.saveOption(
-                        "lyricsChineseConversion",
-                        value as Settings["lyricsChineseConversion"],
+        const sections = [
+            {
+                id: "plugin",
+                title: translations[LOCALE].settings.pluginSettings,
+                section: this.createSettingsSection(
+                    translations[LOCALE].settings.pluginSettings,
+                    "",
+                    this.createOptions(
+                        translations[LOCALE].settings.language,
+                        Utils.getAvailableLanguages(translations),
+                        CFM.getGlobal("locale") as Config["locale"],
+                        "locale",
+                        (value: string) => {
+                            this.saveGlobalOption("locale", value);
+                            document.querySelector("body > generic-modal")?.remove();
+                            this.openConfig();
+                        },
                     ),
-                translations[LOCALE].settings.lyricsChineseConversion.description,
-            ),
-            this.createToggle(translations[LOCALE].settings.karaokeLyrics, "karaokeLyrics"),
-            this.createToggle(translations[LOCALE].settings.autoHideLyrics, "autoHideLyrics"),
-            createAdjust(
-                translations[LOCALE].settings.lyricsSize.setting,
-                "lyricsSize",
-                "px",
-                Number(CFM.get("lyricsSize") || 30),
-                1,
-                12,
-                99,
-                (value: number) =>
-                    this.saveOption("lyricsSize", value as unknown as Settings["lyricsSize"]),
-                translations[LOCALE].settings.lyricsSize.description,
-            ),
-            this.createDebugSettings(LOCALE),
-            headerText(translations[LOCALE].settings.generalHeader),
-            this.createOptions(
-                translations[LOCALE].settings.progressBar,
-                {
-                    never: translations[LOCALE].settings.contextDisplay.never,
-                    mousemove: translations[LOCALE].settings.contextDisplay.mouse,
-                    always: translations[LOCALE].settings.contextDisplay.always,
-                },
-                CFM.get("progressBarDisplay") as Settings["progressBarDisplay"],
-                "progressBarDisplay",
-                (value: string) => {
-                    CFM.set("progressBarDisplay", value as Settings["progressBarDisplay"]);
-                    if (value !== "never") {
-                        ReactDOM.render(
-                            <SeekableProgressBar state={value} />,
-                            DOM.container.querySelector("#fsd-progress-parent"),
-                        );
-                    } else {
-                        const root = DOM.container.querySelector("#fsd-progress-parent");
-                        if (root) ReactDOM.unmountComponentAtNode(root);
-                    }
-                },
-            ),
-            this.createOptions(
-                translations[LOCALE].settings.playerControls,
-                {
-                    never: translations[LOCALE].settings.contextDisplay.never,
-                    mousemove: translations[LOCALE].settings.contextDisplay.mouse,
-                    always: translations[LOCALE].settings.contextDisplay.always,
-                },
-                CFM.get("playerControls") as Settings["playerControls"],
-                "playerControls",
-                (value: string) => this.saveOption("playerControls", value),
-            ),
-            this.createOptions(
-                translations[LOCALE].settings.showAlbum.setting,
-                {
-                    never: translations[LOCALE].settings.showAlbum.never,
-                    always: translations[LOCALE].settings.showAlbum.always,
-                    date: translations[LOCALE].settings.showAlbum.date,
-                },
-                CFM.get("showAlbum") as Settings["showAlbum"],
-                "showAlbum",
-                (value: string) => this.saveOption("showAlbum", value),
-            ),
-            this.createToggle(translations[LOCALE].settings.icons, "icons"),
-            this.createToggle(translations[LOCALE].settings.trimTitle, "trimTitle"),
-            this.createToggle(translations[LOCALE].settings.trimAlbum, "trimAlbum"),
-            document.fullscreenEnabled
-                ? this.createToggle(translations[LOCALE].settings.fullscreen, "enableFullscreen")
-                : "",
-            headerText(translations[LOCALE].settings.extraHeader),
-            this.createOptions(
-                translations[LOCALE].settings.upnextDisplay,
-                {
-                    always: translations[LOCALE].settings.volumeDisplay.always,
-                    never: translations[LOCALE].settings.volumeDisplay.never,
-                    smart: translations[LOCALE].settings.volumeDisplay.smart,
-                },
-                CFM.get("upnextDisplay") as Settings["upnextDisplay"],
-                "upnextDisplay",
-                (value: string) => this.saveOption("upnextDisplay", value),
-            ),
-            this.createToggle(translations[LOCALE].settings.trimTitleUpNext, "trimTitleUpNext"),
-            createAdjust(
-                translations[LOCALE].settings.upnextTime,
-                "upnextTimeToShow",
-                "s",
-                CFM.get("upnextTimeToShow") as Settings["upnextTimeToShow"],
-                1,
-                5,
-                60,
-                (state) => {
-                    CFM.set("upnextTimeToShow", Number(state));
-                    this.updateUpNextShow();
-                },
-            ),
-            headerText(
-                translations[LOCALE].settings.backgroundHeader,
-                translations[LOCALE].settings.backgroundSubHeader,
-            ),
-            this.createToggle(
-                translations[LOCALE].settings.beatBounce,
-                "beatBounce",
-                (value) => {
-                    const section =
-                        this.configContainer.querySelector<HTMLElement>(".fsd-beat-settings");
-                    if (section) section.hidden = !value;
-                    this.saveOption("beatBounce", value);
-                },
-                translations[LOCALE].settings.beatBounceDescription,
-            ),
-            this.createBeatSettings(LOCALE),
-            createAdjust(
-                translations[LOCALE].settings.animationSpeed,
-                "animationSpeed",
-                "",
-                (CFM.get("animationSpeed") as Settings["animationSpeed"]) * 100,
-                2,
-                2,
-                40,
-                (state) => {
-                    CFM.set("animationSpeed", Number(state) / 100);
-                    modifyRotationSpeed(Number(state) / 100);
-                },
-            ),
-            createAdjust(
-                translations[LOCALE].settings.backAnimationTime,
-                "backAnimationTime",
-                "s",
-                CFM.get("backAnimationTime") as Settings["backAnimationTime"],
-                0.1,
-                0,
-                5,
-                (state) => {
-                    CFM.set("backAnimationTime", Number(state));
-                    DOM.container.style.setProperty("--fs-transition", `${state}s`);
-                },
-            ),
-            createAdjust(
-                translations[LOCALE].settings.backgroundBlur,
-                "blurSize",
-                "",
-                CFM.get("blurSize") as Settings["blurSize"],
-                4,
-                0,
-                100,
-                (state) => {
-                    CFM.set("blurSize", Number(state));
-                    if (Utils.isModeActivated()) {
-                        Utils.overlayBack();
-                        this.updateBackground(Spicetify.Player.data.item?.metadata, true);
-                        if (this.overlayTimout) clearTimeout(this.overlayTimout);
-                        this.overlayTimout = setTimeout(() => {
-                            Utils.overlayBack(false);
-                        }, 2000);
-                    }
-                },
-            ),
-            this.createOptions(
-                translations[LOCALE].settings.backgroundBrightness,
-                {
-                    0: "0%",
-                    0.1: "10%",
-                    0.2: "20%",
-                    0.3: "30%",
-                    0.4: "40%",
-                    0.5: "50%",
-                    0.6: "60%",
-                    0.7: "70%",
-                    0.8: "80%",
-                    0.9: "90%",
-                    1: "100%",
-                },
-                CFM.get("backgroundBrightness") as Settings["backgroundBrightness"],
-                "backgroundBrightness",
-                (value: string) => {
-                    CFM.set("backgroundBrightness", Number(value));
-                    if (Utils.isModeActivated()) {
-                        this.updateBackground(Spicetify.Player.data.item?.metadata, true);
-                    }
-                },
-            ),
-            headerText(
-                translations[LOCALE].settings.appearanceHeader,
-                translations[LOCALE].settings.appearanceSubHeader,
-            ),
-            this.createToggle(translations[LOCALE].settings.themedButtons, "themedButtons"),
-            this.createToggle(translations[LOCALE].settings.themedIcons, "themedIcons"),
-            this.createOptions(
-                translations[LOCALE].settings.invertColors.setting,
-                {
-                    never: translations[LOCALE].settings.invertColors.never,
-                    always: translations[LOCALE].settings.invertColors.always,
-                    auto: translations[LOCALE].settings.invertColors.auto,
-                },
-                CFM.get("invertColors") as Settings["invertColors"],
-                "invertColors",
-                (value: string) => this.saveOption("invertColors", value),
-            ),
-            this.createToggle(
-                translations[LOCALE].settings.verticalMonitorSupport,
-                "verticalMonitorSupport",
-                (value: boolean) => this.saveOption("verticalMonitorSupport", value),
-                translations[LOCALE].settings.verticalMonitorSupportDescription,
-            ),
-            this.createToggle(
-                translations[LOCALE].settings.fsHideOriginal,
-                "fsHideOriginal",
-                (value) => {
-                    this.saveGlobalOption("fsHideOriginal", value);
-                    location.reload();
-                },
-                translations[LOCALE].settings.fsHideOriginalDescription,
-            ),
-            this.createOptions(
-                translations[LOCALE].settings.autoLaunch.setting,
-                {
-                    never: translations[LOCALE].settings.autoLaunch.never,
-                    default: translations[LOCALE].settings.autoLaunch.default,
-                },
-                CFM.getGlobal("autoLaunch") as Config["autoLaunch"],
-                "autoLaunch",
-                (value: string) => {
-                    this.saveGlobalOption("autoLaunch", value);
-                },
-                translations[LOCALE].settings.autoLaunch.description,
-            ),
+                    this.createOptions(
+                        translations[LOCALE].settings.activationTypes.setting,
+                        {
+                            both: translations[LOCALE].settings.activationTypes.both,
+                            btns: translations[LOCALE].settings.activationTypes.btns,
+                            keys: translations[LOCALE].settings.activationTypes.keys,
+                        },
+                        CFM.getGlobal("activationTypes") as Config["activationTypes"],
+                        "activationTypes",
+                        (value: string) => {
+                            this.saveGlobalOption("activationTypes", value);
+                            location.reload();
+                        },
+                        translations[LOCALE].settings.activationTypes.description,
+                    ),
+                    this.createOptions(
+                        translations[LOCALE].settings.autoLaunch.setting,
+                        {
+                            never: translations[LOCALE].settings.autoLaunch.never,
+                            default: translations[LOCALE].settings.autoLaunch.default,
+                        },
+                        CFM.getGlobal("autoLaunch") as Config["autoLaunch"],
+                        "autoLaunch",
+                        (value: string) => {
+                            this.saveGlobalOption("autoLaunch", value);
+                        },
+                        translations[LOCALE].settings.autoLaunch.description,
+                    ),
+                    this.createToggle(
+                        translations[LOCALE].settings.fsHideOriginal,
+                        "fsHideOriginal",
+                        (value) => {
+                            this.saveGlobalOption("fsHideOriginal", value);
+                            location.reload();
+                        },
+                        translations[LOCALE].settings.fsHideOriginalDescription,
+                    ),
+                    document.fullscreenEnabled
+                        ? this.createToggle(
+                              translations[LOCALE].settings.fullscreen,
+                              "enableFullscreen",
+                          )
+                        : "",
+                    this.createToggle(
+                        translations[LOCALE].settings.debugMode.setting,
+                        "debugMode",
+                        (value) => {
+                            const section =
+                                this.configContainer.querySelector<HTMLElement>(
+                                    ".fsd-debug-settings",
+                                );
+                            if (section) section.hidden = !value;
+                            this.saveOption("debugMode", value);
+                        },
+                        translations[LOCALE].settings.debugMode.description,
+                    ),
+                ),
+            },
+            {
+                id: "lyrics",
+                title: translations[LOCALE].settings.lyricsHeader,
+                section: this.createSettingsSection(
+                    translations[LOCALE].settings.lyricsHeader,
+                    "",
+                    this.createToggle(
+                        translations[LOCALE].settings.lyrics,
+                        "lyricsDisplay",
+                        (value) => {
+                            this.saveOption("lyricsDisplay", value);
+                            DOM.container.classList.remove("lyrics-unavailable");
+                        },
+                        translations[LOCALE].settings.lyricsDescription.join("<br>"),
+                    ),
+                    this.createToggle(
+                        translations[LOCALE].settings.thirdPartyLyrics,
+                        "thirdPartyLyrics",
+                    ),
+                    this.createToggle(
+                        translations[LOCALE].settings.relaxedLyricsMatching.setting,
+                        "relaxedLyricsMatching",
+                        undefined,
+                        translations[LOCALE].settings.relaxedLyricsMatching.description,
+                    ),
+                    this.createToggle(
+                        translations[LOCALE].settings.showLyricsTranslation,
+                        "showLyricsTranslation",
+                    ),
+                    this.createToggle(
+                        translations[LOCALE].settings.showLyricsRomanization,
+                        "showLyricsRomanization",
+                    ),
+                    this.createToggle(
+                        translations[LOCALE].settings.showLyricsFurigana,
+                        "showLyricsFurigana",
+                    ),
+                    this.createOptions(
+                        translations[LOCALE].settings.lyricsChineseConversion.setting,
+                        {
+                            original:
+                                translations[LOCALE].settings.lyricsChineseConversion.original,
+                            simplified:
+                                translations[LOCALE].settings.lyricsChineseConversion.simplified,
+                            traditional:
+                                translations[LOCALE].settings.lyricsChineseConversion.traditional,
+                        },
+                        CFM.get("lyricsChineseConversion") as Settings["lyricsChineseConversion"],
+                        "lyricsChineseConversion",
+                        (value) =>
+                            this.saveOption(
+                                "lyricsChineseConversion",
+                                value as Settings["lyricsChineseConversion"],
+                            ),
+                        translations[LOCALE].settings.lyricsChineseConversion.description,
+                    ),
+                    this.createToggle(translations[LOCALE].settings.karaokeLyrics, "karaokeLyrics"),
+                    this.createToggle(
+                        translations[LOCALE].settings.autoHideLyrics,
+                        "autoHideLyrics",
+                    ),
+                    createAdjust(
+                        translations[LOCALE].settings.lyricsSize.setting,
+                        "lyricsSize",
+                        "px",
+                        Number(CFM.get("lyricsSize") || 30),
+                        1,
+                        12,
+                        99,
+                        (value: number) =>
+                            this.saveOption(
+                                "lyricsSize",
+                                value as unknown as Settings["lyricsSize"],
+                            ),
+                        translations[LOCALE].settings.lyricsSize.description,
+                    ),
+                    this.createDebugSettings(LOCALE),
+                ),
+            },
+            {
+                id: "general",
+                title: translations[LOCALE].settings.generalHeader,
+                section: this.createSettingsSection(
+                    translations[LOCALE].settings.generalHeader,
+                    "",
+                    this.createOptions(
+                        translations[LOCALE].settings.progressBar,
+                        {
+                            never: translations[LOCALE].settings.contextDisplay.never,
+                            mousemove: translations[LOCALE].settings.contextDisplay.mouse,
+                            always: translations[LOCALE].settings.contextDisplay.always,
+                        },
+                        CFM.get("progressBarDisplay") as Settings["progressBarDisplay"],
+                        "progressBarDisplay",
+                        (value: string) => {
+                            CFM.set("progressBarDisplay", value as Settings["progressBarDisplay"]);
+                            if (value !== "never") {
+                                ReactDOM.render(
+                                    <SeekableProgressBar state={value} />,
+                                    DOM.container.querySelector("#fsd-progress-parent"),
+                                );
+                            } else {
+                                const root = DOM.container.querySelector("#fsd-progress-parent");
+                                if (root) ReactDOM.unmountComponentAtNode(root);
+                            }
+                        },
+                    ),
+                    this.createOptions(
+                        translations[LOCALE].settings.playerControls,
+                        {
+                            never: translations[LOCALE].settings.contextDisplay.never,
+                            mousemove: translations[LOCALE].settings.contextDisplay.mouse,
+                            always: translations[LOCALE].settings.contextDisplay.always,
+                        },
+                        CFM.get("playerControls") as Settings["playerControls"],
+                        "playerControls",
+                        (value: string) => this.saveOption("playerControls", value),
+                    ),
+                    this.createOptions(
+                        translations[LOCALE].settings.showAlbum.setting,
+                        {
+                            never: translations[LOCALE].settings.showAlbum.never,
+                            always: translations[LOCALE].settings.showAlbum.always,
+                            date: translations[LOCALE].settings.showAlbum.date,
+                        },
+                        CFM.get("showAlbum") as Settings["showAlbum"],
+                        "showAlbum",
+                        (value: string) => this.saveOption("showAlbum", value),
+                    ),
+                    this.createToggle(translations[LOCALE].settings.icons, "icons"),
+                    this.createToggle(translations[LOCALE].settings.trimTitle, "trimTitle"),
+                    this.createToggle(translations[LOCALE].settings.trimAlbum, "trimAlbum"),
+                    this.createOptions(
+                        translations[LOCALE].settings.upnextDisplay,
+                        {
+                            always: translations[LOCALE].settings.volumeDisplay.always,
+                            never: translations[LOCALE].settings.volumeDisplay.never,
+                            smart: translations[LOCALE].settings.volumeDisplay.smart,
+                        },
+                        CFM.get("upnextDisplay") as Settings["upnextDisplay"],
+                        "upnextDisplay",
+                        (value: string) => this.saveOption("upnextDisplay", value),
+                    ),
+                    this.createToggle(
+                        translations[LOCALE].settings.trimTitleUpNext,
+                        "trimTitleUpNext",
+                    ),
+                    createAdjust(
+                        translations[LOCALE].settings.upnextTime,
+                        "upnextTimeToShow",
+                        "s",
+                        CFM.get("upnextTimeToShow") as Settings["upnextTimeToShow"],
+                        1,
+                        5,
+                        60,
+                        (state) => {
+                            CFM.set("upnextTimeToShow", Number(state));
+                            this.updateUpNextShow();
+                        },
+                    ),
+                    this.createToggle(
+                        translations[LOCALE].settings.verticalMonitorSupport,
+                        "verticalMonitorSupport",
+                        (value: boolean) => this.saveOption("verticalMonitorSupport", value),
+                        translations[LOCALE].settings.verticalMonitorSupportDescription,
+                    ),
+                ),
+            },
+            {
+                id: "background",
+                title: translations[LOCALE].settings.backgroundHeader,
+                section: this.createSettingsSection(
+                    translations[LOCALE].settings.backgroundHeader,
+                    translations[LOCALE].settings.backgroundSubHeader,
+                    this.createToggle(
+                        translations[LOCALE].settings.beatBounce,
+                        "beatBounce",
+                        (value) => {
+                            const section =
+                                this.configContainer.querySelector<HTMLElement>(
+                                    ".fsd-beat-settings",
+                                );
+                            if (section) section.hidden = !value;
+                            this.saveOption("beatBounce", value);
+                        },
+                        translations[LOCALE].settings.beatBounceDescription,
+                    ),
+                    this.createBeatSettings(LOCALE),
+                    createAdjust(
+                        translations[LOCALE].settings.animationSpeed,
+                        "animationSpeed",
+                        "",
+                        (CFM.get("animationSpeed") as Settings["animationSpeed"]) * 100,
+                        2,
+                        2,
+                        40,
+                        (state) => {
+                            CFM.set("animationSpeed", Number(state) / 100);
+                            modifyRotationSpeed(Number(state) / 100);
+                        },
+                    ),
+                    createAdjust(
+                        translations[LOCALE].settings.backAnimationTime,
+                        "backAnimationTime",
+                        "s",
+                        CFM.get("backAnimationTime") as Settings["backAnimationTime"],
+                        0.1,
+                        0,
+                        5,
+                        (state) => {
+                            CFM.set("backAnimationTime", Number(state));
+                            DOM.container.style.setProperty("--fs-transition", `${state}s`);
+                        },
+                    ),
+                    createAdjust(
+                        translations[LOCALE].settings.backgroundBlur,
+                        "blurSize",
+                        "",
+                        CFM.get("blurSize") as Settings["blurSize"],
+                        4,
+                        0,
+                        100,
+                        (state) => {
+                            CFM.set("blurSize", Number(state));
+                            if (Utils.isModeActivated()) {
+                                Utils.overlayBack();
+                                this.updateBackground(Spicetify.Player.data.item?.metadata, true);
+                                if (this.overlayTimout) clearTimeout(this.overlayTimout);
+                                this.overlayTimout = setTimeout(() => {
+                                    Utils.overlayBack(false);
+                                }, 2000);
+                            }
+                        },
+                    ),
+                    this.createOptions(
+                        translations[LOCALE].settings.backgroundBrightness,
+                        {
+                            0: "0%",
+                            0.1: "10%",
+                            0.2: "20%",
+                            0.3: "30%",
+                            0.4: "40%",
+                            0.5: "50%",
+                            0.6: "60%",
+                            0.7: "70%",
+                            0.8: "80%",
+                            0.9: "90%",
+                            1: "100%",
+                        },
+                        CFM.get("backgroundBrightness") as Settings["backgroundBrightness"],
+                        "backgroundBrightness",
+                        (value: string) => {
+                            CFM.set("backgroundBrightness", Number(value));
+                            if (Utils.isModeActivated()) {
+                                this.updateBackground(
+                                    Spicetify.Player.data.item?.metadata,
+                                    true,
+                                );
+                            }
+                        },
+                    ),
+                ),
+            },
+            {
+                id: "appearance",
+                title: translations[LOCALE].settings.appearanceHeader,
+                section: this.createSettingsSection(
+                    translations[LOCALE].settings.appearanceHeader,
+                    translations[LOCALE].settings.appearanceSubHeader,
+                    this.createToggle(
+                        translations[LOCALE].settings.themedButtons,
+                        "themedButtons",
+                    ),
+                    this.createToggle(translations[LOCALE].settings.themedIcons, "themedIcons"),
+                    this.createOptions(
+                        translations[LOCALE].settings.invertColors.setting,
+                        {
+                            never: translations[LOCALE].settings.invertColors.never,
+                            always: translations[LOCALE].settings.invertColors.always,
+                            auto: translations[LOCALE].settings.invertColors.auto,
+                        },
+                        CFM.get("invertColors") as Settings["invertColors"],
+                        "invertColors",
+                        (value: string) => this.saveOption("invertColors", value),
+                    ),
+                ),
+            },
+        ];
+        this.configContainer.append(
+            this.createSettingsShell(sections),
             this.getSettingsFooter(LOCALE),
         );
         Spicetify.PopupModal.display({
