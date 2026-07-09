@@ -14,6 +14,7 @@ import {
     deleteCachedLyrics,
     getCachedLyrics,
     getCachedLyricsDebug,
+    getSharedCachedLyrics,
     setCachedLyrics,
 } from "../../../services/lyrics-cache";
 import type { LyricsCacheKind } from "../../../services/lyrics-cache";
@@ -233,6 +234,13 @@ export class Lyrics {
             if (publishDebug && kind !== "spotify") this.publishCachedDebug(track.uri);
             return cached;
         }
+        const shared = await getSharedCachedLyrics(track.uri, kind);
+        if (shared !== null) {
+            if (publishDebug && kind !== "spotify" && shared.debug) {
+                publishThirdPartyLyricsDebug(shared.debug, true);
+            }
+            return shared.lines;
+        }
 
         const spotifyLines = await this.getSpotifyLyrics(track);
         if (
@@ -292,6 +300,8 @@ export class Lyrics {
     private static async getSpotifyLyrics(track: LyricsTrack) {
         const cached = getCachedLyrics(track.uri, "spotify");
         if (cached !== null) return cached;
+        const shared = await getSharedCachedLyrics(track.uri, "spotify");
+        if (shared !== null) return shared.lines;
         const pending = this.spotifyRequests.get(track.uri);
         if (pending) return pending;
 

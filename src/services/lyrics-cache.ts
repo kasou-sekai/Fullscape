@@ -28,6 +28,7 @@ const READY_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const EMPTY_TTL_MS = 30 * 60 * 1000;
 const MAX_ENTRIES = 40;
 const MAX_SERIALIZED_LENGTH = 1_750_000;
+const SHARED_CACHE_ENDPOINT = "http://127.0.0.1:24887/lyrics-cache";
 
 let store: LyricsCacheStore | null = null;
 
@@ -37,6 +38,22 @@ export function getCachedLyrics(trackUri: string, kind: LyricsCacheKind) {
 
 export function getCachedLyricsDebug(trackUri: string, kind: LyricsCacheKind) {
     return getCachedLyricsEntry(trackUri, kind)?.debug ?? null;
+}
+
+export async function getSharedCachedLyrics(trackUri: string, kind: LyricsCacheKind) {
+    try {
+        const params = new URLSearchParams({ trackUri, kind });
+        const response = await fetch(`${SHARED_CACHE_ENDPOINT}?${params.toString()}`, {
+            headers: { Accept: "application/json" },
+        });
+        if (!response.ok) return null;
+        const entry = (await response.json()) as LyricsCacheEntry;
+        if (!isValidEntry(entry, trackUri, kind)) return null;
+        setCachedLyrics(entry.trackUri, entry.kind, entry.lines, entry.debug, false);
+        return entry;
+    } catch {
+        return null;
+    }
 }
 
 function getCachedLyricsEntry(trackUri: string, kind: LyricsCacheKind) {
@@ -57,10 +74,11 @@ export function setCachedLyrics(
     kind: LyricsCacheKind,
     lines: EnhancedLyricLine[],
     debug?: ThirdPartyLyricsDebug,
+    syncShared = true,
 ) {
     const cache = getStore();
     const now = Date.now();
-    cache.entries[getCacheKey(trackUri, kind)] = {
+    const entry = {
         kind,
         trackUri,
         cachedAt: now,
@@ -68,8 +86,10 @@ export function setCachedLyrics(
         lines,
         debug,
     };
+    cache.entries[getCacheKey(trackUri, kind)] = entry;
     trimStore(cache);
     persistStore();
+    if (syncShared) void setSharedCachedLyrics(entry);
 }
 
 export function deleteCachedLyrics(trackUri: string, kind?: LyricsCacheKind) {
@@ -110,6 +130,27 @@ function getStore(): LyricsCacheStore {
 
 function getCacheKey(trackUri: string, kind: LyricsCacheKind) {
     return `${kind}:${trackUri}`;
+}
+
+function isValidEntry(entry: LyricsCacheEntry, trackUri: string, kind: LyricsCacheKind) {
+    return (
+        entry?.trackUri === trackUri &&
+        entry.kind === kind &&
+        Array.isArray(entry.lines) &&
+        Number(entry.expiresAt) > Date.now()
+    );
+}
+
+async function setSharedCachedLyrics(entry: LyricsCacheEntry) {
+    try {
+        await fetch(SHARED_CACHE_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(entry),
+        });
+    } catch {
+        // LyricShiori may not be running; localStorage remains the source of truth.
+    }
 }
 
 function removeExpiredEntries(cache: LyricsCacheStore) {
