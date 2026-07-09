@@ -218,6 +218,7 @@ export class Lyrics {
         const kind: LyricsCacheKind = CFM.get("thirdPartyLyrics")
             ? this.getEnhancedCacheKind()
             : "spotify";
+        if (kind !== "spotify") return null;
         const cached = getCachedLyrics(track.uri, kind);
         if (cached !== null && kind !== "spotify") {
             this.publishCachedDebug(track.uri);
@@ -229,17 +230,35 @@ export class Lyrics {
         const thirdPartyEnabled = Boolean(CFM.get("thirdPartyLyrics"));
         const relaxedMatching = Boolean(CFM.get("relaxedLyricsMatching"));
         const kind: LyricsCacheKind = thirdPartyEnabled ? this.getEnhancedCacheKind() : "spotify";
+        if (kind !== "spotify") {
+            const shared = await getSharedCachedLyrics(track.uri, kind);
+            if (shared !== null) {
+                if (publishDebug && shared.debug) {
+                    publishThirdPartyLyricsDebug(shared.debug, true);
+                }
+                return shared.lines;
+            }
+        }
         const cached = getCachedLyrics(track.uri, kind);
         if (cached !== null) {
             if (publishDebug && kind !== "spotify") this.publishCachedDebug(track.uri);
             return cached;
         }
-        const shared = await getSharedCachedLyrics(track.uri, kind);
-        if (shared !== null) {
-            if (publishDebug && kind !== "spotify" && shared.debug) {
-                publishThirdPartyLyricsDebug(shared.debug, true);
+        if (kind === "spotify") {
+            const shared = await getSharedCachedLyrics(track.uri, kind);
+            if (shared !== null) {
+                if (publishDebug && shared.debug) {
+                    publishThirdPartyLyricsDebug(shared.debug, true);
+                }
+                return shared.lines;
             }
-            return shared.lines;
+        }
+        const relaxedShared = kind === "enhanced" ? await getSharedCachedLyrics(track.uri, "enhanced-relaxed") : null;
+        if (relaxedShared !== null) {
+            if (publishDebug && relaxedShared.debug) {
+                publishThirdPartyLyricsDebug(relaxedShared.debug, true);
+            }
+            return relaxedShared.lines;
         }
 
         const spotifyLines = await this.getSpotifyLyrics(track);
