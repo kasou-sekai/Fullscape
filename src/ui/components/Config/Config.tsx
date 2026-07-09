@@ -677,6 +677,12 @@ export class ConfigManager {
                         "thirdPartyLyrics",
                     ),
                     this.createToggle(
+                        translations[LOCALE].settings.sharedLyricsBridge.setting,
+                        "sharedLyricsBridge",
+                        undefined,
+                        translations[LOCALE].settings.sharedLyricsBridge.description,
+                    ),
+                    this.createToggle(
                         translations[LOCALE].settings.relaxedLyricsMatching.setting,
                         "relaxedLyricsMatching",
                         undefined,

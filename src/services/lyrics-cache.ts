@@ -1,4 +1,5 @@
 import type { EnhancedLyricLine, ThirdPartyLyricsDebug } from "./third-party-lyrics";
+import CFM from "../utils/config";
 
 export type LyricsCacheKind = "spotify" | "enhanced" | "enhanced-relaxed";
 
@@ -42,6 +43,7 @@ export function getCachedLyricsDebug(trackUri: string, kind: LyricsCacheKind) {
 }
 
 export async function getSharedCachedLyrics(trackUri: string, kind: LyricsCacheKind) {
+    if (!CFM.get("sharedLyricsBridge")) return null;
     try {
         const params = new URLSearchParams({ trackUri, kind });
         const response = await fetch(`${SHARED_CACHE_ENDPOINT}?${params.toString()}`, {
@@ -143,6 +145,7 @@ function isValidEntry(entry: LyricsCacheEntry, trackUri: string, kind: LyricsCac
 }
 
 async function setSharedCachedLyrics(entry: LyricsCacheEntry) {
+    if (!CFM.get("sharedLyricsBridge")) return;
     try {
         await fetch(SHARED_CACHE_ENDPOINT, {
             method: "POST",

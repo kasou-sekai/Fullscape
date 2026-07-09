@@ -11,6 +11,7 @@ export type BeatResponsePreset = "off" | "low" | "medium" | "high" | "custom";
 export type Settings = {
     lyricsDisplay: boolean;
     thirdPartyLyrics: boolean;
+    sharedLyricsBridge: boolean;
     relaxedLyricsMatching: boolean;
     showLyricsTranslation: boolean;
     showLyricsRomanization: boolean;
