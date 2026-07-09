@@ -13,19 +13,20 @@ type LyricsCacheEntry = {
 };
 
 type LyricsCacheStore = {
-    version: 6;
+    version: 7;
     entries: Record<string, LyricsCacheEntry>;
 };
 
-const STORAGE_KEY = "full-screen:lyrics-cache-v6";
+const STORAGE_KEY = "full-screen:lyrics-cache-v7";
 const LEGACY_STORAGE_KEYS = [
     "full-screen:lyrics-cache-v1",
     "full-screen:lyrics-cache-v2",
     "full-screen:lyrics-cache-v3",
     "full-screen:lyrics-cache-v4",
     "full-screen:lyrics-cache-v5",
+    "full-screen:lyrics-cache-v6",
 ];
-const CACHE_VERSION = 6;
+const CACHE_VERSION = 7;
 const READY_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const EMPTY_TTL_MS = 30 * 60 * 1000;
 const MAX_ENTRIES = 40;
@@ -42,7 +43,7 @@ export function getCachedLyricsDebug(trackUri: string, kind: LyricsCacheKind) {
     return getCachedLyricsEntry(trackUri, kind)?.debug ?? null;
 }
 
-export async function getSharedCachedLyrics(trackUri: string, kind: LyricsCacheKind) {
+export async function getSharedCachedLyrics(trackUri: string, kind: LyricsCacheKind, cacheLocally = true) {
     if (!CFM.get("sharedLyricsBridge")) return null;
     try {
         const params = new URLSearchParams({ trackUri, kind });
@@ -52,7 +53,9 @@ export async function getSharedCachedLyrics(trackUri: string, kind: LyricsCacheK
         if (!response.ok) return null;
         const entry = (await response.json()) as LyricsCacheEntry;
         if (!isValidEntry(entry, trackUri, kind)) return null;
-        setCachedLyrics(entry.trackUri, entry.kind, entry.lines, entry.debug, false);
+        if (cacheLocally) {
+            setCachedLyrics(entry.trackUri, entry.kind, entry.lines, entry.debug, false);
+        }
         return entry;
     } catch {
         return null;

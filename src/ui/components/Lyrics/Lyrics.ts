@@ -231,12 +231,19 @@ export class Lyrics {
         const relaxedMatching = Boolean(CFM.get("relaxedLyricsMatching"));
         const kind: LyricsCacheKind = thirdPartyEnabled ? this.getEnhancedCacheKind() : "spotify";
         if (kind !== "spotify") {
-            const shared = await getSharedCachedLyrics(track.uri, kind);
-            if (shared !== null) {
-                if (publishDebug && shared.debug) {
-                    publishThirdPartyLyricsDebug(shared.debug, true);
+            const cached = getCachedLyrics(track.uri, kind);
+            const shared = await getSharedCachedLyrics(track.uri, kind, false);
+            const selected = this.selectBestCachedLyrics(shared, cached);
+            if (selected !== null) {
+                if (selected.source === "shared") {
+                    setCachedLyrics(track.uri, kind, selected.lines, shared?.debug, false);
+                    if (publishDebug && shared?.debug) {
+                        publishThirdPartyLyricsDebug(shared.debug, true);
+                    }
+                } else if (publishDebug) {
+                    this.publishCachedDebug(track.uri);
                 }
-                return shared.lines;
+                return selected.lines;
             }
         }
         const cached = getCachedLyrics(track.uri, kind);
@@ -253,8 +260,9 @@ export class Lyrics {
                 return shared.lines;
             }
         }
-        const relaxedShared = kind === "enhanced" ? await getSharedCachedLyrics(track.uri, "enhanced-relaxed") : null;
+        const relaxedShared = kind === "enhanced" ? await getSharedCachedLyrics(track.uri, "enhanced-relaxed", false) : null;
         if (relaxedShared !== null) {
+            setCachedLyrics(track.uri, "enhanced-relaxed", relaxedShared.lines, relaxedShared.debug, false);
             if (publishDebug && relaxedShared.debug) {
                 publishThirdPartyLyricsDebug(relaxedShared.debug, true);
             }
@@ -310,6 +318,48 @@ export class Lyrics {
     private static publishCachedDebug(trackUri: string) {
         const debug = getCachedLyricsDebug(trackUri, this.getEnhancedCacheKind());
         if (debug) publishThirdPartyLyricsDebug(debug, true);
+    }
+
+    private static selectBestCachedLyrics(
+        shared: { lines: LyricLine[]; debug?: ThirdPartyLyricsDebug } | null,
+        cached: LyricLine[] | null,
+    ) {
+        if (shared === null) {
+            return cached === null ? null : { source: "cached" as const, lines: cached };
+        }
+        if (cached === null) return { source: "shared" as const, lines: shared.lines };
+        return this.compareLyricsQuality(shared.lines, cached) >= 0
+            ? { source: "shared" as const, lines: shared.lines }
+            : { source: "cached" as const, lines: cached };
+    }
+
+    private static compareLyricsQuality(first: LyricLine[], second: LyricLine[]) {
+        const left = this.lyricsQualityScore(first);
+        const right = this.lyricsQualityScore(second);
+        for (let i = 0; i < left.length; i += 1) {
+            if (left[i] !== right[i]) return left[i] - right[i];
+        }
+        return 0;
+    }
+
+    private static lyricsQualityScore(lines: LyricLine[]) {
+        const meaningful = lines.filter((line) => line.text.trim()).length;
+        const timed = lines.filter((line) => line.time !== null).length;
+        const karaoke = lines.filter((line) => Boolean(line.words?.length)).length;
+        const furigana = lines.filter((line) => Boolean(line.furigana?.trim())).length;
+        const translation = lines.filter((line) => Boolean(line.translation?.trim())).length;
+        const romanization = lines.filter((line) => Boolean(line.romanization?.trim())).length;
+        return [
+            Number(karaoke > 0),
+            Number(furigana > 0),
+            Number(translation > 0),
+            karaoke,
+            furigana,
+            translation,
+            romanization,
+            timed,
+            meaningful,
+        ];
     }
 
     private static getEnhancedCacheKind(): LyricsCacheKind {
