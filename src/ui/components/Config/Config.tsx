@@ -446,6 +446,15 @@ export class ConfigManager {
         );
         const button = card.querySelector<HTMLButtonElement>(".lyrics-refresh-button");
         if (!button) return card;
+        const blockedReason = Lyrics.getRefreshBlockedReason();
+        if (blockedReason === "manual-selection") {
+            const description = card.querySelector<HTMLElement>(".setting-description");
+            button.disabled = true;
+            const message = strings.manualSelectionBlocked ?? strings.description;
+            button.title = message;
+            if (description) description.textContent = message;
+            return card;
+        }
 
         button.onclick = async () => {
             button.disabled = true;

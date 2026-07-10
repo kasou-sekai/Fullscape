@@ -1,23 +1,43 @@
 import type { EnhancedLyricLine, ThirdPartyLyricsDebug } from "./third-party-lyrics";
 import CFM from "../utils/config";
+import { traceLyricsBridge } from "./lyrics-bridge-trace";
 
 export type LyricsCacheKind = "spotify" | "enhanced" | "enhanced-relaxed";
+export type LyricsCacheSource = "plugin" | "lyric-shiori" | "unknown";
+export type LyricsCacheSourceKind = "without-plugin" | "plugin" | "manual";
 
-type LyricsCacheEntry = {
+export type LyricsCacheMetadata = {
+    title?: string;
+    artist?: string;
+    album?: string;
+    languageCode?: string;
+    translationLanguages?: string[];
+    duration?: number;
+};
+
+export type LyricsCacheEntry = {
     kind: LyricsCacheKind;
     trackUri: string;
     cachedAt: number;
     expiresAt: number;
     lines: EnhancedLyricLine[];
+    metadata?: LyricsCacheMetadata;
+    cacheSource?: LyricsCacheSourceKind;
+    source?: LyricsCacheSource;
+    sourceName?: string;
+    isManualSelection?: boolean;
+    cachedWithoutPlugin?: boolean;
+    offsetMilliseconds?: number;
+    timingOffsetApplied?: boolean;
     debug?: ThirdPartyLyricsDebug;
 };
 
 type LyricsCacheStore = {
-    version: 7;
+    version: 9;
     entries: Record<string, LyricsCacheEntry>;
 };
 
-const STORAGE_KEY = "full-screen:lyrics-cache-v7";
+const STORAGE_KEY = "full-screen:lyrics-cache-v9";
 const LEGACY_STORAGE_KEYS = [
     "full-screen:lyrics-cache-v1",
     "full-screen:lyrics-cache-v2",
@@ -25,13 +45,19 @@ const LEGACY_STORAGE_KEYS = [
     "full-screen:lyrics-cache-v4",
     "full-screen:lyrics-cache-v5",
     "full-screen:lyrics-cache-v6",
+    "full-screen:lyrics-cache-v7",
+    "full-screen:lyrics-cache-v8",
 ];
-const CACHE_VERSION = 7;
+const CACHE_VERSION = 9;
 const READY_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const EMPTY_TTL_MS = 30 * 60 * 1000;
 const MAX_ENTRIES = 40;
 const MAX_SERIALIZED_LENGTH = 1_750_000;
-const SHARED_CACHE_ENDPOINT = "http://127.0.0.1:24887/lyrics-cache";
+const SHARED_CACHE_ENDPOINTS = [
+    "http://localhost:24887/lyrics-cache",
+    "http://127.0.0.1:24887/lyrics-cache",
+    "http://[::1]:24887/lyrics-cache",
+];
 
 let store: LyricsCacheStore | null = null;
 
@@ -43,20 +69,48 @@ export function getCachedLyricsDebug(trackUri: string, kind: LyricsCacheKind) {
     return getCachedLyricsEntry(trackUri, kind)?.debug ?? null;
 }
 
-export async function getSharedCachedLyrics(trackUri: string, kind: LyricsCacheKind, cacheLocally = true) {
+export async function getSharedCachedLyrics(
+    trackUri: string,
+    kind: LyricsCacheKind,
+    cacheLocally = true,
+    metadata: LyricsCacheMetadata = {},
+) {
     if (!CFM.get("sharedLyricsBridge")) return null;
     try {
         const params = new URLSearchParams({ trackUri, kind });
-        const response = await fetch(`${SHARED_CACHE_ENDPOINT}?${params.toString()}`, {
-            headers: { Accept: "application/json" },
-        });
-        if (!response.ok) return null;
-        const entry = (await response.json()) as LyricsCacheEntry;
-        if (!isValidEntry(entry, trackUri, kind)) return null;
-        if (cacheLocally) {
-            setCachedLyrics(entry.trackUri, entry.kind, entry.lines, entry.debug, false);
+        if (metadata.title) params.set("title", metadata.title);
+        if (metadata.artist) params.set("artist", metadata.artist);
+        if (metadata.album) params.set("album", metadata.album);
+        if (typeof metadata.duration === "number" && Number.isFinite(metadata.duration)) {
+            params.set("duration", `${metadata.duration}`);
         }
-        return entry;
+        for (const endpoint of SHARED_CACHE_ENDPOINTS) {
+            try {
+                const response = await fetch(`${endpoint}?${params.toString()}`, {
+                    headers: { Accept: "application/json" },
+                });
+                if (!response.ok) continue;
+                const entry = (await response.json()) as LyricsCacheEntry;
+                if (!isValidEntry(entry, trackUri, kind)) return null;
+                traceLyricsBridge("bridge.received", entry, `GET ${endpoint}`);
+                if (cacheLocally) {
+                    setCachedLyrics(entry.trackUri, entry.kind, entry.lines, entry.debug, false, {
+                        metadata: entry.metadata,
+                        cacheSource: entry.cacheSource,
+                        source: entry.source,
+                        sourceName: entry.sourceName,
+                        isManualSelection: entry.isManualSelection,
+                        cachedWithoutPlugin: entry.cachedWithoutPlugin,
+                        offsetMilliseconds: entry.offsetMilliseconds,
+                        timingOffsetApplied: entry.timingOffsetApplied,
+                    });
+                }
+                return entry;
+            } catch {
+                continue;
+            }
+        }
+        return null;
     } catch {
         return null;
     }
@@ -75,26 +129,51 @@ function getCachedLyricsEntry(trackUri: string, kind: LyricsCacheKind) {
     return entry;
 }
 
+export function getCachedLyricsFullEntry(trackUri: string, kind: LyricsCacheKind) {
+    return getCachedLyricsEntry(trackUri, kind);
+}
+
+export function syncCachedLyricsToShared(entry: LyricsCacheEntry) {
+    void setSharedCachedLyrics(entry);
+}
+
 export function setCachedLyrics(
     trackUri: string,
     kind: LyricsCacheKind,
     lines: EnhancedLyricLine[],
     debug?: ThirdPartyLyricsDebug,
     syncShared = true,
+    metadata: Partial<Omit<LyricsCacheEntry, "kind" | "trackUri" | "cachedAt" | "expiresAt" | "lines" | "debug">> = {},
 ) {
     const cache = getStore();
     const now = Date.now();
-    const entry = {
+    const entry: LyricsCacheEntry = {
         kind,
         trackUri,
         cachedAt: now,
         expiresAt: now + (lines.length ? READY_TTL_MS : EMPTY_TTL_MS),
         lines,
+        cacheSource: metadata.cacheSource ?? inferCacheSource(metadata),
+        source: metadata.source ?? "plugin",
+        sourceName: metadata.sourceName,
+        isManualSelection: metadata.isManualSelection ?? false,
+        cachedWithoutPlugin: metadata.cachedWithoutPlugin ?? false,
+        offsetMilliseconds: metadata.offsetMilliseconds,
+        timingOffsetApplied: metadata.timingOffsetApplied ?? false,
+        metadata: metadata.metadata,
         debug,
     };
-    cache.entries[getCacheKey(trackUri, kind)] = entry;
+    const key = getCacheKey(trackUri, kind);
+    if (
+        getEffectiveCacheSource(cache.entries[key]) === "manual" &&
+        getEffectiveCacheSource(entry) !== "manual"
+    ) {
+        return;
+    }
+    cache.entries[key] = entry;
     trimStore(cache);
     persistStore();
+    traceLyricsBridge("cache.saved", entry, syncShared ? "will-post" : "local-only");
     if (syncShared) void setSharedCachedLyrics(entry);
 }
 
@@ -107,10 +186,24 @@ export function deleteCachedLyrics(trackUri: string, kind?: LyricsCacheKind) {
     kinds.forEach((cacheKind) => {
         const key = getCacheKey(trackUri, cacheKind);
         if (!(key in cache.entries)) return;
+        if (getEffectiveCacheSource(cache.entries[key]) === "manual") return;
         delete cache.entries[key];
         changed = true;
     });
     if (changed) persistStore();
+}
+
+export function getEffectiveCacheSource(entry?: Pick<LyricsCacheEntry, "cacheSource" | "source" | "isManualSelection" | "cachedWithoutPlugin"> | null): LyricsCacheSourceKind {
+    if (!entry) return "without-plugin";
+    if (entry.cacheSource) return entry.cacheSource;
+    if (entry.isManualSelection) return "manual";
+    if (entry.source === "plugin") return "plugin";
+    if (entry.cachedWithoutPlugin) return "without-plugin";
+    return entry.source === "lyric-shiori" ? "without-plugin" : "plugin";
+}
+
+function inferCacheSource(metadata: Partial<Pick<LyricsCacheEntry, "cacheSource" | "source" | "isManualSelection" | "cachedWithoutPlugin">>): LyricsCacheSourceKind {
+    return getEffectiveCacheSource(metadata);
 }
 
 function getStore(): LyricsCacheStore {
@@ -148,16 +241,23 @@ function isValidEntry(entry: LyricsCacheEntry, trackUri: string, kind: LyricsCac
 }
 
 async function setSharedCachedLyrics(entry: LyricsCacheEntry) {
-    if (!CFM.get("sharedLyricsBridge")) return;
-    try {
-        await fetch(SHARED_CACHE_ENDPOINT, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(entry),
-        });
-    } catch {
-        // LyricShiori may not be running; localStorage remains the source of truth.
+    for (const endpoint of SHARED_CACHE_ENDPOINTS) {
+        try {
+            const response = await fetch(endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(entry),
+            });
+            if (response.ok) {
+                traceLyricsBridge("bridge.posted", entry, `POST ${endpoint}`);
+                return;
+            }
+        } catch {
+            continue;
+        }
     }
+    traceLyricsBridge("bridge.post-failed", entry);
+    // LyricShiori may not be running; localStorage remains the source of truth.
 }
 
 function removeExpiredEntries(cache: LyricsCacheStore) {

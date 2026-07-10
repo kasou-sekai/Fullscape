@@ -56,7 +56,8 @@
             "loading": "Refreshing…",
             "done": "Updated",
             "failed": "Unavailable",
-            "description": "Clear the current track's lyric cache and fetch it again immediately."
+            "description": "Clear the current track's lyric cache and fetch it again immediately.",
+            "manualSelectionBlocked": "The current lyrics were selected manually, so refresh will not replace them. Change or clear the manual lyrics in LyricShiori first."
         },
         "lyricsDiagnostics": {
             "setting": "Lyrics Diagnostics",

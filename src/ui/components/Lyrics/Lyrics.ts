@@ -12,12 +12,14 @@ import type {
 } from "../../../services/third-party-lyrics";
 import {
     deleteCachedLyrics,
-    getCachedLyrics,
     getCachedLyricsDebug,
+    getCachedLyricsFullEntry,
+    getEffectiveCacheSource,
     getSharedCachedLyrics,
     setCachedLyrics,
+    syncCachedLyricsToShared,
 } from "../../../services/lyrics-cache";
-import type { LyricsCacheKind } from "../../../services/lyrics-cache";
+import type { LyricsCacheEntry, LyricsCacheKind } from "../../../services/lyrics-cache";
 import { parseFuriganaMarkup } from "../../../utils/furigana";
 import type { FuriganaAnnotation } from "../../../utils/furigana";
 import {
@@ -64,10 +66,16 @@ export class Lyrics {
     private static readonly REQUEST_TIMEOUT_MS = 12000;
     private static readonly RETRY_DELAYS_MS = [0, 900, 1800, 3200];
     private static readonly REFETCH_DELAYS_MS = [15000, 45000, 120000];
-    private static readonly PREFETCH_WINDOW_MS = 10000;
+    private static readonly SHARED_SYNC_POLL_MS = 500;
     private static readonly LINE_RENDER_OVERSCAN = 0.5;
+    private static readonly CACHE_KINDS: LyricsCacheKind[] = [
+        "enhanced",
+        "enhanced-relaxed",
+        "spotify",
+    ];
     private static readonly spotifyRequests = new Map<string, Promise<LyricLine[]>>();
     private static readonly enhancedRequests = new Map<string, Promise<LyricLine[]>>();
+    private static readonly prefetchedTrackUris = new Set<string>();
     private static container: HTMLElement | null = null;
     private static lyricsRoot: HTMLElement | null = null;
     private static lineNodes: HTMLElement[] = [];
@@ -99,6 +107,10 @@ export class Lyrics {
     private static currentTrackUri: string | null = null;
     private static refetchAttempt = 0;
     private static refetchTimer: ReturnType<typeof setTimeout> | null = null;
+    private static sharedSyncTimer: ReturnType<typeof setTimeout> | null = null;
+    private static sharedSyncInFlight = false;
+    private static lastSharedSyncSignature: string | null = null;
+    private static renderedLyricsSignature: string | null = null;
 
     static attach(container: HTMLElement) {
         this.container = container;
@@ -124,6 +136,9 @@ export class Lyrics {
         this.resetDiagnostics();
         this.currentTrackUri = null;
         this.clearRefetch();
+        this.stopSharedCacheSync();
+        this.renderedLyricsSignature = null;
+        this.prefetchedTrackUris.clear();
         this.loadSequence += 1;
     }
 
@@ -134,8 +149,20 @@ export class Lyrics {
     static async refreshCurrentLyrics() {
         const trackUri = Spicetify.Player.data?.item?.uri;
         if (!trackUri) return false;
+        if (this.getRefreshBlockedReason()) return false;
         await this.loadLyrics(trackUri, "all");
         return this.lastStatus === "synced" || this.lastStatus === "unsynced";
+    }
+
+    static getRefreshBlockedReason() {
+        const trackUri = Spicetify.Player.data?.item?.uri;
+        if (!trackUri) return null;
+        const kinds: LyricsCacheKind[] = ["spotify", "enhanced", "enhanced-relaxed"];
+        return kinds.some(
+            (kind) => getEffectiveCacheSource(getCachedLyricsFullEntry(trackUri, kind)) === "manual",
+        )
+            ? "manual-selection"
+            : null;
     }
 
     static async loadLyrics(trackUri?: string, force: "none" | "enhanced" | "all" = "none") {
@@ -143,12 +170,15 @@ export class Lyrics {
             this.clearRefetch();
             this.refetchAttempt = 0;
             this.currentTrackUri = trackUri ?? null;
+            this.lastSharedSyncSignature = null;
         }
         const sequence = ++this.loadSequence;
         if (!CFM.get("lyricsDisplay") || !trackUri) {
+            this.stopSharedCacheSync();
             this.renderStatus("Lyrics unavailable", true);
             return;
         }
+        this.startSharedCacheSync();
         if (force !== "none") {
             deleteCachedLyrics(
                 trackUri,
@@ -163,6 +193,7 @@ export class Lyrics {
                 this.renderStatus("Lyrics unavailable", true);
                 this.scheduleRefetch(trackUri, "all");
             }
+            if (cachedLines.length) this.syncCurrentCacheToShared(trackUri);
             if (
                 cachedLines.length &&
                 CFM.get("thirdPartyLyrics") &&
@@ -183,6 +214,7 @@ export class Lyrics {
                 return;
             }
             this.applyLines(lines);
+            this.syncCurrentCacheToShared(trackUri);
             if (CFM.get("thirdPartyLyrics") && getThirdPartyLyricsDebug().status === "error") {
                 this.scheduleRefetch(trackUri, "enhanced");
             } else {
@@ -198,16 +230,15 @@ export class Lyrics {
 
     static prefetchNextLyrics() {
         if (!CFM.get("lyricsDisplay")) return;
-        const duration = Spicetify.Player.data?.duration ?? Spicetify.Player.getDuration();
-        if (!duration || duration <= 0) return;
-        const remaining = duration - Spicetify.Player.getProgress();
-        if (remaining > this.PREFETCH_WINDOW_MS) return;
         if (Spicetify.Player.getRepeat() === 2) return;
 
         const nextTrack = this.getNextTrack();
         const currentUri = Spicetify.Player.data?.item?.uri;
         if (!nextTrack || nextTrack.uri === currentUri) return;
+        if (this.prefetchedTrackUris.has(nextTrack.uri)) return;
+        this.prefetchedTrackUris.add(nextTrack.uri);
         void this.getPreparedLyrics(nextTrack, false).catch((err) => {
+            this.prefetchedTrackUris.delete(nextTrack.uri);
             console.debug("Unable to prefetch next track lyrics", err);
         });
     }
@@ -215,58 +246,114 @@ export class Lyrics {
     // ---- internal helpers ----
 
     private static getPreparedLyricsFromCache(track: LyricsTrack) {
+        if (CFM.get("sharedLyricsBridge")) return null;
+        const preferred = this.bestLocalPreferredEntry(track.uri);
+        if (preferred) {
+            syncCachedLyricsToShared(preferred);
+            return this.linesForEntry(preferred);
+        }
         const kind: LyricsCacheKind = CFM.get("thirdPartyLyrics")
             ? this.getEnhancedCacheKind()
             : "spotify";
         if (kind !== "spotify") return null;
-        const cached = getCachedLyrics(track.uri, kind);
-        if (cached !== null && kind !== "spotify") {
-            this.publishCachedDebug(track.uri);
-        }
-        return cached;
+        const cached = getCachedLyricsFullEntry(track.uri, kind);
+        return cached && this.isPreferredCacheEntry(cached) ? this.linesForEntry(cached) : null;
     }
 
     private static async getPreparedLyrics(track: LyricsTrack, publishDebug: boolean) {
         const thirdPartyEnabled = Boolean(CFM.get("thirdPartyLyrics"));
         const relaxedMatching = Boolean(CFM.get("relaxedLyricsMatching"));
         const kind: LyricsCacheKind = thirdPartyEnabled ? this.getEnhancedCacheKind() : "spotify";
+        const sharedPreferred = await this.bestSharedPreferredEntry(track);
+        if (sharedPreferred) {
+            this.rememberSharedSignature(track.uri, sharedPreferred);
+            setCachedLyrics(
+                track.uri,
+                sharedPreferred.kind,
+                sharedPreferred.lines,
+                sharedPreferred.debug,
+                false,
+                this.cacheEntryMetadata(sharedPreferred),
+            );
+            if (publishDebug && sharedPreferred.debug) {
+                publishThirdPartyLyricsDebug(sharedPreferred.debug, true);
+            }
+            return this.linesForEntry(sharedPreferred);
+        }
+        let automaticFallback: LyricsCacheEntry | null = null;
         if (kind !== "spotify") {
-            const cached = getCachedLyrics(track.uri, kind);
-            const shared = await getSharedCachedLyrics(track.uri, kind, false);
-            const selected = this.selectBestCachedLyrics(shared, cached);
+            const cached = getCachedLyricsFullEntry(track.uri, kind);
+            const shared = await getSharedCachedLyrics(
+                track.uri,
+                kind,
+                false,
+                this.cacheMetadataForTrack(track),
+            );
+            const selected = this.selectBestCachedLyrics(shared, cached, false);
             if (selected !== null) {
                 if (selected.source === "shared") {
-                    setCachedLyrics(track.uri, kind, selected.lines, shared?.debug, false);
+                    this.rememberSharedSignature(track.uri, selected.entry);
+                    setCachedLyrics(track.uri, kind, selected.entry.lines, shared?.debug, false, this.cacheEntryMetadata(selected.entry));
                     if (publishDebug && shared?.debug) {
                         publishThirdPartyLyricsDebug(shared.debug, true);
                     }
                 } else if (publishDebug) {
                     this.publishCachedDebug(track.uri);
                 }
-                return selected.lines;
+                return this.linesForEntry(selected.entry);
             }
+            automaticFallback = this.selectBestCachedLyrics(shared, cached, true)?.entry ?? null;
         }
-        const cached = getCachedLyrics(track.uri, kind);
-        if (cached !== null) {
+        const cached = getCachedLyricsFullEntry(track.uri, kind);
+        if (cached !== null && this.isPreferredCacheEntry(cached)) {
             if (publishDebug && kind !== "spotify") this.publishCachedDebug(track.uri);
-            return cached;
+            return this.linesForEntry(cached);
         }
         if (kind === "spotify") {
-            const shared = await getSharedCachedLyrics(track.uri, kind);
-            if (shared !== null) {
+            const shared = await getSharedCachedLyrics(
+                track.uri,
+                kind,
+                false,
+                this.cacheMetadataForTrack(track),
+            );
+            if (shared !== null && this.isPreferredCacheEntry(shared)) {
+                this.rememberSharedSignature(track.uri, shared);
+                setCachedLyrics(
+                    track.uri,
+                    kind,
+                    shared.lines,
+                    shared.debug,
+                    false,
+                    this.cacheEntryMetadata(shared),
+                );
                 if (publishDebug && shared.debug) {
                     publishThirdPartyLyricsDebug(shared.debug, true);
                 }
-                return shared.lines;
+                return this.linesForEntry(shared);
             }
         }
-        const relaxedShared = kind === "enhanced" ? await getSharedCachedLyrics(track.uri, "enhanced-relaxed", false) : null;
-        if (relaxedShared !== null) {
-            setCachedLyrics(track.uri, "enhanced-relaxed", relaxedShared.lines, relaxedShared.debug, false);
+        const relaxedShared = kind === "enhanced"
+            ? await getSharedCachedLyrics(
+                track.uri,
+                "enhanced-relaxed",
+                false,
+                this.cacheMetadataForTrack(track),
+            )
+            : null;
+        if (relaxedShared !== null && this.isPreferredCacheEntry(relaxedShared)) {
+            this.rememberSharedSignature(track.uri, relaxedShared);
+            setCachedLyrics(
+                track.uri,
+                "enhanced-relaxed",
+                relaxedShared.lines,
+                relaxedShared.debug,
+                false,
+                this.cacheEntryMetadata(relaxedShared),
+            );
             if (publishDebug && relaxedShared.debug) {
                 publishThirdPartyLyricsDebug(relaxedShared.debug, true);
             }
-            return relaxedShared.lines;
+            return this.linesForEntry(relaxedShared);
         }
 
         const spotifyLines = await this.getSpotifyLyrics(track);
@@ -279,14 +366,15 @@ export class Lyrics {
             return spotifyLines;
         }
 
-        const enhancedCached = getCachedLyrics(track.uri, kind);
-        if (enhancedCached !== null) {
+        const enhancedCached = getCachedLyricsFullEntry(track.uri, kind);
+        if (enhancedCached !== null && this.isPreferredCacheEntry(enhancedCached)) {
             if (publishDebug) this.publishCachedDebug(track.uri);
-            return enhancedCached;
+            return this.linesForEntry(enhancedCached);
         }
         const requestKey = `${kind}:${track.uri}`;
         const pending = this.enhancedRequests.get(requestKey);
         if (pending) {
+            if (spotifyLines.length) return spotifyLines;
             const lines = await pending;
             if (publishDebug) this.publishCachedDebug(track.uri);
             return lines;
@@ -303,16 +391,33 @@ export class Lyrics {
             },
         )
             .then((lines) => {
+                const resolvedLines = lines.length || !automaticFallback
+                    ? lines
+                    : this.linesForEntry(automaticFallback);
                 if (debugSnapshot?.status !== "error") {
-                    setCachedLyrics(track.uri, kind, lines, debugSnapshot);
+                    setCachedLyrics(track.uri, kind, lines, debugSnapshot, true, {
+                        source: "plugin",
+                        cacheSource: "plugin",
+                        isManualSelection: false,
+                        cachedWithoutPlugin: false,
+                        metadata: this.cacheMetadataForTrack(track),
+                        offsetMilliseconds: 0,
+                        timingOffsetApplied: false,
+                    });
                 }
-                return lines;
+                // Third-party enrichment can take several seconds. Keep the base Spotify
+                // lyrics visible, then replace them in place once richer data is ready.
+                if (this.isCurrentTrack(track.uri) && resolvedLines.length) {
+                    this.applyLines(resolvedLines);
+                    this.syncCurrentCacheToShared(track.uri);
+                }
+                return resolvedLines;
             })
             .finally(() => {
                 this.enhancedRequests.delete(requestKey);
-            });
+        });
         this.enhancedRequests.set(requestKey, request);
-        return request;
+        return spotifyLines.length ? spotifyLines : request;
     }
 
     private static publishCachedDebug(trackUri: string) {
@@ -320,17 +425,207 @@ export class Lyrics {
         if (debug) publishThirdPartyLyricsDebug(debug, true);
     }
 
+    private static syncCurrentCacheToShared(trackUri: string) {
+        const entry = this.bestLocalPreferredEntry(trackUri);
+        if (entry) syncCachedLyricsToShared(entry);
+    }
+
+    private static bestLocalPreferredEntry(trackUri: string) {
+        return this.bestEntry(
+            this.CACHE_KINDS.map((kind) => {
+                const entry = getCachedLyricsFullEntry(trackUri, kind);
+                return entry && this.isPreferredCacheEntry(entry)
+                    ? { source: "cached" as const, entry }
+                    : null;
+            }).filter(Boolean) as Array<{ source: "cached"; entry: LyricsCacheEntry }>,
+        )?.entry ?? null;
+    }
+
+    private static async bestSharedPreferredEntry(track: LyricsTrack) {
+        const entries = await Promise.all(
+            this.CACHE_KINDS.map((kind) =>
+                getSharedCachedLyrics(track.uri, kind, false, this.cacheMetadataForTrack(track)),
+            ),
+        );
+        return this.bestEntry(
+            entries
+                .filter((entry): entry is LyricsCacheEntry =>
+                    Boolean(entry && this.isPreferredCacheEntry(entry)),
+                )
+                .map((entry) => ({ source: "shared" as const, entry })),
+        )?.entry ?? null;
+    }
+
+    private static isPreferredCacheEntry(entry: LyricsCacheEntry) {
+        const source = getEffectiveCacheSource(entry);
+        return source === "manual" || source === "plugin";
+    }
+
     private static selectBestCachedLyrics(
-        shared: { lines: LyricLine[]; debug?: ThirdPartyLyricsDebug } | null,
-        cached: LyricLine[] | null,
+        shared: LyricsCacheEntry | null,
+        cached: LyricsCacheEntry | null,
+        allowAutomatic: boolean,
     ) {
-        if (shared === null) {
-            return cached === null ? null : { source: "cached" as const, lines: cached };
+        const candidates = [
+            shared ? { source: "shared" as const, entry: shared } : null,
+            cached ? { source: "cached" as const, entry: cached } : null,
+        ].filter(Boolean) as Array<{ source: "shared" | "cached"; entry: LyricsCacheEntry }>;
+        const manual = candidates.filter(
+            (candidate) => getEffectiveCacheSource(candidate.entry) === "manual",
+        );
+        if (manual.length) return this.bestEntry(manual);
+        const plugin = candidates.filter(
+            (candidate) => getEffectiveCacheSource(candidate.entry) === "plugin",
+        );
+        if (plugin.length) return this.bestEntry(plugin);
+        if (!allowAutomatic) return null;
+        return this.bestEntry(candidates);
+    }
+
+    private static bestEntry(
+        candidates: Array<{ source: "shared" | "cached"; entry: LyricsCacheEntry }>,
+    ) {
+        return candidates.sort((first, second) => {
+            const sourcePriority = this.cacheSourcePriority(first.entry) - this.cacheSourcePriority(second.entry);
+            if (sourcePriority !== 0) return sourcePriority;
+            const quality = this.compareLyricsQuality(second.entry.lines, first.entry.lines);
+            if (quality !== 0) return quality;
+            const kindPriority = this.cacheKindPriority(first.entry.kind) - this.cacheKindPriority(second.entry.kind);
+            if (kindPriority !== 0) return kindPriority;
+            return (second.entry.cachedAt ?? 0) - (first.entry.cachedAt ?? 0);
+        })[0] ?? null;
+    }
+
+    private static cacheSourcePriority(entry: LyricsCacheEntry) {
+        switch (getEffectiveCacheSource(entry)) {
+            case "manual":
+                return 0;
+            case "plugin":
+                return 1;
+            case "without-plugin":
+                return 2;
         }
-        if (cached === null) return { source: "shared" as const, lines: shared.lines };
-        return this.compareLyricsQuality(shared.lines, cached) >= 0
-            ? { source: "shared" as const, lines: shared.lines }
-            : { source: "cached" as const, lines: cached };
+    }
+
+    private static cacheKindPriority(kind: LyricsCacheKind) {
+        const preferred = CFM.get("thirdPartyLyrics") ? this.getEnhancedCacheKind() : "spotify";
+        return [preferred, ...this.CACHE_KINDS.filter((candidate) => candidate !== preferred)]
+            .indexOf(kind);
+    }
+
+    private static linesForEntry(entry: LyricsCacheEntry): LyricLine[] {
+        const offset = Number(entry.offsetMilliseconds ?? 0);
+        if (!Number.isFinite(offset) || offset === 0) return entry.lines;
+        if (entry.timingOffsetApplied) return entry.lines;
+        return entry.lines.map((line) => ({
+            ...line,
+            time: typeof line.time === "number" ? Math.max(0, line.time - offset) : line.time,
+            words: line.words?.map((word) => ({
+                ...word,
+                time: Math.max(0, word.time - offset),
+            })),
+        }));
+    }
+
+    private static cacheEntryMetadata(entry: LyricsCacheEntry) {
+        return {
+            metadata: entry.metadata,
+            cacheSource: entry.cacheSource,
+            source: entry.source,
+            sourceName: entry.sourceName,
+            isManualSelection: entry.isManualSelection,
+            cachedWithoutPlugin: entry.cachedWithoutPlugin,
+            offsetMilliseconds: entry.offsetMilliseconds,
+            timingOffsetApplied: entry.timingOffsetApplied,
+        };
+    }
+
+    private static startSharedCacheSync() {
+        if (!CFM.get("sharedLyricsBridge") || this.sharedSyncTimer) return;
+        const poll = () => {
+            this.sharedSyncTimer = setTimeout(poll, this.SHARED_SYNC_POLL_MS);
+            void this.syncSharedCacheForCurrentTrack();
+        };
+        this.sharedSyncTimer = setTimeout(poll, this.SHARED_SYNC_POLL_MS);
+    }
+
+    private static stopSharedCacheSync() {
+        if (this.sharedSyncTimer) {
+            clearTimeout(this.sharedSyncTimer);
+            this.sharedSyncTimer = null;
+        }
+        this.sharedSyncInFlight = false;
+        this.lastSharedSyncSignature = null;
+    }
+
+    private static async syncSharedCacheForCurrentTrack() {
+        if (this.sharedSyncInFlight || !CFM.get("lyricsDisplay") || !CFM.get("sharedLyricsBridge")) {
+            return;
+        }
+        const trackUri = this.currentTrackUri;
+        if (!trackUri || !this.isCurrentTrack(trackUri)) return;
+        this.sharedSyncInFlight = true;
+        try {
+            const track = this.getCurrentTrack(trackUri);
+            const entry = await this.bestSharedPreferredEntry(track);
+            if (!this.isCurrentTrack(trackUri)) return;
+            const signature = entry ? this.cacheEntrySignature(entry) : null;
+            if (!signature) {
+                this.lastSharedSyncSignature = null;
+                return;
+            }
+            if (signature === this.lastSharedSyncSignature) return;
+            this.lastSharedSyncSignature = signature;
+            setCachedLyrics(
+                trackUri,
+                entry.kind,
+                entry.lines,
+                entry.debug,
+                false,
+                this.cacheEntryMetadata(entry),
+            );
+            await this.loadLyrics(trackUri);
+        } finally {
+            this.sharedSyncInFlight = false;
+        }
+    }
+
+    private static cacheEntrySignature(entry: LyricsCacheEntry) {
+        return this.linesSignature(this.linesForEntry(entry));
+    }
+
+    private static rememberSharedSignature(trackUri: string, entry: LyricsCacheEntry) {
+        if (this.currentTrackUri === trackUri) {
+            this.lastSharedSyncSignature = this.cacheEntrySignature(entry);
+        }
+    }
+
+    private static lineSignature(line: LyricLine) {
+        return [
+            line.time ?? "",
+            line.duration ?? "",
+            line.text,
+            line.translation ?? "",
+            line.romanization ?? "",
+            line.furigana ?? "",
+            ...(line.words ?? []).map((word) =>
+                [word.time, word.duration, word.text].join(","),
+            ),
+        ].join("\u001f");
+    }
+
+    private static linesSignature(lines: LyricLine[]) {
+        return [lines.length, ...lines.map((line) => this.lineSignature(line))].join("|");
+    }
+
+    private static cacheMetadataForTrack(track: LyricsTrack) {
+        return {
+            title: track.title,
+            artist: track.artists,
+            album: track.album,
+            duration: track.duration,
+            translationLanguages: [],
+        };
     }
 
     private static compareLyricsQuality(first: LyricLine[], second: LyricLine[]) {
@@ -345,7 +640,7 @@ export class Lyrics {
     private static lyricsQualityScore(lines: LyricLine[]) {
         const meaningful = lines.filter((line) => line.text.trim()).length;
         const timed = lines.filter((line) => line.time !== null).length;
-        const karaoke = lines.filter((line) => Boolean(line.words?.length)).length;
+        const karaoke = lines.filter((line) => this.hasKaraokeText(line)).length;
         const furigana = lines.filter((line) => Boolean(line.furigana?.trim())).length;
         const translation = lines.filter((line) => Boolean(line.translation?.trim())).length;
         const romanization = lines.filter((line) => Boolean(line.romanization?.trim())).length;
@@ -366,11 +661,32 @@ export class Lyrics {
         return CFM.get("relaxedLyricsMatching") ? "enhanced-relaxed" : "enhanced";
     }
 
+    private static hasKaraokeText(line: LyricLine) {
+        return Boolean(line.words?.some((word) => word.text.trim()));
+    }
+
     private static async getSpotifyLyrics(track: LyricsTrack) {
-        const cached = getCachedLyrics(track.uri, "spotify");
-        if (cached !== null) return cached;
-        const shared = await getSharedCachedLyrics(track.uri, "spotify");
-        if (shared !== null) return shared.lines;
+        const cached = getCachedLyricsFullEntry(track.uri, "spotify");
+        if (cached !== null && this.isPreferredCacheEntry(cached)) return this.linesForEntry(cached);
+        const shared = await getSharedCachedLyrics(
+            track.uri,
+            "spotify",
+            false,
+            this.cacheMetadataForTrack(track),
+        );
+        if (shared !== null && this.isPreferredCacheEntry(shared)) {
+            this.rememberSharedSignature(track.uri, shared);
+            setCachedLyrics(
+                track.uri,
+                "spotify",
+                shared.lines,
+                shared.debug,
+                false,
+                this.cacheEntryMetadata(shared),
+            );
+            return this.linesForEntry(shared);
+        }
+        const automaticFallback = shared ?? cached;
         const pending = this.spotifyRequests.get(track.uri);
         if (pending) return pending;
 
@@ -380,8 +696,19 @@ export class Lyrics {
             .then((response) => this.normalizeLines(response?.lyrics?.lines))
             .catch(() => [])
             .then((lines) => {
-                setCachedLyrics(track.uri, "spotify", lines);
-                return lines;
+                setCachedLyrics(track.uri, "spotify", lines, undefined, true, {
+                    source: "plugin",
+                    cacheSource: "plugin",
+                    sourceName: "Spotify",
+                    isManualSelection: false,
+                    cachedWithoutPlugin: false,
+                    metadata: this.cacheMetadataForTrack(track),
+                    offsetMilliseconds: 0,
+                    timingOffsetApplied: false,
+                });
+                return lines.length || !automaticFallback
+                    ? lines
+                    : this.linesForEntry(automaticFallback);
             })
             .finally(() => {
                 this.spotifyRequests.delete(track.uri);
@@ -509,6 +836,10 @@ export class Lyrics {
         return sequence === this.loadSequence;
     }
 
+    private static isCurrentTrack(trackUri: string) {
+        return this.currentTrackUri === trackUri && Spicetify.Player.data?.item?.uri === trackUri;
+    }
+
     private static renderStatus(text: string, unavailable: boolean) {
         if (!this.container) return;
         this.stopResizeObserver();
@@ -523,6 +854,7 @@ export class Lyrics {
         this.activeIndex = -1;
         this.lastMeasuredFontSize = 0;
         this.lyricsRoot = null;
+        this.renderedLyricsSignature = null;
         this.isSynced = false;
         this.lastStatus = unavailable ? "unavailable" : "loading";
         this.resetDiagnostics();
@@ -533,12 +865,17 @@ export class Lyrics {
     }
 
     private static applyLines(lines: LyricLine[]) {
+        const signature = this.linesSignature(lines);
+        if (signature === this.renderedLyricsSignature && this.lyricsRoot?.isConnected) {
+            return;
+        }
         const timeValues = lines.map((line) => line.time).filter((t): t is number => t !== null);
         const lastTime = timeValues.length ? timeValues[timeValues.length - 1] : null;
         const hasNonZero = timeValues.some((t) => t > 0);
         this.isSynced = Boolean(timeValues.length && hasNonZero && (lastTime ?? 0) > 0);
         this.stopLoop();
         this.lines = lines;
+        this.renderedLyricsSignature = signature;
         this.timedLines = lines.flatMap((line, index) =>
             line.time === null ? [] : [{ index, time: line.time }],
         );
@@ -548,7 +885,7 @@ export class Lyrics {
             timed: timeValues.length,
             translations: lines.filter((line) => Boolean(line.translation)).length,
             romanizations: lines.filter((line) => Boolean(line.romanization)).length,
-            karaoke: lines.filter((line) => Boolean(line.words?.length)).length,
+            karaoke: lines.filter((line) => this.hasKaraokeText(line)).length,
         };
         this.activeIndex = this.isSynced ? -1 : 0;
         DOM.container.classList.remove("lyrics-unavailable");
@@ -606,7 +943,7 @@ export class Lyrics {
     }
 
     private static renderLineContent(line: LyricLine) {
-        const showKaraoke = Boolean(CFM.get("karaokeLyrics")) && Boolean(line.words?.length);
+        const showKaraoke = Boolean(CFM.get("karaokeLyrics")) && this.hasKaraokeText(line);
         const chineseConversion = this.getChineseConversion();
         const lineChineseConversion = this.getLineChineseConversion(
             line.text,

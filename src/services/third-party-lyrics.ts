@@ -646,26 +646,29 @@ async function requestBody(
     body: Record<string, unknown> | undefined,
     headers: Record<string, string>,
 ) {
+    const cosmosRequest = withTimeout(
+        method === "POST"
+            ? Spicetify.CosmosAsync.post(url, body ?? {}, headers)
+            : Spicetify.CosmosAsync.get(url, {}, headers),
+        REQUEST_TIMEOUT_MS,
+    );
+    const directRequest = fetchWithTimeout(url, {
+        method,
+        headers,
+        body: method === "POST" && body ? JSON.stringify(body) : undefined,
+    }).then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.text();
+    });
+
     try {
-        const cosmosPromise =
-            method === "POST"
-                ? Spicetify.CosmosAsync.post(url, body ?? {}, headers)
-                : Spicetify.CosmosAsync.get(url, {}, headers);
-        return await withTimeout(cosmosPromise, REQUEST_TIMEOUT_MS);
-    } catch (cosmosErr) {
-        try {
-            const response = await fetchWithTimeout(url, {
-                method,
-                headers,
-                body: method === "POST" && body ? JSON.stringify(body) : undefined,
-            });
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            return response.text();
-        } catch (fetchErr) {
-            throw new Error(
-                `${stage}失败: Cosmos=${formatError(cosmosErr)}; fetch=${formatError(fetchErr)}`,
-            );
-        }
+        // Third-party domains are not consistently available through Cosmos.
+        // Start the direct request immediately so its success is not delayed by
+        // a Cosmos timeout, while retaining Cosmos as an independent fallback.
+        return await Promise.any([cosmosRequest, directRequest]);
+    } catch (error) {
+        const failures = error instanceof AggregateError ? error.errors : [error];
+        throw new Error(`${stage}失败: ${failures.map(formatError).join("; ")}`);
     }
 }
 
