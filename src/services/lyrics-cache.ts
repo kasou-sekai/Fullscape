@@ -53,6 +53,7 @@ const READY_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const EMPTY_TTL_MS = 30 * 60 * 1000;
 const MAX_ENTRIES = 40;
 const MAX_SERIALIZED_LENGTH = 1_750_000;
+const SHARED_REQUEST_TIMEOUT_MS = 800;
 const SHARED_CACHE_ENDPOINTS = [
     "http://localhost:24887/lyrics-cache",
     "http://127.0.0.1:24887/lyrics-cache",
@@ -86,7 +87,7 @@ export async function getSharedCachedLyrics(
         }
         for (const endpoint of SHARED_CACHE_ENDPOINTS) {
             try {
-                const response = await fetch(`${endpoint}?${params.toString()}`, {
+                const response = await fetchSharedWithTimeout(`${endpoint}?${params.toString()}`, {
                     headers: { Accept: "application/json" },
                 });
                 if (!response.ok) continue;
@@ -243,7 +244,7 @@ function isValidEntry(entry: LyricsCacheEntry, trackUri: string, kind: LyricsCac
 async function setSharedCachedLyrics(entry: LyricsCacheEntry) {
     for (const endpoint of SHARED_CACHE_ENDPOINTS) {
         try {
-            const response = await fetch(endpoint, {
+            const response = await fetchSharedWithTimeout(endpoint, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(entry),
@@ -258,6 +259,14 @@ async function setSharedCachedLyrics(entry: LyricsCacheEntry) {
     }
     traceLyricsBridge("bridge.post-failed", entry);
     // LyricShiori may not be running; localStorage remains the source of truth.
+}
+
+function fetchSharedWithTimeout(input: RequestInfo | URL, init?: RequestInit) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), SHARED_REQUEST_TIMEOUT_MS);
+    return fetch(input, { ...init, signal: controller.signal }).finally(() => {
+        clearTimeout(timeoutId);
+    });
 }
 
 function removeExpiredEntries(cache: LyricsCacheStore) {

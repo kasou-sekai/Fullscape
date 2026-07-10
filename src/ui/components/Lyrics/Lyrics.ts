@@ -17,7 +17,6 @@ import {
     getEffectiveCacheSource,
     getSharedCachedLyrics,
     setCachedLyrics,
-    syncCachedLyricsToShared,
 } from "../../../services/lyrics-cache";
 import type { LyricsCacheEntry, LyricsCacheKind } from "../../../services/lyrics-cache";
 import { parseFuriganaMarkup } from "../../../utils/furigana";
@@ -193,7 +192,6 @@ export class Lyrics {
                 this.renderStatus("Lyrics unavailable", true);
                 this.scheduleRefetch(trackUri, "all");
             }
-            if (cachedLines.length) this.syncCurrentCacheToShared(trackUri);
             if (
                 cachedLines.length &&
                 CFM.get("thirdPartyLyrics") &&
@@ -214,7 +212,6 @@ export class Lyrics {
                 return;
             }
             this.applyLines(lines);
-            this.syncCurrentCacheToShared(trackUri);
             if (CFM.get("thirdPartyLyrics") && getThirdPartyLyricsDebug().status === "error") {
                 this.scheduleRefetch(trackUri, "enhanced");
             } else {
@@ -246,10 +243,8 @@ export class Lyrics {
     // ---- internal helpers ----
 
     private static getPreparedLyricsFromCache(track: LyricsTrack) {
-        if (CFM.get("sharedLyricsBridge")) return null;
         const preferred = this.bestLocalPreferredEntry(track.uri);
         if (preferred) {
-            syncCachedLyricsToShared(preferred);
             return this.linesForEntry(preferred);
         }
         const kind: LyricsCacheKind = CFM.get("thirdPartyLyrics")
@@ -264,98 +259,26 @@ export class Lyrics {
         const thirdPartyEnabled = Boolean(CFM.get("thirdPartyLyrics"));
         const relaxedMatching = Boolean(CFM.get("relaxedLyricsMatching"));
         const kind: LyricsCacheKind = thirdPartyEnabled ? this.getEnhancedCacheKind() : "spotify";
-        const sharedPreferred = await this.bestSharedPreferredEntry(track);
-        if (sharedPreferred) {
-            this.rememberSharedSignature(track.uri, sharedPreferred);
-            setCachedLyrics(
-                track.uri,
-                sharedPreferred.kind,
-                sharedPreferred.lines,
-                sharedPreferred.debug,
-                false,
-                this.cacheEntryMetadata(sharedPreferred),
-            );
-            if (publishDebug && sharedPreferred.debug) {
-                publishThirdPartyLyricsDebug(sharedPreferred.debug, true);
-            }
-            return this.linesForEntry(sharedPreferred);
-        }
+        // Shared lyrics are refreshed by the background poll. Never make the
+        // initial render wait for LyricShiori: its GET handler may need to read
+        // and decode a local .lrcx file before replying.
         let automaticFallback: LyricsCacheEntry | null = null;
         if (kind !== "spotify") {
             const cached = getCachedLyricsFullEntry(track.uri, kind);
-            const shared = await getSharedCachedLyrics(
-                track.uri,
-                kind,
-                false,
-                this.cacheMetadataForTrack(track),
-            );
-            const selected = this.selectBestCachedLyrics(shared, cached, false);
+            const selected = this.selectBestCachedLyrics(null, cached, false);
             if (selected !== null) {
-                if (selected.source === "shared") {
-                    this.rememberSharedSignature(track.uri, selected.entry);
-                    setCachedLyrics(track.uri, kind, selected.entry.lines, shared?.debug, false, this.cacheEntryMetadata(selected.entry));
-                    if (publishDebug && shared?.debug) {
-                        publishThirdPartyLyricsDebug(shared.debug, true);
-                    }
-                } else if (publishDebug) {
+                if (publishDebug) {
                     this.publishCachedDebug(track.uri);
                 }
                 return this.linesForEntry(selected.entry);
             }
-            automaticFallback = this.selectBestCachedLyrics(shared, cached, true)?.entry ?? null;
+            automaticFallback = this.selectBestCachedLyrics(null, cached, true)?.entry ?? null;
         }
         const cached = getCachedLyricsFullEntry(track.uri, kind);
         if (cached !== null && this.isPreferredCacheEntry(cached)) {
             if (publishDebug && kind !== "spotify") this.publishCachedDebug(track.uri);
             return this.linesForEntry(cached);
         }
-        if (kind === "spotify") {
-            const shared = await getSharedCachedLyrics(
-                track.uri,
-                kind,
-                false,
-                this.cacheMetadataForTrack(track),
-            );
-            if (shared !== null && this.isPreferredCacheEntry(shared)) {
-                this.rememberSharedSignature(track.uri, shared);
-                setCachedLyrics(
-                    track.uri,
-                    kind,
-                    shared.lines,
-                    shared.debug,
-                    false,
-                    this.cacheEntryMetadata(shared),
-                );
-                if (publishDebug && shared.debug) {
-                    publishThirdPartyLyricsDebug(shared.debug, true);
-                }
-                return this.linesForEntry(shared);
-            }
-        }
-        const relaxedShared = kind === "enhanced"
-            ? await getSharedCachedLyrics(
-                track.uri,
-                "enhanced-relaxed",
-                false,
-                this.cacheMetadataForTrack(track),
-            )
-            : null;
-        if (relaxedShared !== null && this.isPreferredCacheEntry(relaxedShared)) {
-            this.rememberSharedSignature(track.uri, relaxedShared);
-            setCachedLyrics(
-                track.uri,
-                "enhanced-relaxed",
-                relaxedShared.lines,
-                relaxedShared.debug,
-                false,
-                this.cacheEntryMetadata(relaxedShared),
-            );
-            if (publishDebug && relaxedShared.debug) {
-                publishThirdPartyLyricsDebug(relaxedShared.debug, true);
-            }
-            return this.linesForEntry(relaxedShared);
-        }
-
         const spotifyLines = await this.getSpotifyLyrics(track);
         if (
             !thirdPartyEnabled ||
@@ -409,7 +332,6 @@ export class Lyrics {
                 // lyrics visible, then replace them in place once richer data is ready.
                 if (this.isCurrentTrack(track.uri) && resolvedLines.length) {
                     this.applyLines(resolvedLines);
-                    this.syncCurrentCacheToShared(track.uri);
                 }
                 return resolvedLines;
             })
@@ -425,11 +347,6 @@ export class Lyrics {
         if (debug) publishThirdPartyLyricsDebug(debug, true);
     }
 
-    private static syncCurrentCacheToShared(trackUri: string) {
-        const entry = this.bestLocalPreferredEntry(trackUri);
-        if (entry) syncCachedLyricsToShared(entry);
-    }
-
     private static bestLocalPreferredEntry(trackUri: string) {
         return this.bestEntry(
             this.CACHE_KINDS.map((kind) => {
@@ -442,18 +359,17 @@ export class Lyrics {
     }
 
     private static async bestSharedPreferredEntry(track: LyricsTrack) {
-        const entries = await Promise.all(
-            this.CACHE_KINDS.map((kind) =>
-                getSharedCachedLyrics(track.uri, kind, false, this.cacheMetadataForTrack(track)),
-            ),
+        // LyricShiori converts its current local selection to the requested
+        // kind, so one request is sufficient for both replacement and offset
+        // updates. Querying every cache kind tripled the synchronous .lrcx I/O.
+        const kind = CFM.get("thirdPartyLyrics") ? this.getEnhancedCacheKind() : "spotify";
+        const entry = await getSharedCachedLyrics(
+            track.uri,
+            kind,
+            false,
+            this.cacheMetadataForTrack(track),
         );
-        return this.bestEntry(
-            entries
-                .filter((entry): entry is LyricsCacheEntry =>
-                    Boolean(entry && this.isPreferredCacheEntry(entry)),
-                )
-                .map((entry) => ({ source: "shared" as const, entry })),
-        )?.entry ?? null;
+        return entry && this.isPreferredCacheEntry(entry) ? entry : null;
     }
 
     private static isPreferredCacheEntry(entry: LyricsCacheEntry) {
@@ -576,15 +492,7 @@ export class Lyrics {
             }
             if (signature === this.lastSharedSyncSignature) return;
             this.lastSharedSyncSignature = signature;
-            setCachedLyrics(
-                trackUri,
-                entry.kind,
-                entry.lines,
-                entry.debug,
-                false,
-                this.cacheEntryMetadata(entry),
-            );
-            await this.loadLyrics(trackUri);
+            this.applySharedLyricsEntry(trackUri, entry);
         } finally {
             this.sharedSyncInFlight = false;
         }
@@ -598,6 +506,24 @@ export class Lyrics {
         if (this.currentTrackUri === trackUri) {
             this.lastSharedSyncSignature = this.cacheEntrySignature(entry);
         }
+    }
+
+    private static applySharedLyricsEntry(trackUri: string, entry: LyricsCacheEntry) {
+        if (!this.isCurrentTrack(trackUri)) return;
+        setCachedLyrics(
+            trackUri,
+            entry.kind,
+            entry.lines,
+            entry.debug,
+            false,
+            this.cacheEntryMetadata(entry),
+        );
+        if (entry.debug) publishThirdPartyLyricsDebug(entry.debug, true);
+        const lines = this.linesForEntry(entry);
+        if (!lines.length) return;
+        this.applyLines(lines);
+        this.clearRefetch();
+        this.refetchAttempt = 0;
     }
 
     private static lineSignature(line: LyricLine) {
@@ -668,25 +594,7 @@ export class Lyrics {
     private static async getSpotifyLyrics(track: LyricsTrack) {
         const cached = getCachedLyricsFullEntry(track.uri, "spotify");
         if (cached !== null && this.isPreferredCacheEntry(cached)) return this.linesForEntry(cached);
-        const shared = await getSharedCachedLyrics(
-            track.uri,
-            "spotify",
-            false,
-            this.cacheMetadataForTrack(track),
-        );
-        if (shared !== null && this.isPreferredCacheEntry(shared)) {
-            this.rememberSharedSignature(track.uri, shared);
-            setCachedLyrics(
-                track.uri,
-                "spotify",
-                shared.lines,
-                shared.debug,
-                false,
-                this.cacheEntryMetadata(shared),
-            );
-            return this.linesForEntry(shared);
-        }
-        const automaticFallback = shared ?? cached;
+        const automaticFallback = cached;
         const pending = this.spotifyRequests.get(track.uri);
         if (pending) return pending;
 
