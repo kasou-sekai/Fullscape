@@ -65,7 +65,7 @@ export class Lyrics {
     private static readonly REQUEST_TIMEOUT_MS = 12000;
     private static readonly RETRY_DELAYS_MS = [0, 900, 1800, 3200];
     private static readonly REFETCH_DELAYS_MS = [15000, 45000, 120000];
-    private static readonly SHARED_SYNC_POLL_MS = 500;
+    private static readonly SHARED_SYNC_POLL_MS = 1000;
     private static readonly LINE_RENDER_OVERSCAN = 0.5;
     private static readonly CACHE_KINDS: LyricsCacheKind[] = [
         "enhanced",
@@ -233,11 +233,33 @@ export class Lyrics {
         const currentUri = Spicetify.Player.data?.item?.uri;
         if (!nextTrack || nextTrack.uri === currentUri) return;
         if (this.prefetchedTrackUris.has(nextTrack.uri)) return;
+        // An already-prepared extension entry needs no bridge round trip.
+        if (this.getPreparedLyricsFromCache(nextTrack) !== null) return;
         this.prefetchedTrackUris.add(nextTrack.uri);
-        void this.getPreparedLyrics(nextTrack, false).catch((err) => {
+        void this.prefetchNextLyricsFromBestSource(nextTrack).catch((err) => {
             this.prefetchedTrackUris.delete(nextTrack.uri);
             console.debug("Unable to prefetch next track lyrics", err);
         });
+    }
+
+    private static async prefetchNextLyricsFromBestSource(track: LyricsTrack) {
+        // Prefetching happens while the current track is still playing, so it
+        // can wait briefly for LyricShiori before issuing external requests.
+        // This avoids fetching Spotify/third-party lyrics when Shiori already
+        // has a manual or plugin-quality entry for the upcoming track.
+        const shared = await this.bestSharedPreferredEntry(track);
+        if (shared) {
+            setCachedLyrics(
+                track.uri,
+                shared.kind,
+                shared.lines,
+                shared.debug,
+                false,
+                this.cacheEntryMetadata(shared),
+            );
+            return;
+        }
+        await this.getPreparedLyrics(track, false);
     }
 
     // ---- internal helpers ----
@@ -453,6 +475,8 @@ export class Lyrics {
             cachedWithoutPlugin: entry.cachedWithoutPlugin,
             offsetMilliseconds: entry.offsetMilliseconds,
             timingOffsetApplied: entry.timingOffsetApplied,
+            hidden: entry.hidden,
+            desktopLyricsColors: entry.desktopLyricsColors,
         };
     }
 
@@ -462,6 +486,9 @@ export class Lyrics {
             this.sharedSyncTimer = setTimeout(poll, this.SHARED_SYNC_POLL_MS);
             void this.syncSharedCacheForCurrentTrack();
         };
+        // Do not wait for the first interval after a track change. Subsequent
+        // checks are intentionally limited to once per second.
+        void this.syncSharedCacheForCurrentTrack();
         this.sharedSyncTimer = setTimeout(poll, this.SHARED_SYNC_POLL_MS);
     }
 
@@ -499,7 +526,11 @@ export class Lyrics {
     }
 
     private static cacheEntrySignature(entry: LyricsCacheEntry) {
-        return this.linesSignature(this.linesForEntry(entry));
+        const colors = entry.desktopLyricsColors;
+        const colorSignature = colors
+            ? [colors.preset ?? "", colors.unplayedColor, colors.playedColor, colors.outlineColor].join(",")
+            : "";
+        return `${entry.hidden === true ? "hidden" : "visible"}|${colorSignature}|${this.linesSignature(this.linesForEntry(entry))}`;
     }
 
     private static rememberSharedSignature(trackUri: string, entry: LyricsCacheEntry) {
@@ -510,6 +541,22 @@ export class Lyrics {
 
     private static applySharedLyricsEntry(trackUri: string, entry: LyricsCacheEntry) {
         if (!this.isCurrentTrack(trackUri)) return;
+        const lines = this.linesForEntry(entry);
+        if (entry.hidden === true) {
+            setCachedLyrics(
+                trackUri,
+                entry.kind,
+                entry.lines,
+                entry.debug,
+                false,
+                this.cacheEntryMetadata(entry),
+            );
+            this.renderStatus("Lyrics unavailable", true);
+            this.clearRefetch();
+            this.refetchAttempt = 0;
+            return;
+        }
+        if (!lines.length || !this.shouldApplySharedLyricsEntry(entry, lines)) return;
         setCachedLyrics(
             trackUri,
             entry.kind,
@@ -519,11 +566,18 @@ export class Lyrics {
             this.cacheEntryMetadata(entry),
         );
         if (entry.debug) publishThirdPartyLyricsDebug(entry.debug, true);
-        const lines = this.linesForEntry(entry);
-        if (!lines.length) return;
         this.applyLines(lines);
         this.clearRefetch();
         this.refetchAttempt = 0;
+    }
+
+    private static shouldApplySharedLyricsEntry(entry: LyricsCacheEntry, lines: LyricLine[]) {
+        // A manual Shiori selection (including an offset adjustment) always
+        // wins. Plugin entries, however, can briefly lag behind the local
+        // third-party enrichment pipeline; do not let that stale base version
+        // downgrade the currently rendered rich lyrics.
+        if (getEffectiveCacheSource(entry) === "manual" || !this.lines.length) return true;
+        return this.compareLyricsQuality(lines, this.lines) >= 0;
     }
 
     private static lineSignature(line: LyricLine) {

@@ -15,6 +15,14 @@ export type LyricsCacheMetadata = {
     duration?: number;
 };
 
+/** Per-lyric desktop display colours supplied by LyricShiori in LRCX/cache entries. */
+export type DesktopLyricsColors = {
+    preset?: string;
+    unplayedColor: string;
+    playedColor: string;
+    outlineColor: string;
+};
+
 export type LyricsCacheEntry = {
     kind: LyricsCacheKind;
     trackUri: string;
@@ -29,6 +37,8 @@ export type LyricsCacheEntry = {
     cachedWithoutPlugin?: boolean;
     offsetMilliseconds?: number;
     timingOffsetApplied?: boolean;
+    hidden?: boolean;
+    desktopLyricsColors?: DesktopLyricsColors;
     debug?: ThirdPartyLyricsDebug;
 };
 
@@ -104,6 +114,8 @@ export async function getSharedCachedLyrics(
                         cachedWithoutPlugin: entry.cachedWithoutPlugin,
                         offsetMilliseconds: entry.offsetMilliseconds,
                         timingOffsetApplied: entry.timingOffsetApplied,
+                        hidden: entry.hidden,
+                        desktopLyricsColors: entry.desktopLyricsColors,
                     });
                 }
                 return entry;
@@ -161,6 +173,8 @@ export function setCachedLyrics(
         cachedWithoutPlugin: metadata.cachedWithoutPlugin ?? false,
         offsetMilliseconds: metadata.offsetMilliseconds,
         timingOffsetApplied: metadata.timingOffsetApplied ?? false,
+        hidden: metadata.hidden ?? false,
+        desktopLyricsColors: metadata.desktopLyricsColors,
         metadata: metadata.metadata,
         debug,
     };
