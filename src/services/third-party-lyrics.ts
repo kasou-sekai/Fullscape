@@ -205,10 +205,8 @@ export async function enhanceWithThirdPartyLyrics(
         );
 
         const matched = (
-            await Promise.all(
-                songs.map((song) =>
-                    evaluateLyricsCandidate(song, track, spotifyLines, debug, relaxedMatching),
-                ),
+            await mapWithConcurrency(songs, 4, (song) =>
+                evaluateLyricsCandidate(song, track, spotifyLines, debug, relaxedMatching),
             )
         ).filter((candidate): candidate is MatchedLyricsCandidate => candidate !== null);
         const selected = matched.sort(compareMatchedLyrics)[0];
@@ -646,30 +644,48 @@ async function requestBody(
     body: Record<string, unknown> | undefined,
     headers: Record<string, string>,
 ) {
-    const cosmosRequest = withTimeout(
-        method === "POST"
-            ? Spicetify.CosmosAsync.post(url, body ?? {}, headers)
-            : Spicetify.CosmosAsync.get(url, {}, headers),
-        REQUEST_TIMEOUT_MS,
-    );
-    const directRequest = fetchWithTimeout(url, {
-        method,
-        headers,
-        body: method === "POST" && body ? JSON.stringify(body) : undefined,
-    }).then(async (response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.text();
-    });
-
     try {
-        // Third-party domains are not consistently available through Cosmos.
-        // Start the direct request immediately so its success is not delayed by
-        // a Cosmos timeout, while retaining Cosmos as an independent fallback.
-        return await Promise.any([cosmosRequest, directRequest]);
-    } catch (error) {
-        const failures = error instanceof AggregateError ? error.errors : [error];
-        throw new Error(`${stage}失败: ${failures.map(formatError).join("; ")}`);
+        const response = await fetchWithTimeout(url, {
+            method,
+            headers,
+            body: method === "POST" && body ? JSON.stringify(body) : undefined,
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return await response.text();
+    } catch (directError) {
+        try {
+            // Use Cosmos only after the direct transport has definitively
+            // failed, so one logical request never produces duplicate traffic.
+            return await withTimeout(
+                method === "POST"
+                    ? Spicetify.CosmosAsync.post(url, body ?? {}, headers)
+                    : Spicetify.CosmosAsync.get(url, {}, headers),
+                REQUEST_TIMEOUT_MS,
+            );
+        } catch (cosmosError) {
+            throw new Error(
+                `${stage}失败: direct=${formatError(directError)}; Cosmos=${formatError(cosmosError)}`,
+            );
+        }
     }
+}
+
+async function mapWithConcurrency<T, R>(
+    values: T[],
+    limit: number,
+    transform: (value: T) => Promise<R>,
+): Promise<R[]> {
+    const results = new Array<R>(values.length);
+    let nextIndex = 0;
+    const worker = async () => {
+        while (nextIndex < values.length) {
+            const index = nextIndex;
+            nextIndex += 1;
+            results[index] = await transform(values[index]);
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(limit, values.length) }, worker));
+    return results;
 }
 
 function parseResponseBody(body: unknown) {

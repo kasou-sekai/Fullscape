@@ -15,7 +15,7 @@ export type LyricsCacheMetadata = {
     duration?: number;
 };
 
-/** Per-lyric desktop display colours supplied by LyricShiori in LRCX/cache entries. */
+/** Per-lyric desktop display colours supplied by LyricShiori in LRCS/cache entries. */
 export type DesktopLyricsColors = {
     preset?: string;
     unplayedColor: string;
@@ -43,34 +43,22 @@ export type LyricsCacheEntry = {
 };
 
 type LyricsCacheStore = {
-    version: 9;
+    version: 10;
     entries: Record<string, LyricsCacheEntry>;
 };
 
-const STORAGE_KEY = "full-screen:lyrics-cache-v9";
-const LEGACY_STORAGE_KEYS = [
-    "full-screen:lyrics-cache-v1",
-    "full-screen:lyrics-cache-v2",
-    "full-screen:lyrics-cache-v3",
-    "full-screen:lyrics-cache-v4",
-    "full-screen:lyrics-cache-v5",
-    "full-screen:lyrics-cache-v6",
-    "full-screen:lyrics-cache-v7",
-    "full-screen:lyrics-cache-v8",
-];
-const CACHE_VERSION = 9;
+const STORAGE_KEY = "full-screen:lyrics-cache-v10";
+const CACHE_VERSION = 10;
 const READY_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const EMPTY_TTL_MS = 30 * 60 * 1000;
 const MAX_ENTRIES = 40;
 const MAX_SERIALIZED_LENGTH = 1_750_000;
 const SHARED_REQUEST_TIMEOUT_MS = 800;
-const SHARED_CACHE_ENDPOINTS = [
-    "http://localhost:24887/lyrics-cache",
-    "http://127.0.0.1:24887/lyrics-cache",
-    "http://[::1]:24887/lyrics-cache",
-];
+const SHARED_BRIDGE_ORIGIN = "http://127.0.0.1:24887";
+const SHARED_CACHE_ENDPOINT = `${SHARED_BRIDGE_ORIGIN}/lyrics-cache`;
 
 let store: LyricsCacheStore | null = null;
+let sharedSessionToken: string | null = null;
 
 export function getCachedLyrics(trackUri: string, kind: LyricsCacheKind) {
     return getCachedLyricsEntry(trackUri, kind)?.lines ?? null;
@@ -95,35 +83,14 @@ export async function getSharedCachedLyrics(
         if (typeof metadata.duration === "number" && Number.isFinite(metadata.duration)) {
             params.set("duration", `${metadata.duration}`);
         }
-        for (const endpoint of SHARED_CACHE_ENDPOINTS) {
-            try {
-                const response = await fetchSharedWithTimeout(`${endpoint}?${params.toString()}`, {
-                    headers: { Accept: "application/json" },
-                });
-                if (!response.ok) continue;
-                const entry = (await response.json()) as LyricsCacheEntry;
-                if (!isValidEntry(entry, trackUri, kind)) return null;
-                traceLyricsBridge("bridge.received", entry, `GET ${endpoint}`);
-                if (cacheLocally) {
-                    setCachedLyrics(entry.trackUri, entry.kind, entry.lines, entry.debug, false, {
-                        metadata: entry.metadata,
-                        cacheSource: entry.cacheSource,
-                        source: entry.source,
-                        sourceName: entry.sourceName,
-                        isManualSelection: entry.isManualSelection,
-                        cachedWithoutPlugin: entry.cachedWithoutPlugin,
-                        offsetMilliseconds: entry.offsetMilliseconds,
-                        timingOffsetApplied: entry.timingOffsetApplied,
-                        hidden: entry.hidden,
-                        desktopLyricsColors: entry.desktopLyricsColors,
-                    });
-                }
-                return entry;
-            } catch {
-                continue;
-            }
-        }
-        return null;
+        const response = await fetchBridge(`${SHARED_CACHE_ENDPOINT}?${params.toString()}`);
+        if (response.status === 404) return null;
+        if (!response.ok) return null;
+        const entry = (await response.json()) as LyricsCacheEntry;
+        if (!isValidEntry(entry, trackUri, kind)) return null;
+        traceLyricsBridge("bridge.received", entry, "GET shared cache");
+        if (cacheLocally) cacheSharedEntry(entry);
+        return entry;
     } catch {
         return null;
     }
@@ -183,13 +150,16 @@ export function setCachedLyrics(
         getEffectiveCacheSource(cache.entries[key]) === "manual" &&
         getEffectiveCacheSource(entry) !== "manual"
     ) {
-        return;
+        return false;
     }
+    const existing = cache.entries[key];
+    if (existing && entriesEqual(existing, entry)) return false;
     cache.entries[key] = entry;
     trimStore(cache);
     persistStore();
     traceLyricsBridge("cache.saved", entry, syncShared ? "will-post" : "local-only");
     if (syncShared) void setSharedCachedLyrics(entry);
+    return true;
 }
 
 export function deleteCachedLyrics(trackUri: string, kind?: LyricsCacheKind) {
@@ -224,7 +194,6 @@ function inferCacheSource(metadata: Partial<Pick<LyricsCacheEntry, "cacheSource"
 function getStore(): LyricsCacheStore {
     if (store) return store;
     try {
-        LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
         const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "");
         if (
             parsed?.version === CACHE_VERSION &&
@@ -256,23 +225,91 @@ function isValidEntry(entry: LyricsCacheEntry, trackUri: string, kind: LyricsCac
 }
 
 async function setSharedCachedLyrics(entry: LyricsCacheEntry) {
-    for (const endpoint of SHARED_CACHE_ENDPOINTS) {
-        try {
-            const response = await fetchSharedWithTimeout(endpoint, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(entry),
-            });
-            if (response.ok) {
-                traceLyricsBridge("bridge.posted", entry, `POST ${endpoint}`);
-                return;
-            }
-        } catch {
-            continue;
+    try {
+        const response = await fetchBridge(SHARED_CACHE_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(entry),
+        });
+        if (response.ok) {
+            traceLyricsBridge("bridge.posted", entry, "POST shared cache");
+            return;
         }
+    } catch {
+        // LyricShiori may not be running; localStorage remains the fallback.
     }
     traceLyricsBridge("bridge.post-failed", entry);
-    // LyricShiori may not be running; localStorage remains the source of truth.
+}
+
+export async function setSharedBridgeLease(trackUri: string, active: boolean) {
+    if (!CFM.get("sharedLyricsBridge")) return false;
+    try {
+        const response = await fetchBridge(`${SHARED_BRIDGE_ORIGIN}/bridge-state`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ trackUri, active, leaseMilliseconds: 8_000 }),
+        });
+        return response.ok;
+    } catch {
+        return false;
+    }
+}
+
+async function fetchBridge(input: RequestInfo | URL, init: RequestInit = {}) {
+    const token = await getSharedSessionToken();
+    const headers = new Headers(init.headers);
+    headers.set("X-LyricShiori-Token", token);
+    let response = await fetchSharedWithTimeout(input, {
+        ...init,
+        headers,
+    });
+    if (response.status !== 401) return response;
+    sharedSessionToken = null;
+    headers.set("X-LyricShiori-Token", await getSharedSessionToken());
+    response = await fetchSharedWithTimeout(input, {
+        ...init,
+        headers,
+    });
+    return response;
+}
+
+async function getSharedSessionToken() {
+    if (sharedSessionToken) return sharedSessionToken;
+    const response = await fetchSharedWithTimeout(`${SHARED_BRIDGE_ORIGIN}/bridge-session`, {
+        headers: { Accept: "application/json" },
+    });
+    if (!response.ok) throw new Error(`Bridge session HTTP ${response.status}`);
+    const payload = (await response.json()) as { token?: string; protocolVersion?: number };
+    if (!payload.token || payload.protocolVersion !== 1) throw new Error("Unsupported bridge session");
+    sharedSessionToken = payload.token;
+    return payload.token;
+}
+
+function cacheSharedEntry(entry: LyricsCacheEntry) {
+    const cache = getStore();
+    const key = getCacheKey(entry.trackUri, entry.kind);
+    if (
+        getEffectiveCacheSource(cache.entries[key]) === "manual" &&
+        getEffectiveCacheSource(entry) !== "manual"
+    ) return;
+    cache.entries[key] = entry;
+    trimStore(cache);
+    persistStore();
+}
+
+function entriesEqual(first: LyricsCacheEntry, second: LyricsCacheEntry) {
+    return (
+        first.kind === second.kind &&
+        first.trackUri === second.trackUri &&
+        getEffectiveCacheSource(first) === getEffectiveCacheSource(second) &&
+        first.source === second.source &&
+        first.sourceName === second.sourceName &&
+        first.offsetMilliseconds === second.offsetMilliseconds &&
+        first.timingOffsetApplied === second.timingOffsetApplied &&
+        first.hidden === second.hidden &&
+        JSON.stringify(first.desktopLyricsColors) === JSON.stringify(second.desktopLyricsColors) &&
+        JSON.stringify(first.lines) === JSON.stringify(second.lines)
+    );
 }
 
 function fetchSharedWithTimeout(input: RequestInfo | URL, init?: RequestInit) {

@@ -23,6 +23,7 @@ let lastSignature = "";
 let lastRecordedAt = 0;
 
 export function traceLyricsBridge(event: string, entry: TraceInput, detail?: string) {
+    if (localStorage.getItem("full-screen:lyrics-bridge-debug") !== "1") return;
     const lines = entry.lines;
     const record: LyricsBridgeTraceEvent = {
         timestamp: new Date().toISOString(),

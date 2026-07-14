@@ -3,7 +3,6 @@ import { DEFAULTS } from "../constants";
 
 let CONFIG: Config | null = null;
 const STORAGE_KEY = "full-screen-playing:config";
-const LEGACY_STORAGE_KEY = "full-screen-config";
 
 function cloneDefaults(): Config {
     return JSON.parse(JSON.stringify(DEFAULTS)) as Config;
@@ -31,36 +30,16 @@ function mergeKnownValues<T>(stored: unknown, defaults: T): T {
 function getConfig(defaultConfig: Config): Config {
     try {
         const storedConfig = localStorage.getItem(STORAGE_KEY);
-        const legacyConfig = localStorage.getItem(LEGACY_STORAGE_KEY);
-        const parsed: unknown = JSON.parse(storedConfig ?? legacyConfig ?? "{}");
+        const parsed: unknown = JSON.parse(storedConfig ?? "{}");
         const config = mergeKnownValues(parsed, defaultConfig);
-        const parsedObject =
-            parsed && typeof parsed === "object" && !Array.isArray(parsed)
-                ? (parsed as Record<string, unknown>)
-                : {};
-        const storedSettings =
-            parsedObject.def &&
-            typeof parsedObject.def === "object" &&
-            !Array.isArray(parsedObject.def)
-                ? (parsedObject.def as Record<string, unknown>)
-                : undefined;
-        if (
-            storedSettings &&
-            typeof storedSettings === "object" &&
-            !("beatResponsePreset" in storedSettings)
-        ) {
-            config.def.beatResponsePreset = storedSettings.beatBounce === false ? "off" : "medium";
-        }
         if (config.autoLaunch !== "never" && config.autoLaunch !== "default") {
             config.autoLaunch = "default";
         }
         saveConfig(config);
-        if (legacyConfig !== null) localStorage.removeItem(LEGACY_STORAGE_KEY);
         return config;
     } catch {
         const config = cloneDefaults();
         saveConfig(config);
-        localStorage.removeItem(LEGACY_STORAGE_KEY);
         return config;
     }
 }
