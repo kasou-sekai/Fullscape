@@ -456,6 +456,20 @@ generic-modal:has(#full-screen-config-container) .GenericModal__overlay {
     .update-version-status {
         margin-top: 8px;
     }
+    .update-version-explanation {
+        border-top: 1px solid rgba(104, 118, 138, 0.16);
+        color: var(--secondary-text-color);
+        display: grid;
+        font-size: 12.5px;
+        gap: 5px;
+        line-height: 1.5;
+        margin-top: 10px;
+        padding-top: 10px;
+
+        strong {
+            color: var(--main-text-color);
+        }
+    }
     .lyrics-diagnostics-output {
         margin-top: 8px;
         padding: 12px 14px;

@@ -682,13 +682,28 @@ export class ConfigManager {
         const confirm = document.createElement("button");
         confirm.classList.add("main-buttons-button", "main-button-primary");
         confirm.textContent = strings.confirmSwitch;
-        confirm.onclick = () => {
-            Spicetify.PopupModal.hide();
+        confirm.onclick = async () => {
             if (target === "bundled") {
+                Spicetify.PopupModal.hide();
                 ReleaseUpdater.switchToBundledVersion(() => this.showReloadFallback(LOCALE));
-            } else {
-                ReleaseUpdater.switchToRelease(target, () => this.showReloadFallback(LOCALE));
+                return;
             }
+            cancel.disabled = true;
+            confirm.disabled = true;
+            confirm.textContent = strings.cachingVersion;
+            if (!(await ReleaseUpdater.cacheRelease(target))) {
+                cancel.disabled = false;
+                confirm.disabled = false;
+                confirm.textContent = strings.confirmSwitch;
+                Spicetify.showNotification(
+                    strings.cacheFailed.replace("{version}", target.version),
+                    true,
+                    8000,
+                );
+                return;
+            }
+            Spicetify.PopupModal.hide();
+            ReleaseUpdater.switchToRelease(target, () => this.showReloadFallback(LOCALE));
         };
         actions.append(cancel, confirm);
         content.append(description, actions);
@@ -708,7 +723,10 @@ export class ConfigManager {
         }, 0);
     }
 
-    private static createUpdateCard(LOCALE: string) {
+    private static createUpdateCard(
+        LOCALE: string,
+        refreshVersionList?: () => Promise<void> | void,
+    ) {
         const strings = translations[LOCALE].settings.updates;
         const card = document.createElement("div");
         card.classList.add("setting-card", "update-card");
@@ -725,21 +743,30 @@ export class ConfigManager {
                     </div>
                 </div>
                 <div class="setting-description update-status"></div>
+                <div class="update-version-explanation"></div>
             </div>`;
 
         const title = card.querySelector<HTMLElement>(".setting-title");
         const version = card.querySelector<HTMLElement>(".update-version");
         const status = card.querySelector<HTMLElement>(".update-status");
+        const explanation = card.querySelector<HTMLElement>(".update-version-explanation");
         const releaseLink = card.querySelector<HTMLAnchorElement>(".update-release-link");
         const button = card.querySelector<HTMLButtonElement>(".update-button");
-        if (!title || !version || !status || !releaseLink || !button) return card;
+        if (!title || !version || !status || !explanation || !releaseLink || !button) return card;
 
         title.textContent = strings.cardTitle;
         const bundledVersion = ReleaseUpdater.getBundledVersion();
-        version.textContent = `${strings.currentVersion}: v${CURRENT_VERSION}`;
-        if (bundledVersion !== CURRENT_VERSION) {
-            version.textContent += ` · ${strings.bundledVersion}: v${bundledVersion}`;
-        }
+        version.textContent = `${strings.currentVersion}: v${CURRENT_VERSION} · ${strings.bundledVersion}: v${bundledVersion}`;
+        const appendExplanation = (label: string, description: string) => {
+            const line = document.createElement("div");
+            const heading = document.createElement("strong");
+            heading.textContent = label;
+            line.append(heading, document.createTextNode(` — ${description}`));
+            explanation.append(line);
+        };
+        appendExplanation(strings.currentVersion, strings.runningVersionDescription);
+        appendExplanation(strings.bundledVersion, strings.bundledVersionDescription);
+        appendExplanation(strings.releaseCache, strings.releaseCacheDescription);
         releaseLink.textContent = strings.releasePage;
         releaseLink.hidden = true;
 
@@ -781,7 +808,9 @@ export class ConfigManager {
             button.disabled = true;
             button.textContent = strings.checking;
             status.textContent = strings.checkingDescription;
-            renderResult(await ReleaseUpdater.check(force));
+            const result = await ReleaseUpdater.check(force);
+            if (force) await refreshVersionList?.();
+            renderResult(result);
         };
 
         void check();
@@ -842,6 +871,10 @@ export class ConfigManager {
             status.textContent = strings.loadingVersions;
             try {
                 releases = await ReleaseUpdater.listStableReleases(force);
+                const runningTag = `v${CURRENT_VERSION}`;
+                if (!force && !releases.some((release) => release.tag === runningTag)) {
+                    releases = await ReleaseUpdater.listStableReleases(true);
+                }
                 select.replaceChildren();
                 const bundled = document.createElement("option");
                 bundled.value = "bundled";
@@ -850,6 +883,19 @@ export class ConfigManager {
                     ReleaseUpdater.getBundledVersion(),
                 );
                 select.append(bundled);
+                const selectedRelease = ReleaseUpdater.getSelectedRelease();
+                if (
+                    selectedRelease &&
+                    !releases.some((release) => release.tag === selectedRelease.tag)
+                ) {
+                    const running = document.createElement("option");
+                    running.value = selectedRelease.tag;
+                    running.textContent = strings.runningVersionOption.replace(
+                        "{version}",
+                        selectedRelease.version,
+                    );
+                    select.append(running);
+                }
                 releases.forEach((release) => {
                     const option = document.createElement("option");
                     option.value = release.tag;
@@ -894,6 +940,9 @@ export class ConfigManager {
         const { card: versionSelector, load } = this.createVersionSelector(LOCALE);
         const autoCheck = CFM.getGlobal("autoUpdateCheck") as boolean;
         versionSelector.hidden = autoCheck;
+        const updateCard = this.createUpdateCard(LOCALE, async () => {
+            if (!versionSelector.hidden) await load(true);
+        });
 
         const toggle = this.createToggle(
             strings.autoCheck,
@@ -909,7 +958,7 @@ export class ConfigManager {
             },
             strings.autoCheckDescription,
         );
-        stack.append(toggle, this.createUpdateCard(LOCALE), versionSelector);
+        stack.append(toggle, updateCard, versionSelector);
         if (!autoCheck) void load();
         return stack;
     }
@@ -941,7 +990,21 @@ export class ConfigManager {
         const update = document.createElement("button");
         update.classList.add("main-buttons-button", "main-button-primary");
         update.textContent = strings.confirmUpdate;
-        update.onclick = () => {
+        update.onclick = async () => {
+            later.disabled = true;
+            update.disabled = true;
+            update.textContent = strings.cachingVersion;
+            if (!(await ReleaseUpdater.cacheRelease(result.release))) {
+                later.disabled = false;
+                update.disabled = false;
+                update.textContent = strings.confirmUpdate;
+                Spicetify.showNotification(
+                    strings.cacheFailed.replace("{version}", result.release.version),
+                    true,
+                    8000,
+                );
+                return;
+            }
             Spicetify.PopupModal.hide();
             ReleaseUpdater.switchToRelease(result.release, () => this.showReloadFallback(LOCALE));
         };

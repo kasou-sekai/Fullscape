@@ -5,6 +5,10 @@ const LATEST_RELEASE_API = `https://api.github.com/repos/${REPOSITORY}/releases/
 const RELEASE_LIST_API = `https://api.github.com/repos/${REPOSITORY}/releases?per_page=50`;
 const RELEASE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const RELEASE_LOAD_TIMEOUT_MS = 15000;
+const RELEASE_SCRIPT_DB_NAME = "full-screen-release-cache";
+const RELEASE_SCRIPT_DB_VERSION = 1;
+const RELEASE_SCRIPT_STORE = "scripts";
+const MAX_CACHED_RELEASES = 3;
 const UPDATE_MODEL_VERSION = "confirm-before-switch-v1";
 
 const STORAGE_KEYS = {
@@ -49,6 +53,12 @@ type LoadFailure = {
     failedAt: number;
 };
 
+type CachedReleaseScript = {
+    tag: string;
+    source: string;
+    cachedAt: number;
+};
+
 type GitHubRelease = {
     tag_name?: unknown;
     html_url?: unknown;
@@ -60,6 +70,7 @@ type GitHubRelease = {
 type UpdateRuntimeWindow = Window & {
     __fullScreenBundledVersion?: string;
     __fullScreenLoadingRelease?: string;
+    __fullScreenExecutedRelease?: string;
 };
 
 function parseJson<T>(value: string | null): T | null {
@@ -147,6 +158,8 @@ function sortedUniqueReleases(payload: unknown) {
 export class ReleaseUpdater {
     private static checkInFlight: Promise<UpdateCheckResult> | null = null;
     private static listInFlight: Promise<ReleaseInfo[]> | null = null;
+    private static releaseDbPromise: Promise<IDBDatabase | null> | null = null;
+    private static storagePersistenceRequested = false;
 
     static migrateUpdateModel() {
         if (localStorage.getItem(STORAGE_KEYS.modelVersion) === UPDATE_MODEL_VERSION) return;
@@ -174,6 +187,209 @@ export class ReleaseUpdater {
         return null;
     }
 
+    private static openReleaseDatabase() {
+        if (this.releaseDbPromise) return this.releaseDbPromise;
+        this.releaseDbPromise = new Promise<IDBDatabase | null>((resolve) => {
+            if (!("indexedDB" in window)) {
+                resolve(null);
+                return;
+            }
+            const request = window.indexedDB.open(
+                RELEASE_SCRIPT_DB_NAME,
+                RELEASE_SCRIPT_DB_VERSION,
+            );
+            request.onupgradeneeded = () => {
+                const database = request.result;
+                if (!database.objectStoreNames.contains(RELEASE_SCRIPT_STORE)) {
+                    database.createObjectStore(RELEASE_SCRIPT_STORE, { keyPath: "tag" });
+                }
+            };
+            request.onsuccess = () => {
+                const database = request.result;
+                database.onversionchange = () => {
+                    database.close();
+                    this.releaseDbPromise = null;
+                };
+                resolve(database);
+            };
+            request.onerror = () => {
+                console.warn("[Full Screen] Unable to open the local release cache.");
+                this.releaseDbPromise = null;
+                resolve(null);
+            };
+            request.onblocked = () => {
+                console.warn("[Full Screen] The local release cache is blocked.");
+                this.releaseDbPromise = null;
+                resolve(null);
+            };
+        });
+        return this.releaseDbPromise;
+    }
+
+    private static async readCachedReleaseSource(tag: string) {
+        const database = await this.openReleaseDatabase();
+        if (!database) return null;
+        try {
+            return await new Promise<string | null>((resolve) => {
+                const request = database
+                    .transaction(RELEASE_SCRIPT_STORE, "readonly")
+                    .objectStore(RELEASE_SCRIPT_STORE)
+                    .get(tag);
+                request.onsuccess = () => {
+                    const cached = request.result as CachedReleaseScript | undefined;
+                    resolve(
+                        cached?.tag === tag &&
+                            typeof cached.source === "string" &&
+                            cached.source.length
+                            ? cached.source
+                            : null,
+                    );
+                };
+                request.onerror = () => resolve(null);
+            });
+        } catch {
+            return null;
+        }
+    }
+
+    private static async pruneReleaseCache(database: IDBDatabase) {
+        try {
+            await new Promise<void>((resolve) => {
+                const transaction = database.transaction(RELEASE_SCRIPT_STORE, "readwrite");
+                const store = transaction.objectStore(RELEASE_SCRIPT_STORE);
+                const request = store.getAll();
+                request.onsuccess = () => {
+                    const cached = (request.result as CachedReleaseScript[]).sort(
+                        (left, right) => right.cachedAt - left.cachedAt,
+                    );
+                    cached
+                        .slice(MAX_CACHED_RELEASES)
+                        .forEach((release) => store.delete(release.tag));
+                };
+                transaction.oncomplete = () => resolve();
+                transaction.onerror = () => resolve();
+                transaction.onabort = () => resolve();
+            });
+        } catch {
+            // The selected release remains cached even when cleanup cannot run.
+        }
+    }
+
+    private static requestPersistentStorage() {
+        if (this.storagePersistenceRequested) return;
+        this.storagePersistenceRequested = true;
+        void navigator.storage?.persist?.().catch(() => false);
+    }
+
+    private static async storeReleaseSource(tag: string, source: string) {
+        const database = await this.openReleaseDatabase();
+        if (!database) return false;
+        let stored = false;
+        try {
+            stored = await new Promise<boolean>((resolve) => {
+                const transaction = database.transaction(RELEASE_SCRIPT_STORE, "readwrite");
+                const cachedRelease: CachedReleaseScript = {
+                    tag,
+                    source,
+                    cachedAt: Date.now(),
+                };
+                transaction.objectStore(RELEASE_SCRIPT_STORE).put(cachedRelease);
+                transaction.oncomplete = () => resolve(true);
+                transaction.onerror = () => resolve(false);
+                transaction.onabort = () => resolve(false);
+            });
+        } catch {
+            stored = false;
+        }
+        if (!stored) return false;
+        await this.pruneReleaseCache(database);
+        this.requestPersistentStorage();
+        return true;
+    }
+
+    private static async deleteCachedReleaseSource(tag: string) {
+        const database = await this.openReleaseDatabase();
+        if (!database) return;
+        try {
+            await new Promise<void>((resolve) => {
+                const transaction = database.transaction(RELEASE_SCRIPT_STORE, "readwrite");
+                transaction.objectStore(RELEASE_SCRIPT_STORE).delete(tag);
+                transaction.oncomplete = () => resolve();
+                transaction.onerror = () => resolve();
+                transaction.onabort = () => resolve();
+            });
+        } catch {
+            // A failed delete is harmless; the network path remains available.
+        }
+    }
+
+    private static async downloadReleaseSource(tag: string) {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), RELEASE_LOAD_TIMEOUT_MS);
+        try {
+            const response = await fetch(getReleaseScriptUrl(tag), {
+                cache: "force-cache",
+                headers: { Accept: "application/javascript" },
+                signal: controller.signal,
+            });
+            if (!response.ok) throw new Error(`jsDelivr returned HTTP ${response.status}`);
+            const source = await response.text();
+            return source.trim().length ? source : null;
+        } catch (error) {
+            console.warn(`[Full Screen] Unable to download ${tag}.`, error);
+            return null;
+        } finally {
+            window.clearTimeout(timeout);
+        }
+    }
+
+    private static executeReleaseSource(selected: SelectedRelease, source: string) {
+        const runtimeWindow = window as UpdateRuntimeWindow;
+        delete runtimeWindow.__fullScreenExecutedRelease;
+        const script = document.createElement("script");
+        script.dataset.fullScreenRelease = selected.tag;
+        script.dataset.fullScreenReleaseSource = "indexeddb";
+        script.textContent = `${source}\n;window.__fullScreenExecutedRelease=${JSON.stringify(
+            selected.tag,
+        )};\n//# sourceURL=${getReleaseScriptUrl(selected.tag)}`;
+        let executed = false;
+        try {
+            (document.head ?? document.documentElement).append(script);
+            executed = runtimeWindow.__fullScreenExecutedRelease === selected.tag;
+        } catch (error) {
+            console.warn(`[Full Screen] Unable to execute cached ${selected.tag}.`, error);
+        } finally {
+            script.remove();
+            delete runtimeWindow.__fullScreenExecutedRelease;
+        }
+        return executed;
+    }
+
+    private static async loadSelectedRelease(selected: SelectedRelease) {
+        const cached = await this.readCachedReleaseSource(selected.tag);
+        if (cached) {
+            if (this.executeReleaseSource(selected, cached)) return true;
+            await this.deleteCachedReleaseSource(selected.tag);
+        }
+
+        const downloaded = await this.downloadReleaseSource(selected.tag);
+        if (!downloaded) return false;
+        const stored = await this.storeReleaseSource(selected.tag, downloaded);
+        if (!stored) {
+            console.warn(
+                `[Full Screen] ${selected.tag} will run, but could not be saved to the local cache.`,
+            );
+        }
+        return this.executeReleaseSource(selected, downloaded);
+    }
+
+    static async cacheRelease(release: ReleaseInfo) {
+        if (!isReleaseInfo(release)) return false;
+        if (await this.readCachedReleaseSource(release.tag)) return true;
+        const source = await this.downloadReleaseSource(release.tag);
+        return Boolean(source && (await this.storeReleaseSource(release.tag, source)));
+    }
+
     /**
      * Load only a version the user previously confirmed. Merely detecting a newer
      * release never changes the selected version.
@@ -194,27 +410,7 @@ export class ReleaseUpdater {
         }
         runtimeWindow.__fullScreenLoadingRelease = selected.tag;
 
-        const loaded = await new Promise<boolean>((resolve) => {
-            const script = document.createElement("script");
-            const timeout = window.setTimeout(() => {
-                script.remove();
-                resolve(false);
-            }, RELEASE_LOAD_TIMEOUT_MS);
-            script.async = true;
-            script.crossOrigin = "anonymous";
-            script.dataset.fullScreenRelease = selected.tag;
-            script.src = getReleaseScriptUrl(selected.tag);
-            script.onload = () => {
-                window.clearTimeout(timeout);
-                resolve(true);
-            };
-            script.onerror = () => {
-                window.clearTimeout(timeout);
-                script.remove();
-                resolve(false);
-            };
-            (document.head ?? document.documentElement).append(script);
-        });
+        const loaded = await this.loadSelectedRelease(selected);
 
         if (loaded) return false;
 
@@ -354,6 +550,7 @@ export class ReleaseUpdater {
         };
         if (!isReleaseInfo(release) || !isSelectedRelease(selected)) return false;
         localStorage.setItem(STORAGE_KEYS.selectedRelease, JSON.stringify(selected));
+        localStorage.removeItem(STORAGE_KEYS.releaseListCache);
         this.reload(onReloadFailure);
         return true;
     }
