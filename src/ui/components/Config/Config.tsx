@@ -693,13 +693,19 @@ export class ConfigManager {
         actions.append(cancel, confirm);
         content.append(description, actions);
 
-        Spicetify.PopupModal.display({
-            title:
-                target === "bundled"
-                    ? strings.confirmBundledTitle
-                    : strings.confirmVersionTitle.replace("{version}", target.version),
-            content,
-        });
+        // PopupModal reuses one custom element. Replacing its contents during the
+        // selector button's click makes the old overlay treat that same click as
+        // an outside click and immediately close the new confirmation. Let the
+        // current event finish before replacing the settings modal.
+        window.setTimeout(() => {
+            Spicetify.PopupModal.display({
+                title:
+                    target === "bundled"
+                        ? strings.confirmBundledTitle
+                        : strings.confirmVersionTitle.replace("{version}", target.version),
+                content,
+            });
+        }, 0);
     }
 
     private static createUpdateCard(LOCALE: string) {
