@@ -1,15 +1,19 @@
 import packageJson from "../../package.json";
 
 const REPOSITORY = "kasou-sekai/Spotify-Full-Screen-Playing";
-const RELEASES_API = `https://api.github.com/repos/${REPOSITORY}/releases/latest`;
+const LATEST_RELEASE_API = `https://api.github.com/repos/${REPOSITORY}/releases/latest`;
+const RELEASE_LIST_API = `https://api.github.com/repos/${REPOSITORY}/releases?per_page=50`;
 const RELEASE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const RELEASE_LOAD_TIMEOUT_MS = 15000;
+const UPDATE_MODEL_VERSION = "confirm-before-switch-v1";
 
 const STORAGE_KEYS = {
     selectedRelease: "full-screen:update:selected-release",
-    releaseCache: "full-screen:update:release-cache",
+    latestReleaseCache: "full-screen:update:release-cache",
+    releaseListCache: "full-screen:update:release-list-cache",
     promptedVersion: "full-screen:update:prompted-version",
     loadFailure: "full-screen:update:load-failure",
+    modelVersion: "full-screen:update:model-version",
 } as const;
 
 export const CURRENT_VERSION = packageJson.version;
@@ -21,16 +25,23 @@ export type ReleaseInfo = {
     publishedAt: string;
 };
 
+export type SelectedRelease = Pick<ReleaseInfo, "version" | "tag"> & {
+    selectionModel?: "confirmed-version-v1";
+};
+
 export type UpdateCheckResult =
     | { status: "available"; release: ReleaseInfo }
     | { status: "current"; release: ReleaseInfo | null }
     | { status: "error"; message: string };
 
-type SelectedRelease = Pick<ReleaseInfo, "version" | "tag">;
-
 type ReleaseCache = {
     checkedAt: number;
     release: ReleaseInfo | null;
+};
+
+type ReleaseListCache = {
+    checkedAt: number;
+    releases: ReleaseInfo[];
 };
 
 type LoadFailure = {
@@ -47,6 +58,7 @@ type GitHubRelease = {
 };
 
 type UpdateRuntimeWindow = Window & {
+    __fullScreenBundledVersion?: string;
     __fullScreenLoadingRelease?: string;
 };
 
@@ -108,6 +120,10 @@ function isReleaseInfo(value: ReleaseInfo | null): value is ReleaseInfo {
     );
 }
 
+function isReleaseList(value: unknown): value is ReleaseInfo[] {
+    return Array.isArray(value) && value.every((release) => isReleaseInfo(release));
+}
+
 function getReleaseScriptUrl(tag: string) {
     return `https://cdn.jsdelivr.net/gh/${REPOSITORY}@${encodeURIComponent(tag)}/dist/fullScreen.js`;
 }
@@ -119,29 +135,56 @@ function resultForRelease(release: ReleaseInfo | null): UpdateCheckResult {
     return { status: "current", release };
 }
 
+function sortedUniqueReleases(payload: unknown) {
+    if (!Array.isArray(payload)) return null;
+    const releases = payload
+        .map((release) => parseRelease(release as GitHubRelease))
+        .filter((release): release is ReleaseInfo => release !== null);
+    const unique = [...new Map(releases.map((release) => [release.tag, release])).values()];
+    return unique.sort((left, right) => compareVersions(right.version, left.version));
+}
+
 export class ReleaseUpdater {
     private static checkInFlight: Promise<UpdateCheckResult> | null = null;
+    private static listInFlight: Promise<ReleaseInfo[]> | null = null;
 
-    /**
-     * Load the release selected by the user before starting the bundled application.
-     * Returning false means the selected remote release has taken over startup.
-     */
-    static async shouldStartBundledVersion(): Promise<boolean> {
+    static migrateUpdateModel() {
+        if (localStorage.getItem(STORAGE_KEYS.modelVersion) === UPDATE_MODEL_VERSION) return;
+        localStorage.removeItem(STORAGE_KEYS.latestReleaseCache);
+        localStorage.removeItem(STORAGE_KEYS.releaseListCache);
+        localStorage.removeItem(STORAGE_KEYS.promptedVersion);
+        localStorage.setItem(STORAGE_KEYS.modelVersion, UPDATE_MODEL_VERSION);
+    }
+
+    static getBundledVersion() {
+        return (window as UpdateRuntimeWindow).__fullScreenBundledVersion ?? CURRENT_VERSION;
+    }
+
+    static getSelectedRelease(): SelectedRelease | null {
         const selected = parseJson<SelectedRelease>(
             localStorage.getItem(STORAGE_KEYS.selectedRelease),
         );
-        if (!isSelectedRelease(selected)) {
-            if (selected) localStorage.removeItem(STORAGE_KEYS.selectedRelease);
-            return true;
+        if (isSelectedRelease(selected)) {
+            const isLegacyDowngrade =
+                compareVersions(CURRENT_VERSION, selected.version) > 0 &&
+                selected.selectionModel !== "confirmed-version-v1";
+            if (!isLegacyDowngrade) return selected;
         }
-        const versionDistance = compareVersions(selected.version, CURRENT_VERSION);
-        if (versionDistance === 0) return true;
-        if (versionDistance < 0) {
-            localStorage.removeItem(STORAGE_KEYS.selectedRelease);
-            return true;
-        }
+        if (selected) localStorage.removeItem(STORAGE_KEYS.selectedRelease);
+        return null;
+    }
 
+    /**
+     * Load only a version the user previously confirmed. Merely detecting a newer
+     * release never changes the selected version.
+     */
+    static async shouldStartBundledVersion(): Promise<boolean> {
         const runtimeWindow = window as UpdateRuntimeWindow;
+        runtimeWindow.__fullScreenBundledVersion ??= CURRENT_VERSION;
+
+        const selected = this.getSelectedRelease();
+        if (!selected || selected.version === CURRENT_VERSION) return true;
+
         if (runtimeWindow.__fullScreenLoadingRelease === selected.tag) {
             console.error(
                 `[Full Screen] ${selected.tag} did not contain the expected version. Falling back to the bundled version.`,
@@ -189,7 +232,7 @@ export class ReleaseUpdater {
         if (!force && this.checkInFlight) return this.checkInFlight;
 
         const cachedValue = parseJson<ReleaseCache>(
-            localStorage.getItem(STORAGE_KEYS.releaseCache),
+            localStorage.getItem(STORAGE_KEYS.latestReleaseCache),
         );
         const cached =
             cachedValue &&
@@ -203,12 +246,15 @@ export class ReleaseUpdater {
 
         const request = (async (): Promise<UpdateCheckResult> => {
             try {
-                const response = await fetch(RELEASES_API, {
+                const response = await fetch(LATEST_RELEASE_API, {
                     headers: { Accept: "application/vnd.github+json" },
                 });
                 if (response.status === 404) {
                     const emptyCache: ReleaseCache = { checkedAt: Date.now(), release: null };
-                    localStorage.setItem(STORAGE_KEYS.releaseCache, JSON.stringify(emptyCache));
+                    localStorage.setItem(
+                        STORAGE_KEYS.latestReleaseCache,
+                        JSON.stringify(emptyCache),
+                    );
                     return { status: "current", release: null };
                 }
                 if (!response.ok) throw new Error(`GitHub returned HTTP ${response.status}`);
@@ -216,7 +262,7 @@ export class ReleaseUpdater {
                 const release = parseRelease((await response.json()) as GitHubRelease);
                 if (!release) throw new Error("GitHub returned an unsupported release tag");
                 const nextCache: ReleaseCache = { checkedAt: Date.now(), release };
-                localStorage.setItem(STORAGE_KEYS.releaseCache, JSON.stringify(nextCache));
+                localStorage.setItem(STORAGE_KEYS.latestReleaseCache, JSON.stringify(nextCache));
                 return resultForRelease(release);
             } catch (error) {
                 if (cached) return resultForRelease(cached.release);
@@ -233,20 +279,48 @@ export class ReleaseUpdater {
         return result;
     }
 
-    static selectRelease(release: ReleaseInfo) {
-        if (compareVersions(release.version, CURRENT_VERSION) <= 0) return false;
-        const selected: SelectedRelease = { version: release.version, tag: release.tag };
-        if (!isSelectedRelease(selected)) return false;
-        localStorage.setItem(STORAGE_KEYS.selectedRelease, JSON.stringify(selected));
-        return true;
-    }
+    static async listStableReleases(force = false): Promise<ReleaseInfo[]> {
+        if (!force && this.listInFlight) return this.listInFlight;
 
-    static reloadIntoRelease(release: ReleaseInfo, onReloadFailure: () => void) {
-        if (!this.selectRelease(release)) {
-            onReloadFailure();
-            return;
+        const cachedValue = parseJson<ReleaseListCache>(
+            localStorage.getItem(STORAGE_KEYS.releaseListCache),
+        );
+        const cached =
+            cachedValue &&
+            Number.isFinite(cachedValue.checkedAt) &&
+            isReleaseList(cachedValue.releases)
+                ? cachedValue
+                : null;
+        if (!force && cached && Date.now() - cached.checkedAt < RELEASE_CACHE_TTL_MS) {
+            return cached.releases;
         }
 
+        const request = (async () => {
+            try {
+                const response = await fetch(RELEASE_LIST_API, {
+                    headers: { Accept: "application/vnd.github+json" },
+                });
+                if (!response.ok) throw new Error(`GitHub returned HTTP ${response.status}`);
+                const releases = sortedUniqueReleases(await response.json());
+                if (!releases) throw new Error("GitHub returned an unsupported release list");
+                const nextCache: ReleaseListCache = { checkedAt: Date.now(), releases };
+                localStorage.setItem(STORAGE_KEYS.releaseListCache, JSON.stringify(nextCache));
+                return releases;
+            } catch (error) {
+                if (cached) return cached.releases;
+                throw error;
+            }
+        })();
+
+        if (!force) this.listInFlight = request;
+        try {
+            return await request;
+        } finally {
+            if (!force) this.listInFlight = null;
+        }
+    }
+
+    private static reload(onReloadFailure: () => void) {
         let unloading = false;
         let fallbackShown = false;
         const showFallback = () => {
@@ -272,12 +346,33 @@ export class ReleaseUpdater {
         }
     }
 
+    static switchToRelease(release: ReleaseInfo, onReloadFailure: () => void) {
+        const selected: SelectedRelease = {
+            version: release.version,
+            tag: release.tag,
+            selectionModel: "confirmed-version-v1",
+        };
+        if (!isReleaseInfo(release) || !isSelectedRelease(selected)) return false;
+        localStorage.setItem(STORAGE_KEYS.selectedRelease, JSON.stringify(selected));
+        this.reload(onReloadFailure);
+        return true;
+    }
+
+    static switchToBundledVersion(onReloadFailure: () => void) {
+        localStorage.removeItem(STORAGE_KEYS.selectedRelease);
+        this.reload(onReloadFailure);
+    }
+
     static shouldPromptFor(release: ReleaseInfo) {
         return localStorage.getItem(STORAGE_KEYS.promptedVersion) !== release.version;
     }
 
     static markPrompted(release: ReleaseInfo) {
         localStorage.setItem(STORAGE_KEYS.promptedVersion, release.version);
+    }
+
+    static resetPromptedVersion() {
+        localStorage.removeItem(STORAGE_KEYS.promptedVersion);
     }
 
     static consumeLoadFailure(): LoadFailure | null {

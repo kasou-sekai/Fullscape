@@ -677,12 +677,15 @@ async function startFullScreen() {
             8000,
         );
     }
-    window.setTimeout(() => void ConfigManager.promptForUpdate(LOCALE), 2500);
+    if (CFM.getGlobal("autoUpdateCheck")) {
+        window.setTimeout(() => void ConfigManager.promptForUpdate(LOCALE), 2500);
+    }
 
     if (CFM.getGlobal("autoLaunch") === "default") toggleFullscreen();
 }
 
 async function main() {
+    ReleaseUpdater.migrateUpdateModel();
     if (!(await ReleaseUpdater.shouldStartBundledVersion())) return;
     await startFullScreen();
 }

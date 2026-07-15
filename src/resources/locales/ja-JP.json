@@ -94,7 +94,8 @@
         "backgroundBrightness": "背景の明るさ",
         "updates": {
             "cardTitle": "GitHub Releases",
-            "currentVersion": "現在のバージョン",
+            "currentVersion": "実行中のバージョン",
+            "bundledVersion": "ローカルインストール版",
             "checking": "確認中…",
             "checkingDescription": "GitHub で最新の安定版を確認しています。",
             "checkNow": "今すぐ確認",
@@ -102,14 +103,30 @@
             "upToDate": "最新の安定版を使用しています。",
             "available": "バージョン {version} を利用できます。",
             "checkFailed": "更新を確認できません",
-            "reloadAndUpdate": "Spotify を再読み込みして更新",
+            "reviewUpdate": "更新を確認",
+            "confirmUpdate": "確認して更新",
             "later": "後で",
+            "cancel": "キャンセル",
             "releasePage": "リリースノート",
             "promptTitle": "Full Screen の更新があります",
-            "promptDescription": "バージョン {version} を利用できます。現在のバージョンは {current} です。Spotify を再読み込みすると更新されます。",
+            "promptDescription": "バージョン {version} を利用できます。現在のバージョンは {current} です。手動で確認するまでバージョンは切り替わりません。",
+            "autoCheck": "更新を自動確認",
+            "autoCheckDescription": "確認と通知のみを行います。確認するまで Full Screen が新しく検出したバージョンへ切り替わることはありません。",
+            "versionSelectorTitle": "バージョン選択",
+            "versionSelectorDescription": "安定版の GitHub Release を選ぶか、ローカルインストール版に戻します。",
+            "loadingVersions": "GitHub Releases から安定版を読み込み中…",
+            "versionListReady": "この一覧は GitHub Releases から動的に読み込まれます。",
+            "versionListFailed": "バージョン一覧を読み込めません",
+            "useSelectedVersion": "選択したバージョンを使用",
+            "bundledVersionOption": "ローカルインストール版（v{version}）",
+            "confirmVersionTitle": "Full Screen v{version} に切り替えますか？",
+            "confirmVersionDescription": "現在 v{current} を使用しています。確認すると Spotify を再読み込みして v{version} を使用します。",
+            "confirmBundledTitle": "ローカルインストール版を使用しますか？",
+            "confirmBundledDescription": "確認すると選択中の Release の読み込みを停止し、ローカルインストール版 v{version} を再読み込みします。",
+            "confirmSwitch": "確認して再読み込み",
             "reloadFallbackTitle": "ターミナルから Spotify を再読み込み",
-            "reloadFallbackDescription": "Spotify を自動で再読み込みできませんでした。ターミナルで次のコマンドを実行してください：",
-            "loadFailed": "Full Screen v{version} を読み込めなかったため、内蔵版を使用しています。"
+            "reloadFallbackDescription": "Spotify を自動で再読み込みできませんでした。確認済みのバージョンを適用するには次のコマンドを実行してください：",
+            "loadFailed": "Full Screen v{version} を読み込めなかったため、ローカルインストール版を使用しています。"
         },
         "layout": {
             "sections": {
@@ -135,7 +152,7 @@
                 },
                 "updates": {
                     "title": "更新",
-                    "description": "GitHub Releases で公開された安定版を確認して適用します。"
+                    "description": "GitHub Releases で公開された安定版を確認し、承認して切り替えます。"
                 }
             },
             "groups": {
@@ -189,7 +206,7 @@
                 },
                 "releaseUpdates": {
                     "title": "リリースチャンネル",
-                    "description": "更新は特定のセマンティックバージョンタグに固定されます。オフライン時は内蔵版を使用できます。"
+                    "description": "自動確認は通知のみです。オフにすると Release を動的に選択したり、ローカルインストール版に戻したりできます。"
                 }
             },
             "descriptions": {

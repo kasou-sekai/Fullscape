@@ -4,6 +4,7 @@ export type Config = {
     fsHideOriginal: boolean;
     autoLaunch: "never" | "default";
     activationTypes: "both" | "btns" | "keys";
+    autoUpdateCheck: boolean;
 };
 
 export type BeatResponsePreset = "off" | "low" | "medium" | "high" | "custom";

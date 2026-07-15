@@ -656,9 +656,50 @@ export class ConfigManager {
         });
     }
 
-    private static reloadIntoRelease(release: ReleaseInfo, LOCALE: string) {
-        Spicetify.PopupModal.hide();
-        ReleaseUpdater.reloadIntoRelease(release, () => this.showReloadFallback(LOCALE));
+    private static showVersionConfirmation(target: ReleaseInfo | "bundled", LOCALE: string) {
+        const strings = translations[LOCALE].settings.updates;
+        const content = document.createElement("div");
+        content.id = "full-screen-version-confirmation";
+        content.classList.add("update-prompt");
+
+        const description = document.createElement("p");
+        description.textContent =
+            target === "bundled"
+                ? strings.confirmBundledDescription.replace(
+                      "{version}",
+                      ReleaseUpdater.getBundledVersion(),
+                  )
+                : strings.confirmVersionDescription
+                      .replace("{current}", CURRENT_VERSION)
+                      .replace("{version}", target.version);
+
+        const actions = document.createElement("div");
+        actions.classList.add("setting-button-row");
+        const cancel = document.createElement("button");
+        cancel.classList.add("main-buttons-button", "main-button-secondary");
+        cancel.textContent = strings.cancel;
+        cancel.onclick = () => Spicetify.PopupModal.hide();
+        const confirm = document.createElement("button");
+        confirm.classList.add("main-buttons-button", "main-button-primary");
+        confirm.textContent = strings.confirmSwitch;
+        confirm.onclick = () => {
+            Spicetify.PopupModal.hide();
+            if (target === "bundled") {
+                ReleaseUpdater.switchToBundledVersion(() => this.showReloadFallback(LOCALE));
+            } else {
+                ReleaseUpdater.switchToRelease(target, () => this.showReloadFallback(LOCALE));
+            }
+        };
+        actions.append(cancel, confirm);
+        content.append(description, actions);
+
+        Spicetify.PopupModal.display({
+            title:
+                target === "bundled"
+                    ? strings.confirmBundledTitle
+                    : strings.confirmVersionTitle.replace("{version}", target.version),
+            content,
+        });
     }
 
     private static createUpdateCard(LOCALE: string) {
@@ -688,7 +729,11 @@ export class ConfigManager {
         if (!title || !version || !status || !releaseLink || !button) return card;
 
         title.textContent = strings.cardTitle;
+        const bundledVersion = ReleaseUpdater.getBundledVersion();
         version.textContent = `${strings.currentVersion}: v${CURRENT_VERSION}`;
+        if (bundledVersion !== CURRENT_VERSION) {
+            version.textContent += ` · ${strings.bundledVersion}: v${bundledVersion}`;
+        }
         releaseLink.textContent = strings.releasePage;
         releaseLink.hidden = true;
 
@@ -701,10 +746,10 @@ export class ConfigManager {
 
             if (result.status === "available") {
                 status.textContent = strings.available.replace("{version}", result.release.version);
-                button.textContent = strings.reloadAndUpdate;
+                button.textContent = strings.reviewUpdate;
                 button.classList.remove("main-button-secondary");
                 button.classList.add("main-button-primary");
-                button.onclick = () => this.reloadIntoRelease(result.release, LOCALE);
+                button.onclick = () => this.showVersionConfirmation(result.release, LOCALE);
                 releaseLink.href = result.release.pageUrl;
                 releaseLink.hidden = false;
                 return;
@@ -737,7 +782,134 @@ export class ConfigManager {
         return card;
     }
 
+    private static createVersionSelector(LOCALE: string) {
+        const strings = translations[LOCALE].settings.updates;
+        const card = document.createElement("div");
+        card.classList.add("setting-card", "update-version-selector");
+        card.innerHTML = `
+            <div class="setting-container">
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-title"></div>
+                        <div class="setting-description version-selector-description"></div>
+                    </div>
+                    <div class="setting-action update-version-actions">
+                        <select class="update-version-select"></select>
+                        <button class="main-buttons-button main-button-primary update-version-button"></button>
+                    </div>
+                </div>
+                <div class="setting-description update-version-status"></div>
+            </div>`;
+
+        const title = card.querySelector<HTMLElement>(".setting-title");
+        const description = card.querySelector<HTMLElement>(".version-selector-description");
+        const select = card.querySelector<HTMLSelectElement>(".update-version-select");
+        const button = card.querySelector<HTMLButtonElement>(".update-version-button");
+        const status = card.querySelector<HTMLElement>(".update-version-status");
+        if (!title || !description || !select || !button || !status) {
+            return { card, load: async () => undefined };
+        }
+
+        title.textContent = strings.versionSelectorTitle;
+        description.textContent = strings.versionSelectorDescription;
+        button.textContent = strings.useSelectedVersion;
+        let releases: ReleaseInfo[] = [];
+
+        const syncButton = () => {
+            const active = ReleaseUpdater.getSelectedRelease()?.tag ?? "bundled";
+            button.disabled = select.disabled || select.value === active;
+        };
+
+        select.onchange = syncButton;
+        button.onclick = () => {
+            if (select.value === "bundled") {
+                this.showVersionConfirmation("bundled", LOCALE);
+                return;
+            }
+            const release = releases.find((candidate) => candidate.tag === select.value);
+            if (release) this.showVersionConfirmation(release, LOCALE);
+        };
+
+        const load = async (force = false) => {
+            select.disabled = true;
+            button.disabled = true;
+            status.textContent = strings.loadingVersions;
+            try {
+                releases = await ReleaseUpdater.listStableReleases(force);
+                select.replaceChildren();
+                const bundled = document.createElement("option");
+                bundled.value = "bundled";
+                bundled.textContent = strings.bundledVersionOption.replace(
+                    "{version}",
+                    ReleaseUpdater.getBundledVersion(),
+                );
+                select.append(bundled);
+                releases.forEach((release) => {
+                    const option = document.createElement("option");
+                    option.value = release.tag;
+                    option.textContent = `v${release.version}`;
+                    select.append(option);
+                });
+                const selected = ReleaseUpdater.getSelectedRelease()?.tag ?? "bundled";
+                select.value = Array.from(select.options).some(
+                    (option) => option.value === selected,
+                )
+                    ? selected
+                    : "bundled";
+                select.disabled = false;
+                status.textContent = strings.versionListReady;
+                button.textContent = strings.useSelectedVersion;
+                button.onclick = () => {
+                    if (select.value === "bundled") {
+                        this.showVersionConfirmation("bundled", LOCALE);
+                        return;
+                    }
+                    const release = releases.find((candidate) => candidate.tag === select.value);
+                    if (release) this.showVersionConfirmation(release, LOCALE);
+                };
+                syncButton();
+            } catch (error) {
+                status.textContent = `${strings.versionListFailed}: ${
+                    error instanceof Error ? error.message : String(error)
+                }`;
+                button.disabled = false;
+                button.textContent = strings.retry;
+                button.onclick = () => void load(true);
+            }
+        };
+
+        return { card, load };
+    }
+
+    private static createUpdateSettings(LOCALE: string) {
+        const strings = translations[LOCALE].settings.updates;
+        const stack = document.createElement("div");
+        stack.classList.add("update-settings-stack");
+        const { card: versionSelector, load } = this.createVersionSelector(LOCALE);
+        const autoCheck = CFM.getGlobal("autoUpdateCheck") as boolean;
+        versionSelector.hidden = autoCheck;
+
+        const toggle = this.createToggle(
+            strings.autoCheck,
+            "autoUpdateCheck",
+            (enabled) => {
+                this.saveGlobalOption("autoUpdateCheck", enabled);
+                versionSelector.hidden = enabled;
+                if (enabled) {
+                    ReleaseUpdater.resetPromptedVersion();
+                } else {
+                    void load();
+                }
+            },
+            strings.autoCheckDescription,
+        );
+        stack.append(toggle, this.createUpdateCard(LOCALE), versionSelector);
+        if (!autoCheck) void load();
+        return stack;
+    }
+
     static async promptForUpdate(LOCALE: string) {
+        if (!CFM.getGlobal("autoUpdateCheck")) return;
         const result = await ReleaseUpdater.check();
         if (result.status !== "available" || !ReleaseUpdater.shouldPromptFor(result.release)) {
             return;
@@ -762,8 +934,11 @@ export class ConfigManager {
         later.onclick = () => Spicetify.PopupModal.hide();
         const update = document.createElement("button");
         update.classList.add("main-buttons-button", "main-button-primary");
-        update.textContent = strings.reloadAndUpdate;
-        update.onclick = () => this.reloadIntoRelease(result.release, LOCALE);
+        update.textContent = strings.confirmUpdate;
+        update.onclick = () => {
+            Spicetify.PopupModal.hide();
+            ReleaseUpdater.switchToRelease(result.release, () => this.showReloadFallback(LOCALE));
+        };
         actions.append(later, update);
         content.append(description, actions);
 
@@ -1238,7 +1413,7 @@ export class ConfigManager {
                     this.createSettingsGroup(
                         layout.groups.releaseUpdates.title,
                         layout.groups.releaseUpdates.description,
-                        this.createUpdateCard(LOCALE),
+                        this.createUpdateSettings(LOCALE),
                     ),
                 ),
             },

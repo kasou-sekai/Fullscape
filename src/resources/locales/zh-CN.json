@@ -221,7 +221,8 @@
         "backgroundBrightness": "背景亮度",
         "updates": {
             "cardTitle": "GitHub 发布版本",
-            "currentVersion": "当前版本",
+            "currentVersion": "正在运行的版本",
+            "bundledVersion": "本地安装版本",
             "checking": "正在检查…",
             "checkingDescription": "正在从 GitHub 检查最新稳定版本。",
             "checkNow": "立即检查",
@@ -229,14 +230,30 @@
             "upToDate": "你正在使用最新稳定版本。",
             "available": "版本 {version} 已发布。",
             "checkFailed": "无法检查更新",
-            "reloadAndUpdate": "重载 Spotify 并更新",
+            "reviewUpdate": "查看更新",
+            "confirmUpdate": "确认并更新",
             "later": "稍后",
+            "cancel": "取消",
             "releasePage": "发布说明",
             "promptTitle": "Full Screen 有可用更新",
-            "promptDescription": "版本 {version} 已发布；你当前使用的是 {current}。重载 Spotify 即可立即使用新版本。",
+            "promptDescription": "版本 {version} 已发布；你当前使用的是 {current}。在你手动确认前不会切换版本。",
+            "autoCheck": "自动检测更新",
+            "autoCheckDescription": "只负责检测和提示；在你确认前，Full Screen 不会切换到新检测到的版本。",
+            "versionSelectorTitle": "版本选择",
+            "versionSelectorDescription": "选择一个稳定的 GitHub Release，或返回本地安装的版本。",
+            "loadingVersions": "正在从 GitHub Releases 加载稳定版本…",
+            "versionListReady": "此列表从 GitHub Releases 动态加载，不在插件中写死。",
+            "versionListFailed": "无法加载版本列表",
+            "useSelectedVersion": "使用所选版本",
+            "bundledVersionOption": "本地安装版本（v{version}）",
+            "confirmVersionTitle": "切换到 Full Screen v{version}？",
+            "confirmVersionDescription": "当前正在使用 v{current}。确认后将重载 Spotify 并使用 v{version}。",
+            "confirmBundledTitle": "使用本地安装版本？",
+            "confirmBundledDescription": "确认后将停止加载所选 Release，并重载本地安装版本 v{version}。",
+            "confirmSwitch": "确认并重载",
             "reloadFallbackTitle": "从终端重载 Spotify",
-            "reloadFallbackDescription": "Spotify 未能自动重载。请在终端运行以下命令，以重启并应用所选版本：",
-            "loadFailed": "无法加载 Full Screen v{version}，现已改用内置版本。"
+            "reloadFallbackDescription": "Spotify 未能自动重载。请在终端运行以下命令以应用已确认的版本：",
+            "loadFailed": "无法加载 Full Screen v{version}，现已改用本地安装版本。"
         },
         "layout": {
             "sections": {
@@ -262,7 +279,7 @@
                 },
                 "updates": {
                     "title": "更新",
-                    "description": "检查并应用通过 GitHub Releases 发布的稳定构建。"
+                    "description": "检查、确认并切换通过 GitHub Releases 发布的稳定构建。"
                 }
             },
             "groups": {
@@ -307,7 +324,7 @@
                 },
                 "releaseUpdates": {
                     "title": "发布通道",
-                    "description": "更新固定到准确的语义版本标签；断网或远程加载失败时仍可使用内置版本。"
+                    "description": "自动检测只负责提示；关闭后可动态选择 Release，或返回本地安装版本。"
                 }
             },
             "descriptions": {

@@ -11,7 +11,8 @@ generic-modal:has(#full-screen-config-container) .GenericModal__overlay {
     backdrop-filter: blur(10px) saturate(1.1);
 }
 
-#full-screen-update-prompt {
+#full-screen-update-prompt,
+#full-screen-version-confirmation {
     color: var(--spice-text, #ffffff);
 
     p {
@@ -34,6 +35,7 @@ generic-modal:has(#full-screen-config-container) .GenericModal__overlay {
         font-size: 13px;
         font-weight: 700;
         padding: 9px 20px;
+        text-decoration: none;
     }
 
     .main-button-primary {
@@ -62,6 +64,8 @@ generic-modal:has(#full-screen-config-container) .GenericModal__overlay {
         border-radius: 8px;
         display: block;
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        line-height: 1.5;
+        overflow-wrap: anywhere;
         padding: 10px 12px;
         user-select: all;
     }
@@ -418,6 +422,9 @@ generic-modal:has(#full-screen-config-container) .GenericModal__overlay {
         font-size: 12.5px;
         margin-top: 4px;
     }
+    .update-settings-stack {
+        display: contents;
+    }
     .update-actions {
         align-items: center;
         display: flex;
@@ -434,6 +441,20 @@ generic-modal:has(#full-screen-config-container) .GenericModal__overlay {
         &[hidden] {
             display: none;
         }
+    }
+    .update-version-actions {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: flex-end;
+
+        select {
+            min-width: 170px;
+        }
+    }
+    .update-version-status {
+        margin-top: 8px;
     }
     .lyrics-diagnostics-output {
         margin-top: 8px;

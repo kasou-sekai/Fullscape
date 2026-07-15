@@ -226,7 +226,8 @@
         "backgroundBrightness": "Background Brightness",
         "updates": {
             "cardTitle": "GitHub Releases",
-            "currentVersion": "Current version",
+            "currentVersion": "Running version",
+            "bundledVersion": "Installed version",
             "checking": "Checking…",
             "checkingDescription": "Checking GitHub for the latest stable release.",
             "checkNow": "Check now",
@@ -234,14 +235,30 @@
             "upToDate": "You are using the latest stable release.",
             "available": "Version {version} is available.",
             "checkFailed": "Unable to check for updates",
-            "reloadAndUpdate": "Reload Spotify and update",
+            "reviewUpdate": "Review update",
+            "confirmUpdate": "Confirm and update",
             "later": "Later",
+            "cancel": "Cancel",
             "releasePage": "Release notes",
             "promptTitle": "Full Screen update available",
-            "promptDescription": "Version {version} is available; you are using {current}. Reload Spotify to use it now.",
+            "promptDescription": "Version {version} is available; you are using {current}. No version will be changed until you confirm.",
+            "autoCheck": "Automatically check for updates",
+            "autoCheckDescription": "Checks and prompts only. Full Screen never switches to a newly detected version until you confirm.",
+            "versionSelectorTitle": "Version selection",
+            "versionSelectorDescription": "Choose a stable GitHub Release or return to the locally installed bundle.",
+            "loadingVersions": "Loading stable versions from GitHub Releases…",
+            "versionListReady": "This list is loaded dynamically from GitHub Releases.",
+            "versionListFailed": "Unable to load versions",
+            "useSelectedVersion": "Use selected version",
+            "bundledVersionOption": "Installed bundle (v{version})",
+            "confirmVersionTitle": "Switch to Full Screen v{version}?",
+            "confirmVersionDescription": "You are using v{current}. Confirm to reload Spotify with v{version}.",
+            "confirmBundledTitle": "Use the installed version?",
+            "confirmBundledDescription": "Confirm to stop loading the selected release and reload the locally installed bundle (v{version}).",
+            "confirmSwitch": "Confirm and reload",
             "reloadFallbackTitle": "Reload Spotify from the terminal",
-            "reloadFallbackDescription": "Spotify did not reload automatically. Run this command in a terminal to restart and apply the selected release:",
-            "loadFailed": "Full Screen v{version} could not be loaded. The bundled version is running instead."
+            "reloadFallbackDescription": "Spotify did not reload automatically. Run this command in a terminal to apply the confirmed version:",
+            "loadFailed": "Full Screen v{version} could not be loaded. The installed version is running instead."
         },
         "layout": {
             "sections": {
@@ -267,7 +284,7 @@
                 },
                 "updates": {
                     "title": "Updates",
-                    "description": "Check and apply stable builds published through GitHub Releases."
+                    "description": "Check, confirm, and switch between stable builds published through GitHub Releases."
                 }
             },
             "groups": {
@@ -321,7 +338,7 @@
                 },
                 "releaseUpdates": {
                     "title": "Release channel",
-                    "description": "Updates are pinned to exact semantic version tags. The bundled version remains available as an offline fallback."
+                    "description": "Automatic checks only notify you. Turn them off to choose a release dynamically or return to the installed bundle."
                 }
             },
             "descriptions": {

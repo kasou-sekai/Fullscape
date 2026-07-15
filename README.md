@@ -18,11 +18,11 @@ Full-screen now-playing extension for Spicetify. Builds into `dist/fullScreen.js
 
 ## Updates
 
-The extension checks the latest stable GitHub Release at startup, with a six-hour cache to avoid GitHub API rate limits. When a newer release is available, use **Reload Spotify and update** in the prompt or in **Settings → Updates**.
+With **Automatically check for updates** enabled, the extension checks the latest stable GitHub Release at startup and caches the result for six hours. Detection only shows a prompt: Full Screen never switches to a newly detected version until the user confirms.
 
-The installed bundle remains the offline fallback. After the user accepts an update, startup loads `dist/fullScreen.js` from that exact version tag through jsDelivr. If the tagged build cannot be loaded, Full Screen clears the selection and starts the installed bundle instead.
+After confirmation, Spotify reloads and runs the exact semantic-version tag through jsDelivr. No terminal command is needed. Turn automatic checks off in **Settings → Updates** to reveal a version selector populated dynamically from stable GitHub Releases. The selector can switch to an earlier release or return to the locally installed bundle; every switch requires confirmation.
 
-If Spotify cannot reload itself, run:
+To make a manually deployed file authoritative again, turn automatic checks off, select **Installed bundle**, then replace `fullScreen.js` if needed and run:
 
 ```bash
 spicetify apply

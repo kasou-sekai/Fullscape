@@ -47,4 +47,5 @@ export const DEFAULTS: Config = {
     fsHideOriginal: false,
     autoLaunch: "never",
     activationTypes: "both",
+    autoUpdateCheck: true,
 };

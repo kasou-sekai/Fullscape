@@ -162,7 +162,8 @@
         "backgroundBrightness": "背景亮度",
         "updates": {
             "cardTitle": "GitHub 發佈版本",
-            "currentVersion": "目前版本",
+            "currentVersion": "目前執行版本",
+            "bundledVersion": "本機安裝版本",
             "checking": "正在檢查…",
             "checkingDescription": "正在從 GitHub 檢查最新穩定版本。",
             "checkNow": "立即檢查",
@@ -170,14 +171,30 @@
             "upToDate": "你正在使用最新穩定版本。",
             "available": "版本 {version} 已發佈。",
             "checkFailed": "無法檢查更新",
-            "reloadAndUpdate": "重新載入 Spotify 並更新",
+            "reviewUpdate": "查看更新",
+            "confirmUpdate": "確認並更新",
             "later": "稍後",
+            "cancel": "取消",
             "releasePage": "發佈說明",
             "promptTitle": "Full Screen 有可用更新",
-            "promptDescription": "版本 {version} 已發佈；你目前使用的是 {current}。重新載入 Spotify 即可立即使用新版本。",
-            "reloadFallbackTitle": "從終端重新載入 Spotify",
-            "reloadFallbackDescription": "Spotify 未能自動重新載入。請在終端執行以下命令，以重新啟動並套用所選版本：",
-            "loadFailed": "無法載入 Full Screen v{version}，現已改用內建版本。"
+            "promptDescription": "版本 {version} 已發佈；你目前使用的是 {current}。在你手動確認前不會切換版本。",
+            "autoCheck": "自動檢查更新",
+            "autoCheckDescription": "只負責檢查與提示；在你確認前，Full Screen 不會切換到新檢查到的版本。",
+            "versionSelectorTitle": "版本選擇",
+            "versionSelectorDescription": "選擇穩定的 GitHub Release，或返回本機安裝版本。",
+            "loadingVersions": "正在從 GitHub Releases 載入穩定版本…",
+            "versionListReady": "此清單從 GitHub Releases 動態載入，並未寫死在擴充功能中。",
+            "versionListFailed": "無法載入版本清單",
+            "useSelectedVersion": "使用所選版本",
+            "bundledVersionOption": "本機安裝版本（v{version}）",
+            "confirmVersionTitle": "切換到 Full Screen v{version}？",
+            "confirmVersionDescription": "目前正在使用 v{current}。確認後將重新載入 Spotify 並使用 v{version}。",
+            "confirmBundledTitle": "使用本機安裝版本？",
+            "confirmBundledDescription": "確認後將停止載入所選 Release，並重新載入本機安裝版本 v{version}。",
+            "confirmSwitch": "確認並重新載入",
+            "reloadFallbackTitle": "從終端機重新載入 Spotify",
+            "reloadFallbackDescription": "Spotify 未能自動重新載入。請在終端機執行以下命令以套用已確認的版本：",
+            "loadFailed": "無法載入 Full Screen v{version}，現已改用本機安裝版本。"
         },
         "layout": {
             "sections": {
@@ -203,7 +220,7 @@
                 },
                 "updates": {
                     "title": "更新",
-                    "description": "檢查並套用透過 GitHub Releases 發佈的穩定版本。"
+                    "description": "檢查、確認並切換透過 GitHub Releases 發佈的穩定版本。"
                 }
             },
             "groups": {
@@ -251,7 +268,7 @@
                 },
                 "releaseUpdates": {
                     "title": "發佈通道",
-                    "description": "更新會固定到確切的語意版本標籤；離線或遠端載入失敗時仍可使用內建版本。"
+                    "description": "自動檢查只負責提示；關閉後可動態選擇 Release，或返回本機安裝版本。"
                 }
             },
             "descriptions": {
