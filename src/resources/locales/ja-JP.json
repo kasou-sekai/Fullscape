@@ -92,6 +92,25 @@
         "upnextTime": "「次は」表示時間",
         "backgroundBlur": "背景ぼかし",
         "backgroundBrightness": "背景の明るさ",
+        "updates": {
+            "cardTitle": "GitHub Releases",
+            "currentVersion": "現在のバージョン",
+            "checking": "確認中…",
+            "checkingDescription": "GitHub で最新の安定版を確認しています。",
+            "checkNow": "今すぐ確認",
+            "retry": "再試行",
+            "upToDate": "最新の安定版を使用しています。",
+            "available": "バージョン {version} を利用できます。",
+            "checkFailed": "更新を確認できません",
+            "reloadAndUpdate": "Spotify を再読み込みして更新",
+            "later": "後で",
+            "releasePage": "リリースノート",
+            "promptTitle": "Full Screen の更新があります",
+            "promptDescription": "バージョン {version} を利用できます。現在のバージョンは {current} です。Spotify を再読み込みすると更新されます。",
+            "reloadFallbackTitle": "ターミナルから Spotify を再読み込み",
+            "reloadFallbackDescription": "Spotify を自動で再読み込みできませんでした。ターミナルで次のコマンドを実行してください：",
+            "loadFailed": "Full Screen v{version} を読み込めなかったため、内蔵版を使用しています。"
+        },
         "layout": {
             "sections": {
                 "general": {
@@ -113,6 +132,10 @@
                 "appearance": {
                     "title": "色とコントラスト",
                     "description": "アルバム色を再生画面に適用する方法を設定します。"
+                },
+                "updates": {
+                    "title": "更新",
+                    "description": "GitHub Releases で公開された安定版を確認して適用します。"
                 }
             },
             "groups": {
@@ -163,6 +186,10 @@
                 "playbackTheme": {
                     "title": "アルバムテーマ",
                     "description": "再生画面に適用されます。設定画面のボタンは常に現在のジャケット色になります。"
+                },
+                "releaseUpdates": {
+                    "title": "リリースチャンネル",
+                    "description": "更新は特定のセマンティックバージョンタグに固定されます。オフライン時は内蔵版を使用できます。"
                 }
             },
             "descriptions": {

@@ -11,6 +11,12 @@ import SeekableProgressBar from "../ProgressBar/ProgressBar";
 import { modifyRotationSpeed } from "../../../utils/animation";
 import { Lyrics } from "../Lyrics/Lyrics";
 import WebAPI from "../../../services/web-api";
+import {
+    CURRENT_VERSION,
+    ReleaseInfo,
+    ReleaseUpdater,
+    UpdateCheckResult,
+} from "../../../services/release-updater";
 
 export class ConfigManager {
     static configContainer: HTMLDivElement;
@@ -632,6 +638,141 @@ export class ConfigManager {
         );
     }
 
+    private static showReloadFallback(LOCALE: string) {
+        const strings = translations[LOCALE].settings.updates;
+        const content = document.createElement("div");
+        content.id = "full-screen-update-fallback";
+        content.classList.add("update-fallback");
+
+        const description = document.createElement("p");
+        description.textContent = strings.reloadFallbackDescription;
+        const command = document.createElement("code");
+        command.textContent = "spicetify apply";
+        content.append(description, command);
+
+        Spicetify.PopupModal.display({
+            title: strings.reloadFallbackTitle,
+            content,
+        });
+    }
+
+    private static reloadIntoRelease(release: ReleaseInfo, LOCALE: string) {
+        Spicetify.PopupModal.hide();
+        ReleaseUpdater.reloadIntoRelease(release, () => this.showReloadFallback(LOCALE));
+    }
+
+    private static createUpdateCard(LOCALE: string) {
+        const strings = translations[LOCALE].settings.updates;
+        const card = document.createElement("div");
+        card.classList.add("setting-card", "update-card");
+        card.innerHTML = `
+            <div class="setting-container">
+                <div class="setting-item">
+                    <div>
+                        <div class="setting-title"></div>
+                        <div class="update-version"></div>
+                    </div>
+                    <div class="setting-action update-actions">
+                        <a class="update-release-link" target="_blank" rel="noreferrer"></a>
+                        <button class="main-buttons-button main-button-secondary update-button"></button>
+                    </div>
+                </div>
+                <div class="setting-description update-status"></div>
+            </div>`;
+
+        const title = card.querySelector<HTMLElement>(".setting-title");
+        const version = card.querySelector<HTMLElement>(".update-version");
+        const status = card.querySelector<HTMLElement>(".update-status");
+        const releaseLink = card.querySelector<HTMLAnchorElement>(".update-release-link");
+        const button = card.querySelector<HTMLButtonElement>(".update-button");
+        if (!title || !version || !status || !releaseLink || !button) return card;
+
+        title.textContent = strings.cardTitle;
+        version.textContent = `${strings.currentVersion}: v${CURRENT_VERSION}`;
+        releaseLink.textContent = strings.releasePage;
+        releaseLink.hidden = true;
+
+        const renderResult = (result: UpdateCheckResult) => {
+            button.disabled = false;
+            button.classList.remove("main-button-primary");
+            button.classList.add("main-button-secondary");
+            releaseLink.hidden = true;
+            releaseLink.removeAttribute("href");
+
+            if (result.status === "available") {
+                status.textContent = strings.available.replace("{version}", result.release.version);
+                button.textContent = strings.reloadAndUpdate;
+                button.classList.remove("main-button-secondary");
+                button.classList.add("main-button-primary");
+                button.onclick = () => this.reloadIntoRelease(result.release, LOCALE);
+                releaseLink.href = result.release.pageUrl;
+                releaseLink.hidden = false;
+                return;
+            }
+
+            if (result.status === "error") {
+                status.textContent = `${strings.checkFailed}: ${result.message}`;
+                button.textContent = strings.retry;
+                button.onclick = () => void check(true);
+                return;
+            }
+
+            status.textContent = strings.upToDate;
+            button.textContent = strings.checkNow;
+            button.onclick = () => void check(true);
+            if (result.release) {
+                releaseLink.href = result.release.pageUrl;
+                releaseLink.hidden = false;
+            }
+        };
+
+        const check = async (force = false) => {
+            button.disabled = true;
+            button.textContent = strings.checking;
+            status.textContent = strings.checkingDescription;
+            renderResult(await ReleaseUpdater.check(force));
+        };
+
+        void check();
+        return card;
+    }
+
+    static async promptForUpdate(LOCALE: string) {
+        const result = await ReleaseUpdater.check();
+        if (result.status !== "available" || !ReleaseUpdater.shouldPromptFor(result.release)) {
+            return;
+        }
+        if (document.querySelector("body > generic-modal")) return;
+        ReleaseUpdater.markPrompted(result.release);
+
+        const strings = translations[LOCALE].settings.updates;
+        const content = document.createElement("div");
+        content.id = "full-screen-update-prompt";
+        content.classList.add("update-prompt");
+        const description = document.createElement("p");
+        description.textContent = strings.promptDescription
+            .replace("{current}", CURRENT_VERSION)
+            .replace("{version}", result.release.version);
+
+        const actions = document.createElement("div");
+        actions.classList.add("setting-button-row");
+        const later = document.createElement("button");
+        later.classList.add("main-buttons-button", "main-button-secondary");
+        later.textContent = strings.later;
+        later.onclick = () => Spicetify.PopupModal.hide();
+        const update = document.createElement("button");
+        update.classList.add("main-buttons-button", "main-button-primary");
+        update.textContent = strings.reloadAndUpdate;
+        update.onclick = () => this.reloadIntoRelease(result.release, LOCALE);
+        actions.append(later, update);
+        content.append(description, actions);
+
+        Spicetify.PopupModal.display({
+            title: strings.promptTitle,
+            content,
+        });
+    }
+
     static openConfig(evt: Event | null = null): void {
         evt?.preventDefault();
         const configuredLocale = CFM.getGlobal("locale") as Config["locale"];
@@ -1085,6 +1226,19 @@ export class ConfigManager {
                             (value: string) => this.saveOption("invertColors", value),
                             layout.descriptions.invertColors,
                         ),
+                    ),
+                ),
+            },
+            {
+                id: "updates",
+                title: layout.sections.updates.title,
+                section: this.createSettingsSection(
+                    layout.sections.updates.title,
+                    layout.sections.updates.description,
+                    this.createSettingsGroup(
+                        layout.groups.releaseUpdates.title,
+                        layout.groups.releaseUpdates.description,
+                        this.createUpdateCard(LOCALE),
                     ),
                 ),
             },

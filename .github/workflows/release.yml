@@ -1,0 +1,63 @@
+name: Release
+
+on:
+    push:
+        tags:
+            - "v*"
+
+permissions:
+    contents: write
+
+concurrency:
+    group: release-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        env:
+            RELEASE_TAG: ${{ github.ref_name }}
+            GH_TOKEN: ${{ github.token }}
+        steps:
+            - name: Check out tagged source
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Set up Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Verify tag and package version
+              run: npm run verify-release-tag
+
+            - name: Verify release notes
+              run: test -f ".github/release-notes/${RELEASE_TAG}.md"
+
+            - name: Run static checks
+              run: npm run check
+
+            - name: Build extension
+              run: npm run build-local
+
+            - name: Verify tagged distribution
+              run: git diff --exit-code -- dist/fullScreen.js
+
+            - name: Create SHA-256 checksum
+              run: sha256sum fullScreen.js > fullScreen.js.sha256
+              working-directory: dist
+
+            - name: Publish GitHub Release
+              run: >-
+                  gh release create "$RELEASE_TAG"
+                  dist/fullScreen.js
+                  dist/fullScreen.js.sha256
+                  --verify-tag
+                  --notes-file ".github/release-notes/${RELEASE_TAG}.md"
+                  --latest
+                  --title "Full Screen $RELEASE_TAG"

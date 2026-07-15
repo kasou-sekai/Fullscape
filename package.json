@@ -1,6 +1,6 @@
 {
     "name": "full-screen",
-    "version": "2.8.0",
+    "version": "0.1.0",
     "private": true,
     "license": "MIT",
     "scripts": {
@@ -8,6 +8,7 @@
         "build-local": "spicetify-creator --out=dist --minify",
         "watch": "spicetify-creator --watch",
         "check": "tsc --noEmit && eslint src --max-warnings=0",
+        "verify-release-tag": "node scripts/verify-release-tag.mjs",
         "format": "prettier --write ."
     },
     "dependencies": {

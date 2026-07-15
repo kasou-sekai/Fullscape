@@ -224,6 +224,25 @@
         "upnextTime": "Upnext Time to Show",
         "backgroundBlur": "Background Blur Strength",
         "backgroundBrightness": "Background Brightness",
+        "updates": {
+            "cardTitle": "GitHub Releases",
+            "currentVersion": "Current version",
+            "checking": "Checking…",
+            "checkingDescription": "Checking GitHub for the latest stable release.",
+            "checkNow": "Check now",
+            "retry": "Retry",
+            "upToDate": "You are using the latest stable release.",
+            "available": "Version {version} is available.",
+            "checkFailed": "Unable to check for updates",
+            "reloadAndUpdate": "Reload Spotify and update",
+            "later": "Later",
+            "releasePage": "Release notes",
+            "promptTitle": "Full Screen update available",
+            "promptDescription": "Version {version} is available; you are using {current}. Reload Spotify to use it now.",
+            "reloadFallbackTitle": "Reload Spotify from the terminal",
+            "reloadFallbackDescription": "Spotify did not reload automatically. Run this command in a terminal to restart and apply the selected release:",
+            "loadFailed": "Full Screen v{version} could not be loaded. The bundled version is running instead."
+        },
         "layout": {
             "sections": {
                 "general": {
@@ -245,6 +264,10 @@
                 "appearance": {
                     "title": "Colors & Contrast",
                     "description": "Control how album colors are applied to the playback screen."
+                },
+                "updates": {
+                    "title": "Updates",
+                    "description": "Check and apply stable builds published through GitHub Releases."
                 }
             },
             "groups": {
@@ -295,6 +318,10 @@
                 "playbackTheme": {
                     "title": "Album-based Theme",
                     "description": "These options affect the playback screen; settings-window buttons always follow the current cover."
+                },
+                "releaseUpdates": {
+                    "title": "Release channel",
+                    "description": "Updates are pinned to exact semantic version tags. The bundled version remains available as an offline fallback."
                 }
             },
             "descriptions": {

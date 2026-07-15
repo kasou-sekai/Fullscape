@@ -11,6 +11,62 @@ generic-modal:has(#full-screen-config-container) .GenericModal__overlay {
     backdrop-filter: blur(10px) saturate(1.1);
 }
 
+#full-screen-update-prompt {
+    color: var(--spice-text, #ffffff);
+
+    p {
+        color: var(--spice-subtext, #b3b3b3);
+        line-height: 1.55;
+        margin: 0 0 18px;
+    }
+
+    .setting-button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: flex-end;
+    }
+
+    .main-buttons-button {
+        border: 1px solid transparent;
+        border-radius: 999px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 9px 20px;
+    }
+
+    .main-button-primary {
+        background: var(--spice-button-active, #1ed760);
+        color: var(--spice-button, #000000);
+    }
+
+    .main-button-secondary {
+        background: var(--spice-tab-active, rgba(255, 255, 255, 0.1));
+        border-color: rgba(255, 255, 255, 0.14);
+        color: var(--spice-text, #ffffff);
+    }
+}
+
+#full-screen-update-fallback {
+    color: var(--spice-text, #ffffff);
+
+    p {
+        color: var(--spice-subtext, #b3b3b3);
+        line-height: 1.55;
+    }
+
+    code {
+        background: rgba(255, 255, 255, 0.09);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 8px;
+        display: block;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        padding: 10px 12px;
+        user-select: all;
+    }
+}
+
 .main-trackCreditsModal-container:has(#full-screen-config-container) {
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.48), rgba(230, 238, 248, 0.34)),
         rgba(246, 249, 252, 0.3);
@@ -355,6 +411,28 @@ generic-modal:has(#full-screen-config-container) .GenericModal__overlay {
             border: solid 1px rgba(104, 118, 138, 0.25);
             border-radius: 6px;
             box-shadow: inset 0 -1px 0 rgba(104, 118, 138, 0.16);
+        }
+    }
+    .update-version {
+        color: var(--secondary-text-color);
+        font-size: 12.5px;
+        margin-top: 4px;
+    }
+    .update-actions {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: flex-end;
+    }
+    .update-release-link {
+        color: var(--theme-color);
+        font-size: 12.5px;
+        font-weight: 700;
+        text-decoration: underline;
+
+        &[hidden] {
+            display: none;
         }
     }
     .lyrics-diagnostics-output {

@@ -160,6 +160,25 @@
         "upnextTime": "下一首提示顯示時間",
         "backgroundBlur": "背景模糊",
         "backgroundBrightness": "背景亮度",
+        "updates": {
+            "cardTitle": "GitHub 發佈版本",
+            "currentVersion": "目前版本",
+            "checking": "正在檢查…",
+            "checkingDescription": "正在從 GitHub 檢查最新穩定版本。",
+            "checkNow": "立即檢查",
+            "retry": "重試",
+            "upToDate": "你正在使用最新穩定版本。",
+            "available": "版本 {version} 已發佈。",
+            "checkFailed": "無法檢查更新",
+            "reloadAndUpdate": "重新載入 Spotify 並更新",
+            "later": "稍後",
+            "releasePage": "發佈說明",
+            "promptTitle": "Full Screen 有可用更新",
+            "promptDescription": "版本 {version} 已發佈；你目前使用的是 {current}。重新載入 Spotify 即可立即使用新版本。",
+            "reloadFallbackTitle": "從終端重新載入 Spotify",
+            "reloadFallbackDescription": "Spotify 未能自動重新載入。請在終端執行以下命令，以重新啟動並套用所選版本：",
+            "loadFailed": "無法載入 Full Screen v{version}，現已改用內建版本。"
+        },
         "layout": {
             "sections": {
                 "general": {
@@ -181,6 +200,10 @@
                 "appearance": {
                     "title": "色彩與對比",
                     "description": "設定專輯封面色彩在播放畫面中的套用方式。"
+                },
+                "updates": {
+                    "title": "更新",
+                    "description": "檢查並套用透過 GitHub Releases 發佈的穩定版本。"
                 }
             },
             "groups": {
@@ -225,6 +248,10 @@
                 "playbackTheme": {
                     "title": "封面主題",
                     "description": "這些選項影響播放畫面；設定視窗按鈕永遠跟隨目前封面。"
+                },
+                "releaseUpdates": {
+                    "title": "發佈通道",
+                    "description": "更新會固定到確切的語意版本標籤；離線或遠端載入失敗時仍可使用內建版本。"
                 }
             },
             "descriptions": {

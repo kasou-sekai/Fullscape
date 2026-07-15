@@ -15,6 +15,7 @@ import { createOverflowScrollAnimation, getOverflowScrollTiming } from "./utils/
 import { getHtmlContent } from "./services/html-creator";
 import { initMoustrapRecord } from "./services/mousetrap-record";
 import { startSharedBridgePresence } from "./services/lyrics-cache";
+import { ReleaseUpdater } from "./services/release-updater";
 
 import SeekableProgressBar from "./ui/components/ProgressBar/ProgressBar";
 
@@ -29,7 +30,7 @@ import "./styles/base.scss";
 import "./styles/defaultMode.scss";
 import "./styles/settings.scss";
 
-async function main() {
+async function startFullScreen() {
     let INIT_RETRIES = 0;
     let entriesNotPresent = Utils.allNotExist();
 
@@ -665,7 +666,25 @@ async function main() {
 
     render();
 
+    const failedRelease = ReleaseUpdater.consumeLoadFailure();
+    if (failedRelease) {
+        Spicetify.showNotification(
+            translations[LOCALE].settings.updates.loadFailed.replace(
+                "{version}",
+                failedRelease.version,
+            ),
+            true,
+            8000,
+        );
+    }
+    window.setTimeout(() => void ConfigManager.promptForUpdate(LOCALE), 2500);
+
     if (CFM.getGlobal("autoLaunch") === "default") toggleFullscreen();
+}
+
+async function main() {
+    if (!(await ReleaseUpdater.shouldStartBundledVersion())) return;
+    await startFullScreen();
 }
 
 export default main;
