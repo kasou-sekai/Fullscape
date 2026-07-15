@@ -224,6 +224,102 @@
         "upnextTime": "Upnext Time to Show",
         "backgroundBlur": "Background Blur Strength",
         "backgroundBrightness": "Background Brightness",
+        "layout": {
+            "sections": {
+                "general": {
+                    "title": "General",
+                    "description": "Language, startup, activation, display mode, and diagnostics."
+                },
+                "playback": {
+                    "title": "Playback Screen",
+                    "description": "Choose what appears on the full-screen player and when it appears."
+                },
+                "lyrics": {
+                    "title": "Lyrics",
+                    "description": "Control lyric sources, readability, and optional enhancements."
+                },
+                "background": {
+                    "title": "Background & Motion",
+                    "description": "Tune fluid motion, beat response, transitions, blur, and brightness."
+                },
+                "appearance": {
+                    "title": "Colors & Contrast",
+                    "description": "Control how album colors are applied to the playback screen."
+                }
+            },
+            "groups": {
+                "languageAndLaunch": {
+                    "title": "Language & Startup",
+                    "description": "Settings that apply when Spotify starts."
+                },
+                "activation": {
+                    "title": "Opening Full Screen",
+                    "description": "Choose how full-screen playback is opened and displayed."
+                },
+                "troubleshooting": {
+                    "title": "Troubleshooting",
+                    "description": "Diagnostic tools are normally best left off."
+                },
+                "controls": {
+                    "title": "Playback Controls",
+                    "description": "Set the visibility of the progress bar and transport controls."
+                },
+                "trackInfo": {
+                    "title": "Track Information",
+                    "description": "Choose which song details appear and how long titles are handled."
+                },
+                "upNext": {
+                    "title": "Up Next",
+                    "description": "Control the next-track preview near the end of a song."
+                },
+                "lyricsDisplay": {
+                    "title": "Display",
+                    "description": "Start with lyric visibility and text size."
+                },
+                "lyricSources": {
+                    "title": "Sources & Matching",
+                    "description": "Choose where enhanced lyrics come from and how strictly they are matched."
+                },
+                "lyricContent": {
+                    "title": "Reading Aids",
+                    "description": "Show translations, pronunciation guides, character conversion, and word timing when available."
+                },
+                "motion": {
+                    "title": "Motion",
+                    "description": "Control the base flow and how strongly it follows the music."
+                },
+                "backgroundRendering": {
+                    "title": "Rendering",
+                    "description": "Adjust the visual finish of the animated background."
+                },
+                "playbackTheme": {
+                    "title": "Album-based Theme",
+                    "description": "These options affect the playback screen; settings-window buttons always follow the current cover."
+                }
+            },
+            "descriptions": {
+                "language": "Changes the language of this plugin's controls and settings.",
+                "fullscreen": "Use native system fullscreen when opening the playback screen.",
+                "progressBar": "Choose whether the seek bar is always visible, appears on mouse movement, or stays hidden.",
+                "playerControls": "Choose when play, pause, previous, and next controls are visible.",
+                "showAlbum": "Show the album name, optionally together with its release date.",
+                "icons": "Show small visual icons beside playback information.",
+                "trimTitle": "Remove bracketed editions and trailing version text from the current song title.",
+                "trimAlbum": "Shorten the album text when extra edition information is present.",
+                "upNextDisplay": "Smart mode shows the preview only when it is useful near the end of the track.",
+                "trimTitleUpNext": "Apply title shortening to the next-track preview as well.",
+                "upNextTime": "How many seconds before the current track ends the next-track preview may appear.",
+                "autoHideLyrics": "Hide the lyric area when no lyrics are available for the current track.",
+                "thirdPartyLyrics": "Fill missing translations, romanization, furigana, or word timing from NetEase and QQ Music.",
+                "animationSpeed": "Set the resting speed of the fluid background.",
+                "transitionTime": "How long background colors take to blend after the song changes.",
+                "backgroundBlur": "Higher values soften album imagery and fluid shapes more strongly.",
+                "backgroundBrightness": "Set the overall light level of the playback background.",
+                "themedButtons": "Color playback buttons using the current album artwork.",
+                "themedIcons": "Color playback icons using the current album artwork.",
+                "invertColors": "Choose light or dark playback text, or let background brightness decide automatically."
+            }
+        },
         "configReset": "Reset Config"
     },
     "fullscreenBtnDesc": "Full Screen"

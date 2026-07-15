@@ -11,7 +11,7 @@ export const DEFAULTS: Config = {
         showLyricsFurigana: true,
         lyricsChineseConversion: "original",
         karaokeLyrics: true,
-        lyricsSize: 30,
+        lyricsSize: 42,
         autoHideLyrics: true,
         debugMode: false,
         progressBarDisplay: "always",

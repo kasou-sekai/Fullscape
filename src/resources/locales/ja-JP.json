@@ -92,6 +92,102 @@
         "upnextTime": "「次は」表示時間",
         "backgroundBlur": "背景ぼかし",
         "backgroundBrightness": "背景の明るさ",
+        "layout": {
+            "sections": {
+                "general": {
+                    "title": "一般",
+                    "description": "言語、起動、開き方、表示モード、診断を設定します。"
+                },
+                "playback": {
+                    "title": "再生画面",
+                    "description": "全画面プレイヤーに表示する内容とタイミングを選びます。"
+                },
+                "lyrics": {
+                    "title": "歌詞",
+                    "description": "歌詞の取得元、読みやすさ、追加情報を管理します。"
+                },
+                "background": {
+                    "title": "背景とモーション",
+                    "description": "流体モーション、ビート反応、切り替え、ぼかし、明るさを調整します。"
+                },
+                "appearance": {
+                    "title": "色とコントラスト",
+                    "description": "アルバム色を再生画面に適用する方法を設定します。"
+                }
+            },
+            "groups": {
+                "languageAndLaunch": {
+                    "title": "言語と起動",
+                    "description": "Spotify 起動時に適用される設定です。"
+                },
+                "activation": {
+                    "title": "全画面再生を開く",
+                    "description": "全画面再生の開き方と表示方法を選びます。"
+                },
+                "troubleshooting": {
+                    "title": "トラブルシューティング",
+                    "description": "通常、診断機能はオフのままで構いません。"
+                },
+                "controls": {
+                    "title": "再生コントロール",
+                    "description": "シークバーと再生ボタンの表示タイミングを設定します。"
+                },
+                "trackInfo": {
+                    "title": "曲情報",
+                    "description": "表示する曲情報とタイトルの整理方法を選びます。"
+                },
+                "upNext": {
+                    "title": "次の曲",
+                    "description": "曲の終わり付近に表示する次曲プレビューを設定します。"
+                },
+                "lyricsDisplay": {
+                    "title": "表示",
+                    "description": "歌詞の表示と文字サイズを設定します。"
+                },
+                "lyricSources": {
+                    "title": "取得元と照合",
+                    "description": "拡張歌詞の取得元と照合の厳密さを選びます。"
+                },
+                "lyricContent": {
+                    "title": "読み方の補助",
+                    "description": "翻訳、読み、文字変換、単語タイミングを表示します。"
+                },
+                "motion": {
+                    "title": "モーション",
+                    "description": "基本の流れと音楽への反応の強さを設定します。"
+                },
+                "backgroundRendering": {
+                    "title": "描画",
+                    "description": "アニメーション背景の見た目を調整します。"
+                },
+                "playbackTheme": {
+                    "title": "アルバムテーマ",
+                    "description": "再生画面に適用されます。設定画面のボタンは常に現在のジャケット色になります。"
+                }
+            },
+            "descriptions": {
+                "language": "このプラグインの操作と設定の言語を変更します。",
+                "fullscreen": "再生画面を開くときにシステムの全画面表示を使います。",
+                "progressBar": "シークバーを常時表示、マウス移動時のみ表示、非表示から選びます。",
+                "playerControls": "再生・一時停止・前後の曲ボタンの表示タイミングを選びます。",
+                "showAlbum": "アルバム名を表示し、必要なら発売日も併記します。",
+                "icons": "再生情報の横に小さなアイコンを表示します。",
+                "trimTitle": "曲名から括弧内や末尾のバージョン表記を除きます。",
+                "trimAlbum": "アルバム名の追加バージョン情報を短くします。",
+                "upNextDisplay": "スマートでは曲の終わり付近で必要なときだけ表示します。",
+                "trimTitleUpNext": "次曲プレビューにも曲名の短縮を適用します。",
+                "upNextTime": "曲の終了何秒前から次曲を表示するかを設定します。",
+                "autoHideLyrics": "歌詞がない曲では歌詞エリアを隠します。",
+                "thirdPartyLyrics": "NetEase と QQ Music から翻訳、ローマ字、ふりがな、単語タイミングを補完します。",
+                "animationSpeed": "流体背景の基本速度を設定します。",
+                "transitionTime": "曲が変わった後に背景色が切り替わる時間です。",
+                "backgroundBlur": "値を上げるほどジャケットと流体形状が柔らかくなります。",
+                "backgroundBrightness": "再生背景全体の明るさを設定します。",
+                "themedButtons": "現在のジャケット色を再生ボタンに使います。",
+                "themedIcons": "現在のジャケット色を再生アイコンに使います。",
+                "invertColors": "明るい文字、暗い文字、背景による自動選択を指定します。"
+            }
+        },
         "configReset": "設定をリセット"
     },
     "fullscreenBtnDesc": "全画面"

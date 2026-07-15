@@ -160,6 +160,96 @@
         "upnextTime": "下一首提示顯示時間",
         "backgroundBlur": "背景模糊",
         "backgroundBrightness": "背景亮度",
+        "layout": {
+            "sections": {
+                "general": {
+                    "title": "一般",
+                    "description": "設定語言、啟動方式、開啟方式、顯示模式與診斷功能。"
+                },
+                "playback": {
+                    "title": "播放畫面",
+                    "description": "選擇全螢幕播放畫面顯示的內容與時機。"
+                },
+                "lyrics": {
+                    "title": "歌詞",
+                    "description": "管理歌詞來源、閱讀方式與可選的增強內容。"
+                },
+                "background": {
+                    "title": "背景與動態效果",
+                    "description": "調整流體動態、節拍反應、轉場、模糊與亮度。"
+                },
+                "appearance": {
+                    "title": "色彩與對比",
+                    "description": "設定專輯封面色彩在播放畫面中的套用方式。"
+                }
+            },
+            "groups": {
+                "languageAndLaunch": {
+                    "title": "語言與啟動",
+                    "description": "Spotify 啟動時套用的設定。"
+                },
+                "activation": {
+                    "title": "開啟全螢幕播放",
+                    "description": "選擇如何開啟與顯示全螢幕播放畫面。"
+                },
+                "troubleshooting": {
+                    "title": "疑難排解",
+                    "description": "一般情況下不需要開啟診斷功能。"
+                },
+                "controls": {
+                    "title": "播放控制",
+                    "description": "設定進度列與播放控制項的顯示時機。"
+                },
+                "trackInfo": {
+                    "title": "歌曲資訊",
+                    "description": "選擇要顯示的歌曲資訊與標題整理方式。"
+                },
+                "upNext": { "title": "下一首", "description": "控制歌曲結束前的下一首預覽。" },
+                "lyricsDisplay": { "title": "顯示", "description": "設定歌詞顯示與文字大小。" },
+                "lyricSources": {
+                    "title": "來源與配對",
+                    "description": "選擇增強歌詞來源與配對嚴格程度。"
+                },
+                "lyricContent": {
+                    "title": "閱讀輔助",
+                    "description": "顯示翻譯、讀音、繁簡轉換與逐字時間軸。"
+                },
+                "motion": {
+                    "title": "動態效果",
+                    "description": "控制基礎流動速度與跟隨音樂的強度。"
+                },
+                "backgroundRendering": {
+                    "title": "畫面效果",
+                    "description": "調整動態背景的最終視覺效果。"
+                },
+                "playbackTheme": {
+                    "title": "封面主題",
+                    "description": "這些選項影響播放畫面；設定視窗按鈕永遠跟隨目前封面。"
+                }
+            },
+            "descriptions": {
+                "language": "變更此外掛的控制項與設定語言。",
+                "fullscreen": "開啟播放畫面時使用系統原生全螢幕。",
+                "progressBar": "選擇進度列持續顯示、滑鼠移動時顯示或隱藏。",
+                "playerControls": "選擇播放控制按鈕的顯示時機。",
+                "showAlbum": "顯示專輯名稱，也可同時顯示發行日期。",
+                "icons": "在播放資訊旁顯示小圖示。",
+                "trimTitle": "移除歌曲標題中的版本與括號資訊。",
+                "trimAlbum": "專輯名稱含額外版本資訊時將其精簡。",
+                "upNextDisplay": "智慧模式只在歌曲即將結束且需要時顯示預覽。",
+                "trimTitleUpNext": "下一首預覽也套用標題精簡。",
+                "upNextTime": "歌曲結束前多少秒可顯示下一首預覽。",
+                "autoHideLyrics": "沒有可用歌詞時隱藏歌詞區域。",
+                "thirdPartyLyrics": "從網易雲音樂與 QQ 音樂補充翻譯、羅馬音、注音或逐字時間軸。",
+                "animationSpeed": "設定流體背景的基礎流動速度。",
+                "transitionTime": "換歌後背景色彩完成轉場所需的時間。",
+                "backgroundBlur": "數值越高，專輯圖與流體色塊越柔和。",
+                "backgroundBrightness": "設定播放背景的整體明暗。",
+                "themedButtons": "使用目前封面色彩為播放按鈕著色。",
+                "themedIcons": "使用目前封面色彩為播放圖示著色。",
+                "invertColors": "選擇淺色或深色文字，或依背景亮度自動決定。"
+            }
+        },
         "configReset": "重設設定"
     },
     "fullscreenBtnDesc": "全螢幕模式"

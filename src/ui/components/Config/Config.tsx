@@ -10,6 +10,7 @@ import { headerText, getSettingCard, createAdjust } from "../../../utils/setting
 import SeekableProgressBar from "../ProgressBar/ProgressBar";
 import { modifyRotationSpeed } from "../../../utils/animation";
 import { Lyrics } from "../Lyrics/Lyrics";
+import WebAPI from "../../../services/web-api";
 
 export class ConfigManager {
     static configContainer: HTMLDivElement;
@@ -104,6 +105,52 @@ export class ConfigManager {
         });
         section.append(grid);
         return section;
+    }
+
+    private static createSettingsGroup(
+        title: string,
+        description = "",
+        ...items: Array<Node | string>
+    ) {
+        const group = document.createElement("section");
+        group.classList.add("settings-group");
+        group.append(headerText(title, description));
+
+        const grid = document.createElement("div");
+        grid.classList.add("settings-group-grid");
+        items.forEach((item) => {
+            if (item !== "") grid.append(item);
+        });
+        group.append(grid);
+        return group;
+    }
+
+    private static getAccentContrast(hexColor: string) {
+        const rgb = Utils.hexToRgb(hexColor)?.split(",").map(Number);
+        if (!rgb || rgb.length !== 3) return "#ffffff";
+        const [red, green, blue] = rgb.map((channel) => {
+            const value = channel / 255;
+            return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+        });
+        const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722;
+        return luminance > 0.42 ? "#101318" : "#ffffff";
+    }
+
+    private static async applyAlbumAccent() {
+        const imageUrl = Spicetify.Player.data.item?.metadata?.image_xlarge_url;
+        if (!imageUrl) return;
+        const colors = await WebAPI.colorExtractor(imageUrl).catch((error) => {
+            console.warn("Unable to match settings buttons to the album artwork:", error);
+            return undefined;
+        });
+        if (!colors || !this.configContainer.isConnected) return;
+        const accent = colors.VIBRANT ?? colors.DARK_VIBRANT;
+        if (!accent) return;
+        this.configContainer.style.setProperty("--theme-color", accent);
+        this.configContainer.style.setProperty(
+            "--theme-contrast-color",
+            this.getAccentContrast(accent),
+        );
     }
 
     private static createSettingsShell(
@@ -587,363 +634,457 @@ export class ConfigManager {
 
     static openConfig(evt: Event | null = null): void {
         evt?.preventDefault();
-        const LOCALE = CFM.getGlobal("locale") as Config["locale"];
+        const configuredLocale = CFM.getGlobal("locale") as Config["locale"];
+        const LOCALE = configuredLocale in translations ? configuredLocale : DEFAULTS.locale;
+        if (LOCALE !== configuredLocale) CFM.setGlobal("locale", LOCALE);
+        const strings = translations[LOCALE].settings;
+        const layout = strings.layout;
         this.configContainer = document.createElement("div");
         this.configContainer.id = "full-screen-config-container";
         const sections = [
             {
-                id: "plugin",
-                title: translations[LOCALE].settings.pluginSettings,
+                id: "general",
+                title: layout.sections.general.title,
                 section: this.createSettingsSection(
-                    translations[LOCALE].settings.pluginSettings,
-                    "",
-                    this.createOptions(
-                        translations[LOCALE].settings.language,
-                        Utils.getAvailableLanguages(translations),
-                        CFM.getGlobal("locale") as Config["locale"],
-                        "locale",
-                        (value: string) => {
-                            this.saveGlobalOption("locale", value);
-                            document.querySelector("body > generic-modal")?.remove();
-                            this.openConfig();
-                        },
+                    layout.sections.general.title,
+                    layout.sections.general.description,
+                    this.createSettingsGroup(
+                        layout.groups.languageAndLaunch.title,
+                        layout.groups.languageAndLaunch.description,
+                        this.createOptions(
+                            strings.language,
+                            Utils.getAvailableLanguages(translations),
+                            CFM.getGlobal("locale") as Config["locale"],
+                            "locale",
+                            (value: string) => {
+                                this.saveGlobalOption("locale", value);
+                                document.querySelector("body > generic-modal")?.remove();
+                                this.openConfig();
+                            },
+                            layout.descriptions.language,
+                        ),
+                        this.createOptions(
+                            strings.autoLaunch.setting,
+                            {
+                                never: strings.autoLaunch.never,
+                                default: strings.autoLaunch.default,
+                            },
+                            CFM.getGlobal("autoLaunch") as Config["autoLaunch"],
+                            "autoLaunch",
+                            (value: string) => this.saveGlobalOption("autoLaunch", value),
+                            strings.autoLaunch.description,
+                        ),
                     ),
-                    this.createOptions(
-                        translations[LOCALE].settings.activationTypes.setting,
-                        {
-                            both: translations[LOCALE].settings.activationTypes.both,
-                            btns: translations[LOCALE].settings.activationTypes.btns,
-                            keys: translations[LOCALE].settings.activationTypes.keys,
-                        },
-                        CFM.getGlobal("activationTypes") as Config["activationTypes"],
-                        "activationTypes",
-                        (value: string) => {
-                            this.saveGlobalOption("activationTypes", value);
-                            location.reload();
-                        },
-                        translations[LOCALE].settings.activationTypes.description,
+                    this.createSettingsGroup(
+                        layout.groups.activation.title,
+                        layout.groups.activation.description,
+                        this.createOptions(
+                            strings.activationTypes.setting,
+                            {
+                                both: strings.activationTypes.both,
+                                btns: strings.activationTypes.btns,
+                                keys: strings.activationTypes.keys,
+                            },
+                            CFM.getGlobal("activationTypes") as Config["activationTypes"],
+                            "activationTypes",
+                            (value: string) => {
+                                this.saveGlobalOption("activationTypes", value);
+                                location.reload();
+                            },
+                            strings.activationTypes.description,
+                        ),
+                        document.fullscreenEnabled
+                            ? this.createToggle(
+                                  strings.fullscreen,
+                                  "enableFullscreen",
+                                  undefined,
+                                  layout.descriptions.fullscreen,
+                              )
+                            : "",
+                        this.createToggle(
+                            strings.fsHideOriginal,
+                            "fsHideOriginal",
+                            (value) => {
+                                this.saveGlobalOption("fsHideOriginal", value);
+                                location.reload();
+                            },
+                            strings.fsHideOriginalDescription,
+                        ),
+                        this.createToggle(
+                            strings.verticalMonitorSupport,
+                            "verticalMonitorSupport",
+                            (value: boolean) => this.saveOption("verticalMonitorSupport", value),
+                            strings.verticalMonitorSupportDescription,
+                        ),
                     ),
-                    this.createOptions(
-                        translations[LOCALE].settings.autoLaunch.setting,
-                        {
-                            never: translations[LOCALE].settings.autoLaunch.never,
-                            default: translations[LOCALE].settings.autoLaunch.default,
-                        },
-                        CFM.getGlobal("autoLaunch") as Config["autoLaunch"],
-                        "autoLaunch",
-                        (value: string) => {
-                            this.saveGlobalOption("autoLaunch", value);
-                        },
-                        translations[LOCALE].settings.autoLaunch.description,
+                    this.createSettingsGroup(
+                        layout.groups.troubleshooting.title,
+                        layout.groups.troubleshooting.description,
+                        this.createToggle(
+                            strings.debugMode.setting,
+                            "debugMode",
+                            (value) => {
+                                const section =
+                                    this.configContainer.querySelector<HTMLElement>(
+                                        ".fsd-debug-settings",
+                                    );
+                                if (section) section.hidden = !value;
+                                this.saveOption("debugMode", value);
+                            },
+                            strings.debugMode.description,
+                        ),
                     ),
-                    this.createToggle(
-                        translations[LOCALE].settings.fsHideOriginal,
-                        "fsHideOriginal",
-                        (value) => {
-                            this.saveGlobalOption("fsHideOriginal", value);
-                            location.reload();
-                        },
-                        translations[LOCALE].settings.fsHideOriginalDescription,
-                    ),
-                    document.fullscreenEnabled
-                        ? this.createToggle(
-                              translations[LOCALE].settings.fullscreen,
-                              "enableFullscreen",
-                          )
-                        : "",
-                    this.createToggle(
-                        translations[LOCALE].settings.debugMode.setting,
-                        "debugMode",
-                        (value) => {
-                            const section =
-                                this.configContainer.querySelector<HTMLElement>(
-                                    ".fsd-debug-settings",
+                ),
+            },
+            {
+                id: "playback",
+                title: layout.sections.playback.title,
+                section: this.createSettingsSection(
+                    layout.sections.playback.title,
+                    layout.sections.playback.description,
+                    this.createSettingsGroup(
+                        layout.groups.controls.title,
+                        layout.groups.controls.description,
+                        this.createOptions(
+                            strings.progressBar,
+                            {
+                                never: strings.contextDisplay.never,
+                                mousemove: strings.contextDisplay.mouse,
+                                always: strings.contextDisplay.always,
+                            },
+                            CFM.get("progressBarDisplay") as Settings["progressBarDisplay"],
+                            "progressBarDisplay",
+                            (value: string) => {
+                                CFM.set(
+                                    "progressBarDisplay",
+                                    value as Settings["progressBarDisplay"],
                                 );
-                            if (section) section.hidden = !value;
-                            this.saveOption("debugMode", value);
-                        },
-                        translations[LOCALE].settings.debugMode.description,
+                                if (value !== "never") {
+                                    ReactDOM.render(
+                                        <SeekableProgressBar state={value} />,
+                                        DOM.container.querySelector("#fsd-progress-parent"),
+                                    );
+                                } else {
+                                    const root =
+                                        DOM.container.querySelector("#fsd-progress-parent");
+                                    if (root) ReactDOM.unmountComponentAtNode(root);
+                                }
+                            },
+                            layout.descriptions.progressBar,
+                        ),
+                        this.createOptions(
+                            strings.playerControls,
+                            {
+                                never: strings.contextDisplay.never,
+                                mousemove: strings.contextDisplay.mouse,
+                                always: strings.contextDisplay.always,
+                            },
+                            CFM.get("playerControls") as Settings["playerControls"],
+                            "playerControls",
+                            (value: string) => this.saveOption("playerControls", value),
+                            layout.descriptions.playerControls,
+                        ),
+                    ),
+                    this.createSettingsGroup(
+                        layout.groups.trackInfo.title,
+                        layout.groups.trackInfo.description,
+                        this.createOptions(
+                            strings.showAlbum.setting,
+                            {
+                                never: strings.showAlbum.never,
+                                always: strings.showAlbum.always,
+                                date: strings.showAlbum.date,
+                            },
+                            CFM.get("showAlbum") as Settings["showAlbum"],
+                            "showAlbum",
+                            (value: string) => this.saveOption("showAlbum", value),
+                            layout.descriptions.showAlbum,
+                        ),
+                        this.createToggle(
+                            strings.icons,
+                            "icons",
+                            undefined,
+                            layout.descriptions.icons,
+                        ),
+                        this.createToggle(
+                            strings.trimTitle,
+                            "trimTitle",
+                            undefined,
+                            layout.descriptions.trimTitle,
+                        ),
+                        this.createToggle(
+                            strings.trimAlbum,
+                            "trimAlbum",
+                            undefined,
+                            layout.descriptions.trimAlbum,
+                        ),
+                    ),
+                    this.createSettingsGroup(
+                        layout.groups.upNext.title,
+                        layout.groups.upNext.description,
+                        this.createOptions(
+                            strings.upnextDisplay,
+                            {
+                                always: strings.volumeDisplay.always,
+                                never: strings.volumeDisplay.never,
+                                smart: strings.volumeDisplay.smart,
+                            },
+                            CFM.get("upnextDisplay") as Settings["upnextDisplay"],
+                            "upnextDisplay",
+                            (value: string) => this.saveOption("upnextDisplay", value),
+                            layout.descriptions.upNextDisplay,
+                        ),
+                        this.createToggle(
+                            strings.trimTitleUpNext,
+                            "trimTitleUpNext",
+                            undefined,
+                            layout.descriptions.trimTitleUpNext,
+                        ),
+                        createAdjust(
+                            strings.upnextTime,
+                            "upnextTimeToShow",
+                            "s",
+                            CFM.get("upnextTimeToShow") as Settings["upnextTimeToShow"],
+                            1,
+                            5,
+                            60,
+                            (state) => {
+                                CFM.set("upnextTimeToShow", Number(state));
+                                this.updateUpNextShow();
+                            },
+                            layout.descriptions.upNextTime,
+                        ),
                     ),
                 ),
             },
             {
                 id: "lyrics",
-                title: translations[LOCALE].settings.lyricsHeader,
+                title: layout.sections.lyrics.title,
                 section: this.createSettingsSection(
-                    translations[LOCALE].settings.lyricsHeader,
-                    "",
-                    this.createToggle(
-                        translations[LOCALE].settings.lyrics,
-                        "lyricsDisplay",
-                        (value) => {
-                            this.saveOption("lyricsDisplay", value);
-                            DOM.container.classList.remove("lyrics-unavailable");
-                        },
-                        translations[LOCALE].settings.lyricsDescription.join("<br>"),
+                    layout.sections.lyrics.title,
+                    layout.sections.lyrics.description,
+                    this.createSettingsGroup(
+                        layout.groups.lyricsDisplay.title,
+                        layout.groups.lyricsDisplay.description,
+                        this.createToggle(
+                            strings.lyrics,
+                            "lyricsDisplay",
+                            (value) => {
+                                this.saveOption("lyricsDisplay", value);
+                                DOM.container.classList.remove("lyrics-unavailable");
+                            },
+                            strings.lyricsDescription.join("<br>"),
+                        ),
+                        createAdjust(
+                            strings.lyricsSize.setting,
+                            "lyricsSize",
+                            "px",
+                            Number(CFM.get("lyricsSize") || DEFAULTS.def.lyricsSize),
+                            1,
+                            12,
+                            99,
+                            (value: number) =>
+                                this.saveOption(
+                                    "lyricsSize",
+                                    value as unknown as Settings["lyricsSize"],
+                                ),
+                            strings.lyricsSize.description,
+                        ),
+                        this.createToggle(
+                            strings.autoHideLyrics,
+                            "autoHideLyrics",
+                            undefined,
+                            layout.descriptions.autoHideLyrics,
+                        ),
                     ),
-                    this.createToggle(
-                        translations[LOCALE].settings.thirdPartyLyrics,
-                        "thirdPartyLyrics",
+                    this.createSettingsGroup(
+                        layout.groups.lyricSources.title,
+                        layout.groups.lyricSources.description,
+                        this.createToggle(
+                            strings.thirdPartyLyrics,
+                            "thirdPartyLyrics",
+                            undefined,
+                            layout.descriptions.thirdPartyLyrics,
+                        ),
+                        this.createToggle(
+                            strings.sharedLyricsBridge.setting,
+                            "sharedLyricsBridge",
+                            undefined,
+                            strings.sharedLyricsBridge.description,
+                        ),
+                        this.createToggle(
+                            strings.relaxedLyricsMatching.setting,
+                            "relaxedLyricsMatching",
+                            undefined,
+                            strings.relaxedLyricsMatching.description,
+                        ),
                     ),
-                    this.createToggle(
-                        translations[LOCALE].settings.sharedLyricsBridge.setting,
-                        "sharedLyricsBridge",
-                        undefined,
-                        translations[LOCALE].settings.sharedLyricsBridge.description,
-                    ),
-                    this.createToggle(
-                        translations[LOCALE].settings.relaxedLyricsMatching.setting,
-                        "relaxedLyricsMatching",
-                        undefined,
-                        translations[LOCALE].settings.relaxedLyricsMatching.description,
-                    ),
-                    this.createToggle(
-                        translations[LOCALE].settings.showLyricsTranslation,
-                        "showLyricsTranslation",
-                    ),
-                    this.createToggle(
-                        translations[LOCALE].settings.showLyricsRomanization,
-                        "showLyricsRomanization",
-                    ),
-                    this.createToggle(
-                        translations[LOCALE].settings.showLyricsFurigana,
-                        "showLyricsFurigana",
-                    ),
-                    this.createOptions(
-                        translations[LOCALE].settings.lyricsChineseConversion.setting,
-                        {
-                            original:
-                                translations[LOCALE].settings.lyricsChineseConversion.original,
-                            simplified:
-                                translations[LOCALE].settings.lyricsChineseConversion.simplified,
-                            traditional:
-                                translations[LOCALE].settings.lyricsChineseConversion.traditional,
-                        },
-                        CFM.get("lyricsChineseConversion") as Settings["lyricsChineseConversion"],
-                        "lyricsChineseConversion",
-                        (value) =>
-                            this.saveOption(
+                    this.createSettingsGroup(
+                        layout.groups.lyricContent.title,
+                        layout.groups.lyricContent.description,
+                        this.createToggle(strings.showLyricsTranslation, "showLyricsTranslation"),
+                        this.createToggle(strings.showLyricsRomanization, "showLyricsRomanization"),
+                        this.createToggle(strings.showLyricsFurigana, "showLyricsFurigana"),
+                        this.createOptions(
+                            strings.lyricsChineseConversion.setting,
+                            {
+                                original: strings.lyricsChineseConversion.original,
+                                simplified: strings.lyricsChineseConversion.simplified,
+                                traditional: strings.lyricsChineseConversion.traditional,
+                            },
+                            CFM.get(
                                 "lyricsChineseConversion",
-                                value as Settings["lyricsChineseConversion"],
-                            ),
-                        translations[LOCALE].settings.lyricsChineseConversion.description,
-                    ),
-                    this.createToggle(translations[LOCALE].settings.karaokeLyrics, "karaokeLyrics"),
-                    this.createToggle(
-                        translations[LOCALE].settings.autoHideLyrics,
-                        "autoHideLyrics",
-                    ),
-                    createAdjust(
-                        translations[LOCALE].settings.lyricsSize.setting,
-                        "lyricsSize",
-                        "px",
-                        Number(CFM.get("lyricsSize") || 30),
-                        1,
-                        12,
-                        99,
-                        (value: number) =>
-                            this.saveOption(
-                                "lyricsSize",
-                                value as unknown as Settings["lyricsSize"],
-                            ),
-                        translations[LOCALE].settings.lyricsSize.description,
+                            ) as Settings["lyricsChineseConversion"],
+                            "lyricsChineseConversion",
+                            (value) =>
+                                this.saveOption(
+                                    "lyricsChineseConversion",
+                                    value as Settings["lyricsChineseConversion"],
+                                ),
+                            strings.lyricsChineseConversion.description,
+                        ),
+                        this.createToggle(strings.karaokeLyrics, "karaokeLyrics"),
                     ),
                     this.createDebugSettings(LOCALE),
                 ),
             },
             {
-                id: "general",
-                title: translations[LOCALE].settings.generalHeader,
-                section: this.createSettingsSection(
-                    translations[LOCALE].settings.generalHeader,
-                    "",
-                    this.createOptions(
-                        translations[LOCALE].settings.progressBar,
-                        {
-                            never: translations[LOCALE].settings.contextDisplay.never,
-                            mousemove: translations[LOCALE].settings.contextDisplay.mouse,
-                            always: translations[LOCALE].settings.contextDisplay.always,
-                        },
-                        CFM.get("progressBarDisplay") as Settings["progressBarDisplay"],
-                        "progressBarDisplay",
-                        (value: string) => {
-                            CFM.set("progressBarDisplay", value as Settings["progressBarDisplay"]);
-                            if (value !== "never") {
-                                ReactDOM.render(
-                                    <SeekableProgressBar state={value} />,
-                                    DOM.container.querySelector("#fsd-progress-parent"),
-                                );
-                            } else {
-                                const root = DOM.container.querySelector("#fsd-progress-parent");
-                                if (root) ReactDOM.unmountComponentAtNode(root);
-                            }
-                        },
-                    ),
-                    this.createOptions(
-                        translations[LOCALE].settings.playerControls,
-                        {
-                            never: translations[LOCALE].settings.contextDisplay.never,
-                            mousemove: translations[LOCALE].settings.contextDisplay.mouse,
-                            always: translations[LOCALE].settings.contextDisplay.always,
-                        },
-                        CFM.get("playerControls") as Settings["playerControls"],
-                        "playerControls",
-                        (value: string) => this.saveOption("playerControls", value),
-                    ),
-                    this.createOptions(
-                        translations[LOCALE].settings.showAlbum.setting,
-                        {
-                            never: translations[LOCALE].settings.showAlbum.never,
-                            always: translations[LOCALE].settings.showAlbum.always,
-                            date: translations[LOCALE].settings.showAlbum.date,
-                        },
-                        CFM.get("showAlbum") as Settings["showAlbum"],
-                        "showAlbum",
-                        (value: string) => this.saveOption("showAlbum", value),
-                    ),
-                    this.createToggle(translations[LOCALE].settings.icons, "icons"),
-                    this.createToggle(translations[LOCALE].settings.trimTitle, "trimTitle"),
-                    this.createToggle(translations[LOCALE].settings.trimAlbum, "trimAlbum"),
-                    this.createOptions(
-                        translations[LOCALE].settings.upnextDisplay,
-                        {
-                            always: translations[LOCALE].settings.volumeDisplay.always,
-                            never: translations[LOCALE].settings.volumeDisplay.never,
-                            smart: translations[LOCALE].settings.volumeDisplay.smart,
-                        },
-                        CFM.get("upnextDisplay") as Settings["upnextDisplay"],
-                        "upnextDisplay",
-                        (value: string) => this.saveOption("upnextDisplay", value),
-                    ),
-                    this.createToggle(
-                        translations[LOCALE].settings.trimTitleUpNext,
-                        "trimTitleUpNext",
-                    ),
-                    createAdjust(
-                        translations[LOCALE].settings.upnextTime,
-                        "upnextTimeToShow",
-                        "s",
-                        CFM.get("upnextTimeToShow") as Settings["upnextTimeToShow"],
-                        1,
-                        5,
-                        60,
-                        (state) => {
-                            CFM.set("upnextTimeToShow", Number(state));
-                            this.updateUpNextShow();
-                        },
-                    ),
-                    this.createToggle(
-                        translations[LOCALE].settings.verticalMonitorSupport,
-                        "verticalMonitorSupport",
-                        (value: boolean) => this.saveOption("verticalMonitorSupport", value),
-                        translations[LOCALE].settings.verticalMonitorSupportDescription,
-                    ),
-                ),
-            },
-            {
                 id: "background",
-                title: translations[LOCALE].settings.backgroundHeader,
+                title: layout.sections.background.title,
                 section: this.createSettingsSection(
-                    translations[LOCALE].settings.backgroundHeader,
-                    translations[LOCALE].settings.backgroundSubHeader,
-                    this.createBeatResponsePresetSetting(LOCALE),
-                    this.createToggle(
-                        translations[LOCALE].settings.bpmDrivenMotion,
-                        "bpmDrivenMotion",
-                        (value) => CFM.set("bpmDrivenMotion", value),
-                        translations[LOCALE].settings.bpmDrivenMotionDescription,
+                    layout.sections.background.title,
+                    layout.sections.background.description,
+                    this.createSettingsGroup(
+                        layout.groups.motion.title,
+                        layout.groups.motion.description,
+                        this.createBeatResponsePresetSetting(LOCALE),
+                        this.createToggle(
+                            strings.bpmDrivenMotion,
+                            "bpmDrivenMotion",
+                            (value) => CFM.set("bpmDrivenMotion", value),
+                            strings.bpmDrivenMotionDescription,
+                        ),
+                        this.createBeatSettings(LOCALE),
+                        createAdjust(
+                            strings.animationSpeed,
+                            "animationSpeed",
+                            "",
+                            (CFM.get("animationSpeed") as Settings["animationSpeed"]) * 100,
+                            2,
+                            2,
+                            40,
+                            (state) => {
+                                CFM.set("animationSpeed", Number(state) / 100);
+                                modifyRotationSpeed(Number(state) / 100);
+                            },
+                            layout.descriptions.animationSpeed,
+                        ),
                     ),
-                    this.createBeatSettings(LOCALE),
-                    createAdjust(
-                        translations[LOCALE].settings.animationSpeed,
-                        "animationSpeed",
-                        "",
-                        (CFM.get("animationSpeed") as Settings["animationSpeed"]) * 100,
-                        2,
-                        2,
-                        40,
-                        (state) => {
-                            CFM.set("animationSpeed", Number(state) / 100);
-                            modifyRotationSpeed(Number(state) / 100);
-                        },
-                    ),
-                    createAdjust(
-                        translations[LOCALE].settings.backAnimationTime,
-                        "backAnimationTime",
-                        "s",
-                        CFM.get("backAnimationTime") as Settings["backAnimationTime"],
-                        0.1,
-                        0,
-                        5,
-                        (state) => {
-                            CFM.set("backAnimationTime", Number(state));
-                            DOM.container.style.setProperty("--fs-transition", `${state}s`);
-                        },
-                    ),
-                    createAdjust(
-                        translations[LOCALE].settings.backgroundBlur,
-                        "blurSize",
-                        "",
-                        CFM.get("blurSize") as Settings["blurSize"],
-                        4,
-                        0,
-                        100,
-                        (state) => {
-                            CFM.set("blurSize", Number(state));
-                            if (Utils.isModeActivated()) {
-                                Utils.overlayBack();
-                                this.updateBackground(Spicetify.Player.data.item?.metadata, true);
-                                if (this.overlayTimout) clearTimeout(this.overlayTimout);
-                                this.overlayTimout = setTimeout(() => {
-                                    Utils.overlayBack(false);
-                                }, 2000);
-                            }
-                        },
-                    ),
-                    this.createOptions(
-                        translations[LOCALE].settings.backgroundBrightness,
-                        {
-                            0: "0%",
-                            0.1: "10%",
-                            0.2: "20%",
-                            0.3: "30%",
-                            0.4: "40%",
-                            0.5: "50%",
-                            0.6: "60%",
-                            0.7: "70%",
-                            0.8: "80%",
-                            0.9: "90%",
-                            1: "100%",
-                        },
-                        CFM.get("backgroundBrightness") as Settings["backgroundBrightness"],
-                        "backgroundBrightness",
-                        (value: string) => {
-                            CFM.set("backgroundBrightness", Number(value));
-                            if (Utils.isModeActivated()) {
-                                this.updateBackground(Spicetify.Player.data.item?.metadata, true);
-                            }
-                        },
+                    this.createSettingsGroup(
+                        layout.groups.backgroundRendering.title,
+                        layout.groups.backgroundRendering.description,
+                        createAdjust(
+                            strings.backAnimationTime,
+                            "backAnimationTime",
+                            "s",
+                            CFM.get("backAnimationTime") as Settings["backAnimationTime"],
+                            0.1,
+                            0,
+                            5,
+                            (state) => {
+                                CFM.set("backAnimationTime", Number(state));
+                                DOM.container.style.setProperty("--fs-transition", `${state}s`);
+                            },
+                            layout.descriptions.transitionTime,
+                        ),
+                        createAdjust(
+                            strings.backgroundBlur,
+                            "blurSize",
+                            "",
+                            CFM.get("blurSize") as Settings["blurSize"],
+                            4,
+                            0,
+                            100,
+                            (state) => {
+                                CFM.set("blurSize", Number(state));
+                                if (Utils.isModeActivated()) {
+                                    Utils.overlayBack();
+                                    this.updateBackground(
+                                        Spicetify.Player.data.item?.metadata,
+                                        true,
+                                    );
+                                    if (this.overlayTimout) clearTimeout(this.overlayTimout);
+                                    this.overlayTimout = setTimeout(() => {
+                                        Utils.overlayBack(false);
+                                    }, 2000);
+                                }
+                            },
+                            layout.descriptions.backgroundBlur,
+                        ),
+                        this.createOptions(
+                            strings.backgroundBrightness,
+                            {
+                                0: "0%",
+                                0.1: "10%",
+                                0.2: "20%",
+                                0.3: "30%",
+                                0.4: "40%",
+                                0.5: "50%",
+                                0.6: "60%",
+                                0.7: "70%",
+                                0.8: "80%",
+                                0.9: "90%",
+                                1: "100%",
+                            },
+                            CFM.get("backgroundBrightness") as Settings["backgroundBrightness"],
+                            "backgroundBrightness",
+                            (value: string) => {
+                                CFM.set("backgroundBrightness", Number(value));
+                                if (Utils.isModeActivated()) {
+                                    this.updateBackground(
+                                        Spicetify.Player.data.item?.metadata,
+                                        true,
+                                    );
+                                }
+                            },
+                            layout.descriptions.backgroundBrightness,
+                        ),
                     ),
                 ),
             },
             {
                 id: "appearance",
-                title: translations[LOCALE].settings.appearanceHeader,
+                title: layout.sections.appearance.title,
                 section: this.createSettingsSection(
-                    translations[LOCALE].settings.appearanceHeader,
-                    translations[LOCALE].settings.appearanceSubHeader,
-                    this.createToggle(translations[LOCALE].settings.themedButtons, "themedButtons"),
-                    this.createToggle(translations[LOCALE].settings.themedIcons, "themedIcons"),
-                    this.createOptions(
-                        translations[LOCALE].settings.invertColors.setting,
-                        {
-                            never: translations[LOCALE].settings.invertColors.never,
-                            always: translations[LOCALE].settings.invertColors.always,
-                            auto: translations[LOCALE].settings.invertColors.auto,
-                        },
-                        CFM.get("invertColors") as Settings["invertColors"],
-                        "invertColors",
-                        (value: string) => this.saveOption("invertColors", value),
+                    layout.sections.appearance.title,
+                    layout.sections.appearance.description,
+                    this.createSettingsGroup(
+                        layout.groups.playbackTheme.title,
+                        layout.groups.playbackTheme.description,
+                        this.createToggle(
+                            strings.themedButtons,
+                            "themedButtons",
+                            undefined,
+                            layout.descriptions.themedButtons,
+                        ),
+                        this.createToggle(
+                            strings.themedIcons,
+                            "themedIcons",
+                            undefined,
+                            layout.descriptions.themedIcons,
+                        ),
+                        this.createOptions(
+                            strings.invertColors.setting,
+                            {
+                                never: strings.invertColors.never,
+                                always: strings.invertColors.always,
+                                auto: strings.invertColors.auto,
+                            },
+                            CFM.get("invertColors") as Settings["invertColors"],
+                            "invertColors",
+                            (value: string) => this.saveOption("invertColors", value),
+                            layout.descriptions.invertColors,
+                        ),
                     ),
                 ),
             },
@@ -953,8 +1094,9 @@ export class ConfigManager {
             this.getSettingsFooter(LOCALE),
         );
         Spicetify.PopupModal.display({
-            title: translations[LOCALE].settings.fullscreenConfig,
+            title: strings.fullscreenConfig,
             content: this.configContainer,
         });
+        window.requestAnimationFrame(() => void this.applyAlbumAccent());
     }
 }

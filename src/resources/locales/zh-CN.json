@@ -219,6 +219,93 @@
         "upnextTime": "下一首提示显示时间",
         "backgroundBlur": "背景模糊强度",
         "backgroundBrightness": "背景亮度",
+        "layout": {
+            "sections": {
+                "general": {
+                    "title": "常规",
+                    "description": "设置语言、启动方式、激活方式、显示模式和诊断功能。"
+                },
+                "playback": {
+                    "title": "播放界面",
+                    "description": "选择全屏播放界面显示哪些内容，以及何时显示。"
+                },
+                "lyrics": {
+                    "title": "歌词",
+                    "description": "管理歌词来源、可读性和可选增强内容。"
+                },
+                "background": {
+                    "title": "背景与动画",
+                    "description": "调整流体动画、节拍响应、过渡、模糊和亮度。"
+                },
+                "appearance": {
+                    "title": "颜色与对比度",
+                    "description": "设置专辑封面颜色在播放界面中的应用方式。"
+                }
+            },
+            "groups": {
+                "languageAndLaunch": {
+                    "title": "语言与启动",
+                    "description": "这些设置会在 Spotify 启动时生效。"
+                },
+                "activation": {
+                    "title": "打开全屏播放",
+                    "description": "选择如何打开和显示全屏播放界面。"
+                },
+                "troubleshooting": { "title": "故障排查", "description": "诊断功能通常无需开启。" },
+                "controls": {
+                    "title": "播放控制",
+                    "description": "设置进度条和播放控制按钮的显示时机。"
+                },
+                "trackInfo": {
+                    "title": "歌曲信息",
+                    "description": "选择要显示的歌曲信息及标题精简方式。"
+                },
+                "upNext": { "title": "下一首", "description": "控制歌曲结束前的下一首预览。" },
+                "lyricsDisplay": {
+                    "title": "显示",
+                    "description": "设置歌词是否显示以及文字大小。"
+                },
+                "lyricSources": {
+                    "title": "来源与匹配",
+                    "description": "选择增强歌词的来源及匹配严格程度。"
+                },
+                "lyricContent": {
+                    "title": "阅读辅助",
+                    "description": "在可用时显示翻译、读音、繁简转换和逐字时间轴。"
+                },
+                "motion": { "title": "动画", "description": "控制基础流动速度及跟随音乐的强度。" },
+                "backgroundRendering": {
+                    "title": "画面效果",
+                    "description": "调整动态背景的最终视觉效果。"
+                },
+                "playbackTheme": {
+                    "title": "封面主题",
+                    "description": "这些选项影响播放界面；设置窗口按钮始终跟随当前歌曲封面。"
+                }
+            },
+            "descriptions": {
+                "language": "更改此插件的控件和设置语言。",
+                "fullscreen": "打开播放界面时使用系统原生全屏。",
+                "progressBar": "选择进度条始终显示、随鼠标移动显示或完全隐藏。",
+                "playerControls": "选择播放、暂停、上一首和下一首按钮的显示时机。",
+                "showAlbum": "显示专辑名称，也可以同时显示发行日期。",
+                "icons": "在播放信息旁显示小图标。",
+                "trimTitle": "移除当前歌曲标题中的括号版本信息和末尾版本文字。",
+                "trimAlbum": "专辑名称包含额外版本信息时将其精简。",
+                "upNextDisplay": "智能模式只在歌曲即将结束且需要时显示预览。",
+                "trimTitleUpNext": "下一首预览也使用标题精简。",
+                "upNextTime": "当前歌曲结束前多少秒可以显示下一首预览。",
+                "autoHideLyrics": "当前歌曲没有可用歌词时隐藏歌词区域。",
+                "thirdPartyLyrics": "从网易云音乐和 QQ 音乐补充缺少的翻译、罗马音、注音或逐字时间轴。",
+                "animationSpeed": "设置流体背景的基础流动速度。",
+                "transitionTime": "切换歌曲后，背景颜色完成过渡所需的时间。",
+                "backgroundBlur": "数值越高，专辑图和流体色块越柔和。",
+                "backgroundBrightness": "设置播放背景的整体明暗程度。",
+                "themedButtons": "使用当前歌曲封面颜色为播放按钮着色。",
+                "themedIcons": "使用当前歌曲封面颜色为播放图标着色。",
+                "invertColors": "选择浅色或深色播放文字，也可以根据背景亮度自动决定。"
+            }
+        },
         "configReset": "重置配置"
     },
     "fullscreenBtnDesc": "全屏"

@@ -1,48 +1,18 @@
 import enUS from "./locales/en-US.json";
-import itIT from "./locales/it-IT.json";
 import zhCN from "./locales/zh-CN.json";
-import deDE from "./locales/de-DE.json";
-import trTR from "./locales/tr-TR.json";
-import ruRU from "./locales/ru-RU.json";
-import viVN from "./locales/vi-VN.json";
-import esES from "./locales/es-ES.json";
-import frFR from "./locales/fr-FR.json";
-import idID from "./locales/id-ID.json";
-import ptBR from "./locales/pt-BR.json";
 import zhTW from "./locales/zh-TW.json";
-import arSA from "./locales/ar-SA.json";
-import hiIN from "./locales/hi-IN.json";
 import jaJP from "./locales/ja-JP.json";
 import koKR from "./locales/ko-KR.json";
-import nlNL from "./locales/nl-NL.json";
-import plPL from "./locales/pl-PL.json";
-import svSE from "./locales/sv-SE.json";
-import thTH from "./locales/th-TH.json";
 import defaultsDeep from "lodash.defaultsdeep";
 
 // Translation strings
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const translations: Record<string, any> = {
     "en-US": enUS,
-    "it-IT": defaultsDeep(itIT, enUS),
     "zh-CN": defaultsDeep(zhCN, enUS),
-    "de-DE": defaultsDeep(deDE, enUS),
-    "tr-TR": defaultsDeep(trTR, enUS),
-    "ru-RU": defaultsDeep(ruRU, enUS),
-    "vi-VN": defaultsDeep(viVN, enUS),
-    "es-ES": defaultsDeep(esES, enUS),
-    "fr-FR": defaultsDeep(frFR, enUS),
-    "id-ID": defaultsDeep(idID, enUS),
-    "pt-BR": defaultsDeep(ptBR, enUS),
     "zh-TW": defaultsDeep(zhTW, enUS),
-    "ar-SA": defaultsDeep(arSA, enUS),
-    "hi-IN": defaultsDeep(hiIN, enUS),
     "ja-JP": defaultsDeep(jaJP, enUS),
     "ko-KR": defaultsDeep(koKR, enUS),
-    "nl-NL": defaultsDeep(nlNL, enUS),
-    "pl-PL": defaultsDeep(plPL, enUS),
-    "sv-SE": defaultsDeep(svSE, enUS),
-    "th-TH": defaultsDeep(thTH, enUS),
 };
 
 export default translations;

@@ -92,6 +92,102 @@
         "upnextTime": "다음 곡 표시 시간",
         "backgroundBlur": "배경 흐림",
         "backgroundBrightness": "배경 밝기",
+        "layout": {
+            "sections": {
+                "general": {
+                    "title": "일반",
+                    "description": "언어, 시작, 실행 방법, 표시 모드 및 진단을 설정합니다."
+                },
+                "playback": {
+                    "title": "재생 화면",
+                    "description": "전체 화면 플레이어에 표시할 내용과 시점을 선택합니다."
+                },
+                "lyrics": {
+                    "title": "가사",
+                    "description": "가사 소스, 가독성 및 선택적 향상 기능을 관리합니다."
+                },
+                "background": {
+                    "title": "배경 및 모션",
+                    "description": "유체 모션, 비트 반응, 전환, 흐림 및 밝기를 조정합니다."
+                },
+                "appearance": {
+                    "title": "색상 및 대비",
+                    "description": "앨범 색상을 재생 화면에 적용하는 방식을 설정합니다."
+                }
+            },
+            "groups": {
+                "languageAndLaunch": {
+                    "title": "언어 및 시작",
+                    "description": "Spotify 시작 시 적용되는 설정입니다."
+                },
+                "activation": {
+                    "title": "전체 화면 재생 열기",
+                    "description": "전체 화면 재생을 여는 방법과 표시 방식을 선택합니다."
+                },
+                "troubleshooting": {
+                    "title": "문제 해결",
+                    "description": "일반적으로 진단 기능은 꺼 두어도 됩니다."
+                },
+                "controls": {
+                    "title": "재생 컨트롤",
+                    "description": "진행률 표시줄과 재생 버튼의 표시 시점을 설정합니다."
+                },
+                "trackInfo": {
+                    "title": "곡 정보",
+                    "description": "표시할 곡 정보와 제목 정리 방식을 선택합니다."
+                },
+                "upNext": {
+                    "title": "다음 곡",
+                    "description": "곡이 끝나기 전 다음 곡 미리보기를 설정합니다."
+                },
+                "lyricsDisplay": {
+                    "title": "표시",
+                    "description": "가사 표시 여부와 글자 크기를 설정합니다."
+                },
+                "lyricSources": {
+                    "title": "소스 및 일치",
+                    "description": "향상된 가사의 소스와 일치 엄격도를 선택합니다."
+                },
+                "lyricContent": {
+                    "title": "읽기 보조",
+                    "description": "번역, 발음, 문자 변환 및 단어 타이밍을 표시합니다."
+                },
+                "motion": {
+                    "title": "모션",
+                    "description": "기본 흐름과 음악 반응 강도를 제어합니다."
+                },
+                "backgroundRendering": {
+                    "title": "렌더링",
+                    "description": "애니메이션 배경의 최종 모양을 조정합니다."
+                },
+                "playbackTheme": {
+                    "title": "앨범 기반 테마",
+                    "description": "재생 화면에 적용됩니다. 설정 창 버튼은 항상 현재 앨범 표지 색상을 따릅니다."
+                }
+            },
+            "descriptions": {
+                "language": "이 플러그인의 컨트롤 및 설정 언어를 변경합니다.",
+                "fullscreen": "재생 화면을 열 때 시스템 전체 화면을 사용합니다.",
+                "progressBar": "진행률 표시줄을 항상 표시하거나 마우스 이동 시 표시하거나 숨깁니다.",
+                "playerControls": "재생, 일시정지, 이전 및 다음 버튼의 표시 시점을 선택합니다.",
+                "showAlbum": "앨범 이름과 선택적으로 발매일을 표시합니다.",
+                "icons": "재생 정보 옆에 작은 아이콘을 표시합니다.",
+                "trimTitle": "현재 곡 제목에서 괄호 및 버전 문구를 제거합니다.",
+                "trimAlbum": "앨범 이름의 추가 버전 정보를 짧게 표시합니다.",
+                "upNextDisplay": "스마트 모드는 곡이 끝날 무렵 필요할 때만 표시합니다.",
+                "trimTitleUpNext": "다음 곡 미리보기에도 제목 정리를 적용합니다.",
+                "upNextTime": "현재 곡 종료 몇 초 전부터 다음 곡을 표시할지 설정합니다.",
+                "autoHideLyrics": "사용 가능한 가사가 없으면 가사 영역을 숨깁니다.",
+                "thirdPartyLyrics": "NetEase 및 QQ Music에서 번역, 로마자, 후리가나 또는 단어 타이밍을 보완합니다.",
+                "animationSpeed": "유체 배경의 기본 흐름 속도를 설정합니다.",
+                "transitionTime": "곡 변경 후 배경색이 전환되는 시간을 설정합니다.",
+                "backgroundBlur": "값이 높을수록 앨범 이미지와 유체 모양이 부드러워집니다.",
+                "backgroundBrightness": "재생 배경의 전체 밝기를 설정합니다.",
+                "themedButtons": "현재 앨범 표지 색상을 재생 버튼에 사용합니다.",
+                "themedIcons": "현재 앨범 표지 색상을 재생 아이콘에 사용합니다.",
+                "invertColors": "밝은 글자, 어두운 글자 또는 배경 기반 자동 선택을 지정합니다."
+            }
+        },
         "configReset": "설정 초기화"
     },
     "fullscreenBtnDesc": "전체 화면"
