@@ -16,6 +16,76 @@ Full-screen now-playing extension for Spicetify. Builds into `dist/fullScreen.js
     spicetify apply
     ```
 
+## Uninstall
+
+### Remove the extension
+
+1. Print the installed file location before deleting it:
+
+    ```bash
+    spicetify path -e fullScreen.js
+    ```
+
+2. Remove Full Screen from Spicetify's enabled extensions and apply the change:
+
+    ```bash
+    spicetify config extensions fullScreen.js-
+    spicetify apply
+    ```
+
+3. Delete the `fullScreen.js` file at the location printed in step 1. Common locations are `~/.config/spicetify/Extensions/fullScreen.js` on Linux/macOS and `%appdata%\spicetify\Extensions\fullScreen.js` on Windows.
+
+These steps stop the extension from loading, but they intentionally leave its settings and caches available in case it is installed again.
+
+### Remove all Full Screen settings and caches
+
+Full Screen stores its settings, lyric cache, update metadata, and confirmed GitHub Release scripts inside Spotify's browser storage. To remove only data owned by Full Screen:
+
+1. Enable Spotify developer tools if they are not already available, then restart Spotify:
+
+    ```bash
+    spicetify enable-devtools
+    spicetify restart
+    ```
+
+2. Open Spotify developer tools with `Ctrl+Shift+I` on Windows/Linux or `Cmd+Option+I` on macOS, select the **Console** tab, and run:
+
+    ```js
+    (() => {
+        const exactKeys = new Set([
+            "full-screen-playing:config",
+            "full-screen:lyrics-bridge-debug",
+        ]);
+        const ownedPrefixes = [
+            "full-screen:update:",
+            "full-screen:lyrics-cache-",
+            "full-screen:lyrics-bridge-trace-",
+        ];
+
+        for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+            const key = localStorage.key(index);
+            if (
+                key &&
+                (exactKeys.has(key) || ownedPrefixes.some((prefix) => key.startsWith(prefix)))
+            ) {
+                localStorage.removeItem(key);
+            }
+        }
+
+        const request = indexedDB.deleteDatabase("full-screen-release-cache");
+        request.onsuccess = () => console.info("Full Screen data removed.");
+        request.onerror = () =>
+            console.error("Unable to remove Full Screen release cache.", request.error);
+        request.onblocked = () => console.warn("Close other Spotify windows and run this again.");
+    })();
+    ```
+
+3. Complete the extension removal steps above if `fullScreen.js` is still enabled or installed.
+
+The IndexedDB deletion removes every automatically downloaded and confirmed GitHub Release, while the targeted local-storage cleanup removes Full Screen settings, lyrics, update prompts, cached release lists, and diagnostic traces. It does not remove the shared cache maintained by the separate LyricShiori service; manage that cache through LyricShiori itself if it is installed.
+
+Using Developer Tools → **Application** → **Storage** → **Clear site data** is a broader alternative, but it also deletes Spotify and other extensions' browser data and may require reconfiguration or sign-in. The targeted script above is recommended.
+
 ## Updates
 
 With **Automatically check for updates** enabled, the extension checks the latest stable GitHub Release at startup and caches the result for six hours. Detection only shows a prompt: Full Screen never switches to a newly detected version until the user confirms.
