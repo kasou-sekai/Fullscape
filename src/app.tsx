@@ -14,6 +14,7 @@ import { createOverflowScrollAnimation, getOverflowScrollTiming } from "./utils/
 
 import { getHtmlContent } from "./services/html-creator";
 import { initMoustrapRecord } from "./services/mousetrap-record";
+import { startSharedBridgePresence } from "./services/lyrics-cache";
 
 import SeekableProgressBar from "./ui/components/ProgressBar/ProgressBar";
 
@@ -45,6 +46,7 @@ async function main() {
     // Start from here
     initMoustrapRecord(Spicetify.Mousetrap);
     DOM.init();
+    startSharedBridgePresence();
 
     if (CFM.getGlobal("activationTypes") !== "btns") {
         Spicetify.Mousetrap.bind("f", toggleFullscreen);

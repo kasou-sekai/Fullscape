@@ -56,9 +56,34 @@ const MAX_SERIALIZED_LENGTH = 1_750_000;
 const SHARED_REQUEST_TIMEOUT_MS = 800;
 const SHARED_BRIDGE_ORIGIN = "http://127.0.0.1:24887";
 const SHARED_CACHE_ENDPOINT = `${SHARED_BRIDGE_ORIGIN}/lyrics-cache`;
+const SHARED_PRESENCE_ENDPOINT = `${SHARED_BRIDGE_ORIGIN}/bridge-presence`;
+const SHARED_PRESENCE_INTERVAL_MS = 5_000;
 
 let store: LyricsCacheStore | null = null;
 let sharedSessionToken: string | null = null;
+let sharedPresenceTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Announces that the extension runtime itself is alive. This is intentionally
+ * independent of lyric loading: a cached song may need no bridge request at all.
+ */
+export function startSharedBridgePresence() {
+    if (sharedPresenceTimer) return;
+    const heartbeat = async () => {
+        if (!CFM.get("sharedLyricsBridge")) return;
+        try {
+            await fetchBridge(SHARED_PRESENCE_ENDPOINT, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ client: "full-screen-playing", leaseMilliseconds: 8_000 }),
+            });
+        } catch {
+            // LyricShiori may not be running. The next heartbeat retries quietly.
+        }
+    };
+    void heartbeat();
+    sharedPresenceTimer = setInterval(() => void heartbeat(), SHARED_PRESENCE_INTERVAL_MS);
+}
 
 export function getCachedLyrics(trackUri: string, kind: LyricsCacheKind) {
     return getCachedLyricsEntry(trackUri, kind)?.lines ?? null;
