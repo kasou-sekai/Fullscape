@@ -685,6 +685,7 @@ async function startFullScreen() {
 }
 
 async function main() {
+    ReleaseUpdater.reportRuntimeVersion();
     ReleaseUpdater.migrateUpdateModel();
     if (!(await ReleaseUpdater.shouldStartBundledVersion())) return;
     await startFullScreen();

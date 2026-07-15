@@ -21,6 +21,7 @@ import {
 export class ConfigManager {
     static configContainer: HTMLDivElement;
     static overlayTimout: ReturnType<typeof setTimeout>;
+    static updatePromptRetryTimer: number | null = null;
     static render: () => void;
     static activate: () => Promise<void>;
     static deactivate: () => Promise<void>;
@@ -684,8 +685,11 @@ export class ConfigManager {
         confirm.textContent = strings.confirmSwitch;
         confirm.onclick = async () => {
             if (target === "bundled") {
+                if (!ReleaseUpdater.switchToBundledVersion(() => this.showReloadFallback(LOCALE))) {
+                    Spicetify.showNotification(strings.storageFailed, true, 8000);
+                    return;
+                }
                 Spicetify.PopupModal.hide();
-                ReleaseUpdater.switchToBundledVersion(() => this.showReloadFallback(LOCALE));
                 return;
             }
             cancel.disabled = true;
@@ -702,8 +706,14 @@ export class ConfigManager {
                 );
                 return;
             }
+            if (!ReleaseUpdater.switchToRelease(target, () => this.showReloadFallback(LOCALE))) {
+                cancel.disabled = false;
+                confirm.disabled = false;
+                confirm.textContent = strings.confirmSwitch;
+                Spicetify.showNotification(strings.storageFailed, true, 8000);
+                return;
+            }
             Spicetify.PopupModal.hide();
-            ReleaseUpdater.switchToRelease(target, () => this.showReloadFallback(LOCALE));
         };
         actions.append(cancel, confirm);
         content.append(description, actions);
@@ -776,9 +786,15 @@ export class ConfigManager {
             button.classList.add("main-button-secondary");
             releaseLink.hidden = true;
             releaseLink.removeAttribute("href");
+            const withCacheWarning = (message: string) =>
+                result.status !== "error" && result.stale
+                    ? `${message} ${strings.cachedResultWarning}: ${result.message ?? strings.checkFailed}`
+                    : message;
 
             if (result.status === "available") {
-                status.textContent = strings.available.replace("{version}", result.release.version);
+                status.textContent = withCacheWarning(
+                    strings.available.replace("{version}", result.release.version),
+                );
                 button.textContent = strings.reviewUpdate;
                 button.classList.remove("main-button-secondary");
                 button.classList.add("main-button-primary");
@@ -795,7 +811,7 @@ export class ConfigManager {
                 return;
             }
 
-            status.textContent = strings.upToDate;
+            status.textContent = withCacheWarning(strings.upToDate);
             button.textContent = strings.checkNow;
             button.onclick = () => void check(true);
             if (result.release) {
@@ -909,7 +925,10 @@ export class ConfigManager {
                     ? selected
                     : "bundled";
                 select.disabled = false;
-                status.textContent = strings.versionListReady;
+                const listWarning = ReleaseUpdater.getReleaseListWarning();
+                status.textContent = listWarning
+                    ? `${strings.versionListReady} ${strings.cachedResultWarning}: ${listWarning}`
+                    : strings.versionListReady;
                 button.textContent = strings.useSelectedVersion;
                 button.onclick = () => {
                     if (select.value === "bundled") {
@@ -969,8 +988,15 @@ export class ConfigManager {
         if (result.status !== "available" || !ReleaseUpdater.shouldPromptFor(result.release)) {
             return;
         }
-        if (document.querySelector("body > generic-modal")) return;
-        ReleaseUpdater.markPrompted(result.release);
+        if (document.querySelector("body > generic-modal")) {
+            if (this.updatePromptRetryTimer === null) {
+                this.updatePromptRetryTimer = window.setTimeout(() => {
+                    this.updatePromptRetryTimer = null;
+                    void this.promptForUpdate(LOCALE);
+                }, 30000);
+            }
+            return;
+        }
 
         const strings = translations[LOCALE].settings.updates;
         const content = document.createElement("div");
@@ -1005,8 +1031,18 @@ export class ConfigManager {
                 );
                 return;
             }
+            if (
+                !ReleaseUpdater.switchToRelease(result.release, () =>
+                    this.showReloadFallback(LOCALE),
+                )
+            ) {
+                later.disabled = false;
+                update.disabled = false;
+                update.textContent = strings.confirmUpdate;
+                Spicetify.showNotification(strings.storageFailed, true, 8000);
+                return;
+            }
             Spicetify.PopupModal.hide();
-            ReleaseUpdater.switchToRelease(result.release, () => this.showReloadFallback(LOCALE));
         };
         actions.append(later, update);
         content.append(description, actions);
@@ -1015,6 +1051,7 @@ export class ConfigManager {
             title: strings.promptTitle,
             content,
         });
+        ReleaseUpdater.markPrompted(result.release);
     }
 
     static openConfig(evt: Event | null = null): void {
