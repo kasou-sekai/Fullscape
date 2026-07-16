@@ -1,8 +1,8 @@
 [
     {
-        "name": "Full Screen",
-        "description": "Full-screen now-playing display with lyrics and artwork.",
-        "main": "dist/fullScreen.js",
+        "name": "Fullscape",
+        "description": "An immersive now-playing experience for Spicetify.",
+        "main": "dist/fullscape.js",
         "readme": "README.md"
     }
 ]

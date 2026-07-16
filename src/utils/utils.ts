@@ -25,18 +25,18 @@ class Utils {
                 `${entry[0]} not available. Report issue on GitHub or run Spicetify.test() to test.`,
             );
             Spicetify.showNotification(
-                `Error initializing "fullscreen.js" extension. ${entry[0]} not available. Report issue on GitHub.`,
+                `Error initializing "fullscape.js" extension. ${entry[0]} not available. Report issue on GitHub.`,
                 true,
             );
         });
         console.log("Retries exceeded. Aborting.");
     }
 
-    static fullScreenOn() {
+    static enterFullscreen() {
         if (!document.fullscreenElement) return document.documentElement.requestFullscreen();
     }
 
-    static fullScreenOff() {
+    static exitFullscreen() {
         if (document.fullscreenElement) return document.exitFullscreen();
     }
 
@@ -151,7 +151,7 @@ class Utils {
     }
 
     static isModeActivated(): boolean {
-        return document.body.classList.contains("fsd-activated");
+        return document.body.classList.contains("fullscape-activated");
     }
 
     static overlayBack(hideBackground = true) {
@@ -186,10 +186,10 @@ class Utils {
                 }
                 setTimeout(() => {
                     if (sequence !== queuePanelSequence || !Utils.isModeActivated()) return;
-                    rightPanel?.classList.add("fsd-queue-panel");
+                    rightPanel?.classList.add("fullscape-queue-panel");
                     setTimeout(() => {
                         if (sequence !== queuePanelSequence || !Utils.isModeActivated()) return;
-                        rightPanel?.classList.add("fsd-transform-animation");
+                        rightPanel?.classList.add("fullscape-transform-animation");
                     }, 100);
                 }, 300);
             }, 600);
@@ -200,22 +200,22 @@ class Utils {
             rightPanel?.style.setProperty("--queue-panel-x", "1000px");
             wasQueuePanelEnabled = null;
             myQueueButton?.classList.remove("button-active", "dot-after");
-            rightPanel?.classList.remove("fsd-queue-panel", "fsd-transform-animation");
-            document.body.classList.remove("fsd-queue-panel-active");
+            rightPanel?.classList.remove("fullscape-queue-panel", "fullscape-transform-animation");
+            document.body.classList.remove("fullscape-queue-panel-active");
         }
     }
 
     static toggleQueue(queueButton: HTMLElement | null) {
         const rightPanel = HtmlSelectors.getRightPanel();
 
-        if (document.body.classList.contains("fsd-queue-panel-active")) {
+        if (document.body.classList.contains("fullscape-queue-panel-active")) {
             rightPanel?.style.setProperty("--queue-panel-x", "1000px");
             queueButton?.classList.remove("button-active", "dot-after");
-            document.body.classList.remove("fsd-queue-panel-active");
+            document.body.classList.remove("fullscape-queue-panel-active");
         } else {
             rightPanel?.style.setProperty("--queue-panel-x", "0px");
             queueButton?.classList.add("button-active", "dot-after");
-            document.body.classList.add("fsd-queue-panel-active");
+            document.body.classList.add("fullscape-queue-panel-active");
         }
     }
 

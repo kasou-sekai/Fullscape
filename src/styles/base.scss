@@ -1,4 +1,4 @@
-#full-screen-display {
+#fullscape-display {
     display: none;
     z-index: 100;
     position: fixed;
@@ -24,14 +24,14 @@
         --theme-background-color: rgba(var(--theme-color), 0.6);
         --theme-hover-color: rgba(var(--theme-color), 0.3);
     }
-    #fsd-title svg,
-    #fsd-artist svg,
-    #fsd-album svg {
+    #fullscape-title svg,
+    #fullscape-artist svg,
+    #fullscape-album svg {
         transition: all var(--transition-duration) var(--transition-function);
         display: var(--icons-display);
     }
-    .fsd-song-meta span:hover,
-    .fsd-artist-list span:hover {
+    .fullscape-song-meta span:hover,
+    .fullscape-artist-list span:hover {
         cursor: pointer;
         text-decoration: underline;
     }
@@ -134,14 +134,14 @@
         transform: translateX(-50%);
         width: 4px;
     }
-    #fsd-progress-container {
+    #fullscape-progress-container {
         --theme-main-color: rgba(var(--main-color), 1);
     }
-    &.themed-buttons #fsd-progress-container,
-    &.themed-icons #fsd-progress-container {
+    &.themed-buttons #fullscape-progress-container,
+    &.themed-icons #fullscape-progress-container {
         --theme-main-color: rgba(var(--theme-color), 1);
     }
-    #fsd-upnext-container {
+    #fullscape-upnext-container {
         float: right;
         width: 600px;
         height: 102px;
@@ -163,14 +163,14 @@
             opacity 0.25s ease-in-out;
         transform: translateX(calc(100% + 40px));
     }
-    #fsd_next_art_image {
+    #fullscape-up-next-cover {
         background-size: cover;
         background-position: center;
         width: 100px;
         height: 100px;
         border-radius: 15px;
     }
-    #fsd_next_details {
+    #fullscape-up-next-details {
         padding-right: 18px;
         padding-top: 17px;
         line-height: initial;
@@ -179,7 +179,7 @@
         font-size: 19px;
         overflow: hidden;
     }
-    #fsd_next_tit_art {
+    #upNextTitleViewport {
         padding-top: 9px;
         font-size: 22px;
         font-weight: 700;
@@ -501,7 +501,7 @@
             transform: translateX(1000px) scale3d(0.1, 0.1, 0.1) rotate(45deg);
         }
     }
-    #fsd-foreground {
+    #fullscape-foreground {
         position: relative;
         top: 0;
         left: 0;
@@ -513,15 +513,15 @@
         color: var(--primary-color);
         transition: all var(--transition-duration) var(--transition-function);
     }
-    #fsd-art {
+    #fullscape-art {
         transform: scale(1);
         transform-origin: center;
         transition: transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
     }
-    &.playback-paused #fsd-art {
+    &.playback-paused #fullscape-art {
         transform: scale(0.86);
     }
-    #fsd-art-image {
+    #fullscape-art-image {
         position: relative;
         width: 100%;
         height: 100%;
@@ -529,7 +529,7 @@
         border-radius: 8px;
         background-size: cover;
     }
-    #fsd-art-inner {
+    #fullscape-art-inner {
         position: absolute;
         left: 3%;
         bottom: 0;
@@ -539,34 +539,34 @@
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6) !important;
         transform: translateZ(0);
     }
-    #fsd-artist {
+    #fullscape-artist {
         font-weight: 500;
         color: var(--secondary-color);
     }
-    #fsd-album {
+    #fullscape-album {
         font-weight: 400;
         color: var(--tertiary-color);
     }
-    #fsd-title-text-viewport {
+    #fullscape-title-text-viewport {
         flex: 0 1 auto;
         min-width: 0;
         overflow: hidden;
         white-space: nowrap;
     }
-    #fsd-title-text-track {
+    #fullscape-title-text-track {
         display: block;
         width: max-content;
         white-space: nowrap;
         will-change: transform;
     }
-    #fsd-secondary-meta {
+    #fullscape-secondary-meta {
         width: 100%;
         max-width: 100%;
         overflow: hidden;
         white-space: nowrap;
         text-align: center;
     }
-    #fsd-secondary-meta-track {
+    #fullscape-secondary-meta-track {
         display: flex;
         width: max-content;
         max-width: none;
@@ -575,31 +575,31 @@
         white-space: nowrap;
         will-change: transform;
     }
-    #fsd-artist,
-    #fsd-album {
+    #fullscape-artist,
+    #fullscape-album {
         display: flex;
         flex: 0 0 auto;
         align-items: baseline;
         white-space: nowrap;
     }
-    .fsd-artist-list {
+    .fullscape-artist-list {
         display: inline-flex;
         white-space: nowrap;
     }
-    .fsd-meta-separator {
+    .fullscape-meta-separator {
         flex: 0 0 auto;
         margin: 0 0.55em;
         color: var(--tertiary-color);
     }
-    .fsd-controls {
+    .fullscape-controls {
         display: flex;
         flex-direction: row;
         align-items: center;
         transition: opacity 1s ease-in-out;
         column-gap: 18px;
     }
-    #fsd-background,
-    #fsd-fluid-background {
+    #fullscape-background,
+    #fullscape-fluid-background {
         position: absolute;
         left: 0;
         top: 0;
@@ -609,17 +609,17 @@
         z-index: -2;
     }
 
-    #fsd-fluid-background {
+    #fullscape-fluid-background {
         opacity: 0;
         pointer-events: none;
     }
 
-    #fsd-background.animated {
+    #fullscape-background.animated {
         transform: scale(3, 3.5);
         transform-origin: left top;
     }
 
-    #fsd-background-debug {
+    #fullscape-background-debug {
         --debug-beat-strength: 0;
         position: fixed;
         z-index: 60;
@@ -644,7 +644,7 @@
         font-variant-numeric: tabular-nums;
     }
 
-    .fsd-debug-title {
+    .fullscape-debug-title {
         display: flex;
         align-items: center;
         gap: 8px;
@@ -660,7 +660,7 @@
         }
     }
 
-    .fsd-debug-beat-dot {
+    .fullscape-debug-beat-dot {
         width: 8px;
         height: 8px;
         border-radius: 50%;
@@ -673,12 +673,12 @@
             box-shadow 120ms ease;
     }
 
-    #fsd-background-debug.beat-active .fsd-debug-beat-dot {
+    #fullscape-background-debug.beat-active .fullscape-debug-beat-dot {
         background: #63d2ff;
         box-shadow: 0 0 calc(5px + var(--debug-beat-strength) * 10px) rgba(99, 210, 255, 0.9);
     }
 
-    .fsd-debug-meter {
+    .fullscape-debug-meter {
         height: 4px;
         margin: 10px 0;
         border-radius: 999px;
@@ -697,7 +697,7 @@
         }
     }
 
-    .fsd-debug-values {
+    .fullscape-debug-values {
         display: grid;
         grid-template-columns: repeat(6, minmax(0, 1fr));
         gap: 8px;
@@ -715,7 +715,7 @@
         }
     }
 
-    .fs-button {
+    .fullscape-button {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -741,12 +741,12 @@
             filter: saturate(1.5) contrast(1.5) !important;
         }
     }
-    #fsd-back,
-    #fsd-next {
+    #fullscape-back,
+    #fullscape-next {
         width: 58px;
         height: 58px;
     }
-    #fsd-play {
+    #fullscape-play {
         width: 64px;
         height: 64px;
     }
@@ -763,33 +763,33 @@
         display: block;
         flex: 0 0 auto;
     }
-    #fsd-foreground svg {
+    #fullscape-foreground svg {
         fill: var(--primary-color);
         transition: all 0.3s var(--transition-function);
     }
-    &.themed-icons #fsd-foreground svg {
+    &.themed-icons #fullscape-foreground svg {
         fill: var(--theme-main-color);
         filter: saturate(1.5) contrast(1.5);
     }
-    &.themed-icons.themed-buttons .fs-button.button-active svg {
+    &.themed-icons.themed-buttons .fullscape-button.button-active svg {
         fill: var(--primary-color) !important;
     }
-    .fsd-background-fade {
+    .fullscape-background-fade {
         transition: background-image var(--fs-transition) linear;
     }
     @media (prefers-reduced-motion: reduce) {
-        #fsd-title-text-track,
-        #fsd-secondary-meta-track {
+        #fullscape-title-text-track,
+        #fullscape-secondary-meta-track {
             will-change: auto;
         }
     }
 }
 
 body {
-    &.fsd-activated #full-screen-display {
+    &.fullscape-activated #fullscape-display {
         display: block;
     }
-    #fullscreen-default-button {
+    #fullscape-default-button {
         background: transparent;
         outline: none;
         border: none;
@@ -803,7 +803,7 @@ body {
         }
     }
 }
-.fsd-activated {
+.fullscape-activated {
     .Root__top-bar,
     .Root__nav-bar,
     .Root__main-view,
@@ -816,10 +816,10 @@ body {
         transform: none !important;
         overflow-x: hidden !important;
     }
-    .fsd-transform-animation {
+    .fullscape-transform-animation {
         transition: transform 0.4s ease-in-out;
     }
-    .fsd-queue-panel {
+    .fullscape-queue-panel {
         --queue-panel-x: 1000px;
         z-index: 101;
         transform: translateX(var(--queue-panel-x));

@@ -20,7 +20,7 @@ export class PlayerControls {
         if (this.playerControlsTimer) {
             clearTimeout(this.playerControlsTimer);
         }
-        const element = DOM.container.querySelector<HTMLElement>(".fsd-controls-center");
+        const element = DOM.container.querySelector<HTMLElement>(".fullscape-controls-center");
         if (!element) return;
         element.style.opacity = "1";
         this.playerControlsTimer = setTimeout(() => (element.style.opacity = "0"), 3000);

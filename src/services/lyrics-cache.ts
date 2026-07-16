@@ -43,12 +43,12 @@ export type LyricsCacheEntry = {
 };
 
 type LyricsCacheStore = {
-    version: 10;
+    version: 1;
     entries: Record<string, LyricsCacheEntry>;
 };
 
-const STORAGE_KEY = "full-screen:lyrics-cache-v10";
-const CACHE_VERSION = 10;
+const STORAGE_KEY = "fullscape:lyrics-cache-v1";
+const CACHE_VERSION = 1;
 const READY_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const EMPTY_TTL_MS = 30 * 60 * 1000;
 const MAX_ENTRIES = 40;
@@ -75,7 +75,7 @@ export function startSharedBridgePresence() {
             await fetchBridge(SHARED_PRESENCE_ENDPOINT, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ client: "full-screen-playing", leaseMilliseconds: 8_000 }),
+                body: JSON.stringify({ client: "fullscape", leaseMilliseconds: 8_000 }),
             });
         } catch {
             // LyricShiori may not be running. The next heartbeat retries quietly.

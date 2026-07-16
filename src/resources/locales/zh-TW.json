@@ -3,23 +3,28 @@
     "upnext": "下一首",
     "unknownArtist": "未知藝人",
     "settings": {
-        "fullscreenConfig": "全螢幕模式設定",
+        "fullscapeConfig": "插件設定",
         "exit": "退出",
         "pluginSettings": "插件設定",
-        "fsHideOriginal": "隱藏原版按鈕",
-        "fsHideOriginalDescription": "隱藏Spotify原版的全螢幕按鈕 (只對**Premium**使用者有效)",
+        "hideSpotifyFullscreenButton": "隱藏切換至原版按鈕",
+        "hideSpotifyFullscreenButtonDescription": "隱藏原版的全螢幕按鈕，需要重新啟動，在部分系統上可能不會生效。",
         "language": "語言",
         "autoLaunch": {
-            "setting": "自動啟動 (當Spotify啟動時)",
+            "setting": "Spotify 啟動時進入全螢幕",
             "description": "**限制:** Spotify 視窗在自動啟動時無法進入全螢幕模式",
             "never": "永不 (預設)",
             "default": "進入預設模式"
         },
         "activationTypes": {
             "setting": "開啟方式",
-            "both": "按鈕和鍵盤快捷鍵",
+            "description": "選擇使用按鈕、F 鍵或兩者進入全螢幕。",
+            "both": "按鈕和 F 鍵",
             "btns": "僅限按鈕",
-            "keys": "僅限鍵盤快捷鍵"
+            "keys": "僅 F 鍵"
+        },
+        "debugMode": {
+            "setting": "除錯模式",
+            "description": "顯示除錯選項。"
         },
         "lyricsHeader": "歌詞設定",
         "lyrics": "歌詞",
@@ -27,13 +32,14 @@
         "thirdPartyLyrics": "使用網易雲與 QQ 音樂增強歌詞",
         "sharedLyricsBridge": {
             "setting": "連接 LyricShiori",
-            "description": "讀取 LyricShiori 確認過的歌詞，並透過本機橋接分享新匹配的歌詞。"
+            "description": "連接 LyricShiori 共享歌詞、手動指定歌詞或調整歌詞延遲。"
         },
         "relaxedLyricsMatching": {
             "setting": "寬鬆歌詞匹配",
-            "description": "開啟後，時長和首句歌詞符合條件的候選可忽略歌名、歌手與專輯差異。"
+            "description": "開啟後會使用更寬鬆的匹配策略，但有可能將錯誤的歌詞匹配到目前曲目。"
         },
-        "showLyricsFurigana": "顯示假名注音",
+        "showLyricsRomanization": "顯示讀音",
+        "showLyricsFurigana": "顯示日文假名注音",
         "lyricsChineseConversion": {
             "setting": "歌詞繁簡字形",
             "description": "將顯示的原文和翻譯轉換為簡體或繁體中文。",
@@ -92,6 +98,9 @@
             "noData": "無資料",
             "furiganaData": "注音資料",
             "dynamic": "動態逐字"
+        },
+        "lyricsSize": {
+            "setting": "歌詞字號"
         },
         "autoHideLyrics": "自動隱藏歌詞 (當歌詞不可用時)",
         "generalHeader": "一般設定",
@@ -157,6 +166,7 @@
         "verticalMonitorSupportDescription": "如果你有垂直顯示器，請啟用此功能。當視窗高度大於寬度時，歌詞將顯示在底部。",
         "backAnimationTime": "背景動畫時間 (用於圖片背景)",
         "animationSpeed": "⭐ 動畫速度 (用於動畫背景)",
+        "bpmDrivenMotionDescription": "根據歌曲 BPM 調整背景流動速度與節拍反應強度。",
         "upnextTime": "下一首提示顯示時間",
         "backgroundBlur": "背景模糊",
         "backgroundBrightness": "背景亮度",
@@ -164,10 +174,10 @@
             "cardTitle": "GitHub 發佈版本",
             "currentVersion": "目前執行版本",
             "bundledVersion": "本機安裝版本",
-            "runningVersionDescription": "Spotify 目前實際執行的程式碼，可能是本機安裝版本，也可能是你已確認的 GitHub Release。",
-            "bundledVersionDescription": "由 Spicetify 安裝在本機的 fullScreen.js；選擇本機安裝版本或 GitHub 版本載入失敗時會使用它。",
-            "releaseCache": "GitHub 版本本機快取",
-            "releaseCacheDescription": "確認使用的 GitHub 版本只下載一次，並保存到 Spotify 的持久化本機儲存空間。之後啟動會優先使用此副本；清除 Spotify 網站資料會刪除它。",
+            "runningVersionDescription": "目前執行中的版本。",
+            "bundledVersionDescription": "由 Spicetify 安裝在本機的 fullscape.js；選擇本機安裝版本或 GitHub 版本載入失敗時會使用它。",
+            "releaseCache": "GitHub 版本快取",
+            "releaseCacheDescription": "透過此更新器取得的 GitHub Release 版本快取；如果網路檢查失敗，Fullscape 會使用此快取。",
             "checking": "正在檢查…",
             "checkingDescription": "正在從 GitHub 檢查最新穩定版本。",
             "checkNow": "立即檢查",
@@ -181,43 +191,43 @@
             "later": "稍後",
             "cancel": "取消",
             "releasePage": "發佈說明",
-            "promptTitle": "Full Screen 有可用更新",
-            "promptDescription": "版本 {version} 已發佈；你目前使用的是 {current}。在你手動確認前不會切換版本。",
+            "promptTitle": "Fullscape 有可用更新",
+            "promptDescription": "版本 {version} 已發佈；你目前使用的是 {current}。",
             "autoCheck": "自動檢查更新",
-            "autoCheckDescription": "只負責檢查與提示；在你確認前，Full Screen 不會切換到新檢查到的版本。",
+            "autoCheckDescription": "檢查新版本。在你確認前，Fullscape 不會切換到新檢查到的版本。",
             "versionSelectorTitle": "版本選擇",
             "versionSelectorDescription": "選擇穩定的 GitHub Release，或返回本機安裝版本。",
             "loadingVersions": "正在從 GitHub Releases 載入穩定版本…",
-            "versionListReady": "此清單從 GitHub Releases 動態載入，並未寫死在擴充功能中。",
+            "versionListReady": "",
             "versionListFailed": "無法載入版本清單",
             "useSelectedVersion": "使用所選版本",
             "bundledVersionOption": "本機安裝版本（v{version}）",
             "runningVersionOption": "v{version}（目前正在執行）",
-            "confirmVersionTitle": "切換到 Full Screen v{version}？",
+            "confirmVersionTitle": "切換到 Fullscape v{version}？",
             "confirmVersionDescription": "目前正在使用 v{current}。確認後將重新載入 Spotify 並使用 v{version}。",
             "confirmBundledTitle": "使用本機安裝版本？",
             "confirmBundledDescription": "確認後將停止載入所選 Release，並重新載入本機安裝版本 v{version}。",
             "confirmSwitch": "確認並重新載入",
             "cachingVersion": "正在驗證並儲存到本機…",
-            "cacheFailed": "無法下載並驗證 Full Screen v{version}，版本沒有變更。",
-            "storageFailed": "本機儲存空間無法使用，無法儲存所選版本。",
+            "cacheFailed": "更新失敗：無法下載並驗證 Fullscape v{version}。",
+            "storageFailed": "更新失敗：本機儲存空間無法使用，無法儲存所選版本。",
             "reloadFallbackTitle": "從終端機重新載入 Spotify",
             "reloadFallbackDescription": "Spotify 未能自動重新載入。請在終端機執行以下命令以套用已確認的版本：",
-            "loadFailed": "無法載入 Full Screen v{version}，現已改用本機安裝版本。"
+            "loadFailed": "無法載入 Fullscape v{version}，現已改用本機安裝版本。"
         },
         "layout": {
             "sections": {
                 "general": {
-                    "title": "一般",
-                    "description": "設定語言、啟動方式、開啟方式、顯示模式與診斷功能。"
+                    "title": "通用",
+                    "description": "設定語言、啟動方式、顯示模式等。"
                 },
                 "playback": {
                     "title": "播放畫面",
-                    "description": "選擇全螢幕播放畫面顯示的內容與時機。"
+                    "description": "選擇播放畫面顯示的內容與時機。"
                 },
                 "lyrics": {
                     "title": "歌詞",
-                    "description": "管理歌詞來源、閱讀方式與可選的增強內容。"
+                    "description": "管理歌詞來源、歌詞樣式與可選的增強內容。"
                 },
                 "background": {
                     "title": "背景與動態效果",
@@ -229,7 +239,7 @@
                 },
                 "updates": {
                     "title": "更新",
-                    "description": "檢查、確認並切換透過 GitHub Releases 發佈的穩定版本。"
+                    "description": "從 GitHub 取得更新或切換版本。"
                 }
             },
             "groups": {
@@ -303,7 +313,7 @@
                 "invertColors": "選擇淺色或深色文字，或依背景亮度自動決定。"
             }
         },
-        "configReset": "重設設定"
+        "configReset": "恢復預設"
     },
-    "fullscreenBtnDesc": "全螢幕模式"
+    "fullscapeButtonDescription": "Fullscape"
 }

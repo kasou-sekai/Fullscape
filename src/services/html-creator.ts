@@ -3,18 +3,18 @@ import CFM from "../utils/config";
 
 export const getHtmlContent = () => {
     return `
-        <canvas id="fsd-background"></canvas>
-        <canvas id="fsd-fluid-background" aria-hidden="true"></canvas>
+        <canvas id="fullscape-background"></canvas>
+        <canvas id="fullscape-fluid-background" aria-hidden="true"></canvas>
         ${
             CFM.get("debugMode")
-                ? `<aside id="fsd-background-debug" aria-label="Background motion debug">
-            <div class="fsd-debug-title">
-                <span class="fsd-debug-beat-dot"></span>
+                ? `<aside id="fullscape-background-debug" aria-label="Background motion debug">
+            <div class="fullscape-debug-title">
+                <span class="fullscape-debug-beat-dot"></span>
                 <strong>BACKGROUND MOTION</strong>
                 <span data-debug-status>WAITING</span>
             </div>
-            <div class="fsd-debug-meter"><span></span></div>
-            <div class="fsd-debug-values">
+            <div class="fullscape-debug-meter"><span></span></div>
+            <div class="fullscape-debug-values">
                 <span>BEAT <b data-debug-beat>0.00</b></span>
                 <span>BPM <b data-debug-bpm>--</b></span>
                 <span>SMOOTH <b data-debug-smooth>0.00</b></span>
@@ -29,47 +29,47 @@ export const getHtmlContent = () => {
  ${
      CFM.get("upnextDisplay") !== "never"
          ? `
-<div id="fsd-upnext-container">
-    <div id="fsd_next_details">
-        <div id="fsd_up_next_text"></div>
-        <div id="fsd_next_tit_art">
-            <div id="fsd_next_tit_art_inner">
-                <span id="fsd_first_span"></span>
-                <span id="fsd_second_span"></span>
+<div id="fullscape-upnext-container">
+    <div id="fullscape-up-next-details">
+        <div id="upNextLabel"></div>
+        <div id="upNextTitleViewport">
+            <div id="upNextTitleTrack">
+                <span id="upNextPrimaryText"></span>
+                <span id="upNextSecondaryText"></span>
             </div>
         </div>
     </div>
-    <div id="fsd_next_art">
-        <div id="fsd_next_art_image" class="fsd-background-fade"></div>
+    <div id="fullscape-up-next-artwork">
+        <div id="fullscape-up-next-cover" class="fullscape-background-fade"></div>
     </div>
 </div>`
          : ""
  }
 ${CFM.get("lyricsDisplay") ? `<div id="fad-lyrics-container"></div>` : ""}
-<div id="fsd-foreground">
-    <div id="fsd-art">
-        <div id="fsd-art-image" class="fsd-background-fade">
-            <div id="fsd-art-inner"></div>
+<div id="fullscape-foreground">
+    <div id="fullscape-art">
+        <div id="fullscape-art-image" class="fullscape-background-fade">
+            <div id="fullscape-art-inner"></div>
         </div>
     </div>
-    <div id="fsd-details">
-            <div id="fsd-title" class="fsd-song-meta">
+    <div id="fullscape-details">
+            <div id="fullscape-title" class="fullscape-song-meta">
                  ${ICONS.PLAYING_ICON}
                  ${ICONS.PAUSED_ICON}
-                 <div id="fsd-title-text-viewport">
-                     <span id="fsd-title-text-track"></span>
+                 <div id="fullscape-title-text-viewport">
+                     <span id="fullscape-title-text-track"></span>
                  </div>
             </div>
-            <div id="fsd-secondary-meta">
-                <div id="fsd-secondary-meta-track">
-                    <div id="fsd-artist">
+            <div id="fullscape-secondary-meta">
+                <div id="fullscape-secondary-meta-track">
+                    <div id="fullscape-artist">
                         ${ICONS.ARTIST}
-                        <span class="fsd-artist-list"></span>
+                        <span class="fullscape-artist-list"></span>
                     </div>
                     ${
                         CFM.get("showAlbum") !== "never"
-                            ? `<span class="fsd-meta-separator" aria-hidden="true">•</span>
-                    <div id="fsd-album" class="fsd-song-meta">
+                            ? `<span class="fullscape-meta-separator" aria-hidden="true">•</span>
+                    <div id="fullscape-album" class="fullscape-song-meta">
                         ${ICONS.ALBUM}
                         <span></span>
                     </div>`
@@ -77,19 +77,19 @@ ${CFM.get("lyricsDisplay") ? `<div id="fad-lyrics-container"></div>` : ""}
                     }
                 </div>
             </div>
-            <div id="fsd-progress-parent"></div>
-            <div id="fsd-status" class="${CFM.get("playerControls") !== "never" ? "active" : ""}">
+            <div id="fullscape-progress-parent"></div>
+            <div id="fullscape-status" class="${CFM.get("playerControls") !== "never" ? "active" : ""}">
                 ${
                     CFM.get("playerControls") !== "never"
                         ? `
-                    <div class="fsd-controls-center fsd-controls">
-                        <button class="fs-button" id="fsd-back">
+                    <div class="fullscape-controls-center fullscape-controls">
+                        <button class="fullscape-button" id="fullscape-back">
                             ${ICONS.APPLE_MUSIC_BACK}
                         </button>
-                        <button class="fs-button" id="fsd-play">
+                        <button class="fullscape-button" id="fullscape-play">
                             ${ICONS.APPLE_MUSIC_PLAY}
                         </button>
-                        <button class="fs-button" id="fsd-next">
+                        <button class="fullscape-button" id="fullscape-next">
                             ${ICONS.APPLE_MUSIC_NEXT}
                         </button>
                     </div>`

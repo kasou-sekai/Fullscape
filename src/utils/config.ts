@@ -1,8 +1,8 @@
-import { Config, Settings } from "../types/fullscreen";
+import { Config, Settings } from "../types/fullscape";
 import { DEFAULTS } from "../constants";
 
 let CONFIG: Config | null = null;
-const STORAGE_KEY = "full-screen-playing:config";
+const STORAGE_KEY = "fullscape:config";
 
 function cloneDefaults(): Config {
     return JSON.parse(JSON.stringify(DEFAULTS)) as Config;

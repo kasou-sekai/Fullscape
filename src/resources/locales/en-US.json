@@ -3,28 +3,28 @@
     "upnext": "UP NEXT",
     "unknownArtist": "Artist (Unavailable)",
     "settings": {
-        "fullscreenConfig": "Full Screen Configuration",
+        "fullscapeConfig": "Plugin Settings",
         "exit": "Exit",
         "pluginSettings": "Plugin Settings",
-        "fsHideOriginal": "Hide Stock Button",
-        "fsHideOriginalDescription": "Hide the spotify's stock fullscreen button(available to **Premium** users)",
+        "hideSpotifyFullscreenButton": "Hide Stock Button",
+        "hideSpotifyFullscreenButtonDescription": "Hide Spotify's original full-screen button. Requires a restart and may not work on some systems.",
         "language": "Language",
         "autoLaunch": {
-            "setting": "Auto launch(on spotify startup)",
+            "setting": "Open Fullscape When Spotify Starts",
             "description": "**Limitation:** The spotify window cannot go into fullscreen while automatically launching on startup.",
             "never": "Never(Default)",
             "default": "Open Default Mode"
         },
         "activationTypes": {
             "setting": "Activation Methods",
-            "description": "Choose whether to activate full screen with the button, the F key, or both.",
-            "both": "Buttons and Keyboard Shortcuts",
+            "description": "Choose whether to enter full screen with the button, the F key, or both.",
+            "both": "Button and F Key",
             "btns": "Buttons Only",
-            "keys": "Keyboard Shortcuts Only"
+            "keys": "F Key Only"
         },
         "debugMode": {
             "setting": "Debug Mode",
-            "description": "Show lyric diagnostics in settings and visualize background beat responses on the playback screen."
+            "description": "Show debug options."
         },
         "lyricsDebugHeader": "Lyric Debugging",
         "lyricsHeader": "Lyrics Settings",
@@ -33,15 +33,15 @@
         "thirdPartyLyrics": "Enhance Lyrics from NetEase and QQ Music",
         "sharedLyricsBridge": {
             "setting": "Connect to LyricShiori",
-            "description": "Read confirmed lyrics from LyricShiori and share newly matched lyrics back through the local bridge."
+            "description": "Connect to LyricShiori to share lyrics, manually select lyrics, or adjust lyric delay."
         },
         "relaxedLyricsMatching": {
             "setting": "Relaxed Lyrics Matching",
-            "description": "Allow candidates with a similar duration and compatible first lyric line to match even when the title, artist, or album differs."
+            "description": "Use a more permissive matching strategy, which may occasionally match the wrong lyrics to the current track."
         },
         "showLyricsTranslation": "Show Lyric Translation",
-        "showLyricsRomanization": "Show Romanized Lyrics",
-        "showLyricsFurigana": "Show Furigana",
+        "showLyricsRomanization": "Show Pronunciation",
+        "showLyricsFurigana": "Show Japanese Furigana",
         "lyricsChineseConversion": {
             "setting": "Chinese Character Form",
             "description": "Convert displayed lyrics and translations to simplified or traditional Chinese.",
@@ -112,7 +112,7 @@
             "dynamic": "dynamic"
         },
         "lyricsSize": {
-            "setting": "Lyrics Size",
+            "setting": "Lyrics Font Size",
             "description": "Use the +/- buttons to set a custom size (12–99 px)."
         },
         "autoHideLyrics": "Auto Hide Lyrics (when unavailable)",
@@ -192,7 +192,7 @@
             "custom": "Custom"
         },
         "bpmDrivenMotion": "BPM-driven Motion",
-        "bpmDrivenMotionDescription": "Use detected BPM to adjust flow speed and generate beat pulses when beat timing is unavailable. Turn this off to keep motion controlled by your settings.",
+        "bpmDrivenMotionDescription": "Adjust background flow speed and beat response strength based on the track's BPM.",
         "beatControls": {
             "header": "Beat Response",
             "description": "These controls apply only while Beat Response is set to Custom.",
@@ -228,10 +228,10 @@
             "cardTitle": "GitHub Releases",
             "currentVersion": "Running version",
             "bundledVersion": "Installed version",
-            "runningVersionDescription": "The code Spotify is executing now. It can be the installed bundle or a confirmed GitHub Release.",
-            "bundledVersionDescription": "The local fullScreen.js installed by Spicetify. It remains available when you return to the installed bundle or a GitHub version cannot load.",
+            "runningVersionDescription": "The version currently running.",
+            "bundledVersionDescription": "The local fullscape.js installed by Spicetify. It remains available when you return to the installed bundle or a GitHub version cannot load.",
             "releaseCache": "GitHub version cache",
-            "releaseCacheDescription": "A confirmed GitHub version is downloaded once and saved in Spotify's persistent local storage. Later starts use that copy before the network; clearing Spotify site data removes it.",
+            "releaseCacheDescription": "Cached GitHub Release versions obtained through this updater. Fullscape uses this cache if the network check fails.",
             "checking": "Checking…",
             "checkingDescription": "Checking GitHub for the latest stable release.",
             "checkNow": "Check now",
@@ -245,43 +245,43 @@
             "later": "Later",
             "cancel": "Cancel",
             "releasePage": "Release notes",
-            "promptTitle": "Full Screen update available",
-            "promptDescription": "Version {version} is available; you are using {current}. No version will be changed until you confirm.",
+            "promptTitle": "Fullscape update available",
+            "promptDescription": "Version {version} is available; you are using {current}.",
             "autoCheck": "Automatically check for updates",
-            "autoCheckDescription": "Checks and prompts only. Full Screen never switches to a newly detected version until you confirm.",
+            "autoCheckDescription": "Check for new versions. Fullscape will not switch to a newly detected version until you confirm.",
             "versionSelectorTitle": "Version selection",
             "versionSelectorDescription": "Choose a stable GitHub Release or return to the locally installed bundle.",
             "loadingVersions": "Loading stable versions from GitHub Releases…",
-            "versionListReady": "This list is loaded dynamically from GitHub Releases.",
+            "versionListReady": "",
             "versionListFailed": "Unable to load versions",
             "useSelectedVersion": "Use selected version",
             "bundledVersionOption": "Installed bundle (v{version})",
             "runningVersionOption": "v{version} (currently running)",
-            "confirmVersionTitle": "Switch to Full Screen v{version}?",
+            "confirmVersionTitle": "Switch to Fullscape v{version}?",
             "confirmVersionDescription": "You are using v{current}. Confirm to reload Spotify with v{version}.",
             "confirmBundledTitle": "Use the installed version?",
             "confirmBundledDescription": "Confirm to stop loading the selected release and reload the locally installed bundle (v{version}).",
             "confirmSwitch": "Confirm and reload",
             "cachingVersion": "Verifying and saving locally…",
-            "cacheFailed": "Full Screen v{version} could not be downloaded and verified. No version was changed.",
-            "storageFailed": "The selected version could not be saved because local storage is unavailable.",
+            "cacheFailed": "Update failed: Fullscape v{version} could not be downloaded and verified.",
+            "storageFailed": "Update failed: local storage is unavailable, so the selected version could not be saved.",
             "reloadFallbackTitle": "Reload Spotify from the terminal",
             "reloadFallbackDescription": "Spotify did not reload automatically. Run this command in a terminal to apply the confirmed version:",
-            "loadFailed": "Full Screen v{version} could not be loaded. The installed version is running instead."
+            "loadFailed": "Fullscape v{version} could not be loaded. The installed version is running instead."
         },
         "layout": {
             "sections": {
                 "general": {
                     "title": "General",
-                    "description": "Language, startup, activation, display mode, and diagnostics."
+                    "description": "Configure language, startup behavior, display mode, and more."
                 },
                 "playback": {
                     "title": "Playback Screen",
-                    "description": "Choose what appears on the full-screen player and when it appears."
+                    "description": "Choose what appears on the playback screen and when it appears."
                 },
                 "lyrics": {
                     "title": "Lyrics",
-                    "description": "Control lyric sources, readability, and optional enhancements."
+                    "description": "Manage lyric sources, lyric styles, and optional enhancements."
                 },
                 "background": {
                     "title": "Background & Motion",
@@ -293,7 +293,7 @@
                 },
                 "updates": {
                     "title": "Updates",
-                    "description": "Check, confirm, and switch between stable builds published through GitHub Releases."
+                    "description": "Get updates from GitHub or switch versions."
                 }
             },
             "groups": {
@@ -302,7 +302,7 @@
                     "description": "Settings that apply when Spotify starts."
                 },
                 "activation": {
-                    "title": "Opening Full Screen",
+                    "title": "Opening Fullscape",
                     "description": "Choose how full-screen playback is opened and displayed."
                 },
                 "troubleshooting": {
@@ -373,7 +373,7 @@
                 "invertColors": "Choose light or dark playback text, or let background brightness decide automatically."
             }
         },
-        "configReset": "Reset Config"
+        "configReset": "Restore Defaults"
     },
-    "fullscreenBtnDesc": "Full Screen"
+    "fullscapeButtonDescription": "Fullscape"
 }

@@ -1,7 +1,7 @@
 export type Config = {
     def: Settings;
     locale: string;
-    fsHideOriginal: boolean;
+    hideSpotifyFullscreenButton: boolean;
     autoLaunch: "never" | "default";
     activationTypes: "both" | "btns" | "keys";
     autoUpdateCheck: boolean;

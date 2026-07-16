@@ -1,7 +1,6 @@
 import { marked } from "marked";
-import ICONS, { DEFAULTS } from "../constants";
-import { Config, Settings } from "../types/fullscreen";
-import CFM from "../utils/config";
+import ICONS from "../constants";
+import { Config, Settings } from "../types/fullscape";
 import { sanitizeHtml } from "./sanitize-html";
 
 export function headerText(text: string, subtext = "") {
@@ -28,17 +27,6 @@ export function getSettingCard(
     const settingCard = document.createElement("div");
     settingCard.classList.add("setting-card");
     settingCard.setAttribute("setting-key", key);
-    if (key in DEFAULTS) {
-        settingCard.setAttribute(
-            "setting-default",
-            String(CFM.getGlobal(key as keyof Config) === DEFAULTS[key as keyof Config]),
-        );
-    } else {
-        settingCard.setAttribute(
-            "setting-default",
-            String(CFM.get(key as keyof Settings) === DEFAULTS.def[key as keyof Settings]),
-        );
-    }
     settingCard.innerHTML = `
         <div class="setting-container">
             <div class="setting-item">

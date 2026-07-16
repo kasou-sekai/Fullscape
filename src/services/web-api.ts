@@ -1,4 +1,4 @@
-import { Colors } from "../types/fullscreen";
+import { Colors } from "../types/fullscape";
 import Utils from "../utils/utils";
 
 const colorsCache = new Map<string, Colors>();

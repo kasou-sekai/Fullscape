@@ -1,6 +1,6 @@
 import WebAPI from "../services/web-api";
 import CFM from "./config";
-import { Colors, Settings } from "../types/fullscreen";
+import { Colors, Settings } from "../types/fullscape";
 import Utils from "./utils";
 
 class ColorExtractor {

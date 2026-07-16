@@ -1,6 +1,6 @@
 import * as React from "react";
 import "./styles.scss";
-import { SeekbarProps } from "../../../types/fullscreen";
+import { SeekbarProps } from "../../../types/fullscape";
 import classNames from "classnames";
 
 const SeekableProgressBar = ({ state }: { state: string }) => {
@@ -197,20 +197,20 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
         curDuration > 0 ? Math.min(100, Math.max(0, (curProgress / curDuration) * 100)) : 0;
 
     return (
-        <div id="fsd-progress-container" style={{ opacity: visibility ? 1 : 0 }}>
+        <div id="fullscape-progress-container" style={{ opacity: visibility ? 1 : 0 }}>
             <div
-                id="fsd-progress-bar"
+                id="fullscape-progress-bar"
                 ref={progSlider}
                 className={classNames({ dragging: changingProgress.isChanging })}>
-                <div id="fsd-progress-bar-inner" style={{ width: `${progressPercentage}%` }}>
+                <div id="fullscape-progress-bar-inner" style={{ width: `${progressPercentage}%` }}>
                     <div id="progress-thumb" />
                 </div>
             </div>
-            <div id="fsd-progress-times">
-                <div className="progress-number" id="fsd-elapsed">
+            <div id="fullscape-progress-times">
+                <div className="progress-number" id="fullscape-elapsed">
                     {Spicetify.Player.formatTime(curProgress)}
                 </div>
-                <div className="progress-number" id="fsd-duration">
+                <div className="progress-number" id="fullscape-duration">
                     -{Spicetify.Player.formatTime(Math.max(0, curDuration - curProgress))}
                 </div>
             </div>

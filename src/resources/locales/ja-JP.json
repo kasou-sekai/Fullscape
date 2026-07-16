@@ -3,27 +3,45 @@
     "upnext": "次は",
     "unknownArtist": "不明なアーティスト",
     "settings": {
-        "fullscreenConfig": "全画面モード設定",
+        "fullscapeConfig": "プラグイン設定",
         "exit": "終了",
         "pluginSettings": "プラグイン設定",
-        "fsHideOriginal": "元のボタンを隠す",
-        "fsHideOriginalDescription": "Spotifyの元の全画面ボタンを隠す (**Premium** ユーザー向け)",
+        "hideSpotifyFullscreenButton": "標準版への切り替えボタンを隠す",
+        "hideSpotifyFullscreenButtonDescription": "Spotify 標準の全画面ボタンを非表示にします。再起動が必要で、一部のシステムでは機能しない場合があります。",
         "language": "言語",
         "autoLaunch": {
-            "setting": "自動起動 (Spotify起動時)",
+            "setting": "Spotify 起動時に全画面表示を開く",
             "description": "**制限:** 自動起動時はSpotifyウィンドウを全画面にできません。",
             "never": "しない (デフォルト)",
             "default": "デフォルトモードを開く"
         },
         "activationTypes": {
             "setting": "起動方法",
-            "both": "ボタンとキーボードショートカット",
+            "description": "ボタン、F キー、またはその両方で全画面表示を開くか選びます。",
+            "both": "ボタンと F キー",
             "btns": "ボタンのみ",
-            "keys": "キーボードショートカットのみ"
+            "keys": "F キーのみ"
+        },
+        "debugMode": {
+            "setting": "デバッグモード",
+            "description": "デバッグオプションを表示します。"
         },
         "lyricsHeader": "歌詞設定",
         "lyrics": "歌詞",
         "lyricsDescription": ["**注意:** 利用可能な場合は Spotify の内蔵歌詞を使用します。"],
+        "sharedLyricsBridge": {
+            "setting": "LyricShiori に接続",
+            "description": "LyricShiori に接続して歌詞を共有したり、歌詞を手動で指定したり、歌詞の遅延を調整したりします。"
+        },
+        "relaxedLyricsMatching": {
+            "setting": "歌詞の照合を緩和",
+            "description": "より緩やかな照合方法を使用しますが、現在の曲に誤った歌詞が対応付けられる場合があります。"
+        },
+        "showLyricsRomanization": "読みを表示",
+        "showLyricsFurigana": "日本語のふりがなを表示",
+        "lyricsSize": {
+            "setting": "歌詞の文字サイズ"
+        },
         "autoHideLyrics": "歌詞を自動的に隠す (利用できない場合)",
         "generalHeader": "一般設定",
         "progressBar": "プログレスバー",
@@ -89,6 +107,7 @@
         "verticalMonitorSupportDescription": "縦型モニター設定の場合に有効にしてください。ウィンドウの高さが幅より大きい場合、歌詞が下に表示されます。",
         "backAnimationTime": "背景アニメーション時間 (画像背景)",
         "animationSpeed": "⭐ アニメーション速度 (アニメーション背景)",
+        "bpmDrivenMotionDescription": "曲の BPM に応じて背景の流動速度とビート反応の強さを調整します。",
         "upnextTime": "「次は」表示時間",
         "backgroundBlur": "背景ぼかし",
         "backgroundBrightness": "背景の明るさ",
@@ -96,10 +115,10 @@
             "cardTitle": "GitHub Releases",
             "currentVersion": "実行中のバージョン",
             "bundledVersion": "ローカルインストール版",
-            "runningVersionDescription": "Spotify が現在実行しているコードです。ローカルインストール版、または確認済みの GitHub Release のどちらかです。",
-            "bundledVersionDescription": "Spicetify がローカルにインストールした fullScreen.js です。ローカルインストール版へ戻す場合や GitHub 版を読み込めない場合に使用されます。",
-            "releaseCache": "GitHub バージョンのローカルキャッシュ",
-            "releaseCacheDescription": "確認した GitHub バージョンは一度だけダウンロードされ、Spotify の永続ローカルストレージに保存されます。以後の起動ではネットワークより先にこのコピーを使用します。Spotify のサイトデータを消去すると削除されます。",
+            "runningVersionDescription": "現在実行中のバージョンです。",
+            "bundledVersionDescription": "Spicetify がローカルにインストールした fullscape.js です。ローカルインストール版へ戻す場合や GitHub 版を読み込めない場合に使用されます。",
+            "releaseCache": "GitHub バージョンのキャッシュ",
+            "releaseCacheDescription": "このアップデーターで取得した GitHub Release のキャッシュです。ネットワークでの確認に失敗した場合、Fullscape はこのキャッシュを使用します。",
             "checking": "確認中…",
             "checkingDescription": "GitHub で最新の安定版を確認しています。",
             "checkNow": "今すぐ確認",
@@ -113,43 +132,43 @@
             "later": "後で",
             "cancel": "キャンセル",
             "releasePage": "リリースノート",
-            "promptTitle": "Full Screen の更新があります",
-            "promptDescription": "バージョン {version} を利用できます。現在のバージョンは {current} です。手動で確認するまでバージョンは切り替わりません。",
+            "promptTitle": "Fullscape の更新があります",
+            "promptDescription": "バージョン {version} を利用できます。現在のバージョンは {current} です。",
             "autoCheck": "更新を自動確認",
-            "autoCheckDescription": "確認と通知のみを行います。確認するまで Full Screen が新しく検出したバージョンへ切り替わることはありません。",
+            "autoCheckDescription": "新しいバージョンを確認します。確認するまで Fullscape は新しく検出したバージョンへ切り替わりません。",
             "versionSelectorTitle": "バージョン選択",
             "versionSelectorDescription": "安定版の GitHub Release を選ぶか、ローカルインストール版に戻します。",
             "loadingVersions": "GitHub Releases から安定版を読み込み中…",
-            "versionListReady": "この一覧は GitHub Releases から動的に読み込まれます。",
+            "versionListReady": "",
             "versionListFailed": "バージョン一覧を読み込めません",
             "useSelectedVersion": "選択したバージョンを使用",
             "bundledVersionOption": "ローカルインストール版（v{version}）",
             "runningVersionOption": "v{version}（現在実行中）",
-            "confirmVersionTitle": "Full Screen v{version} に切り替えますか？",
+            "confirmVersionTitle": "Fullscape v{version} に切り替えますか？",
             "confirmVersionDescription": "現在 v{current} を使用しています。確認すると Spotify を再読み込みして v{version} を使用します。",
             "confirmBundledTitle": "ローカルインストール版を使用しますか？",
             "confirmBundledDescription": "確認すると選択中の Release の読み込みを停止し、ローカルインストール版 v{version} を再読み込みします。",
             "confirmSwitch": "確認して再読み込み",
             "cachingVersion": "検証してローカルに保存しています…",
-            "cacheFailed": "Full Screen v{version} をダウンロードして検証できませんでした。バージョンは変更されていません。",
-            "storageFailed": "ローカルストレージを使用できないため、選択したバージョンを保存できません。",
+            "cacheFailed": "更新に失敗しました：Fullscape v{version} をダウンロードして検証できませんでした。",
+            "storageFailed": "更新に失敗しました：ローカルストレージを使用できないため、選択したバージョンを保存できません。",
             "reloadFallbackTitle": "ターミナルから Spotify を再読み込み",
             "reloadFallbackDescription": "Spotify を自動で再読み込みできませんでした。確認済みのバージョンを適用するには次のコマンドを実行してください：",
-            "loadFailed": "Full Screen v{version} を読み込めなかったため、ローカルインストール版を使用しています。"
+            "loadFailed": "Fullscape v{version} を読み込めなかったため、ローカルインストール版を使用しています。"
         },
         "layout": {
             "sections": {
                 "general": {
                     "title": "一般",
-                    "description": "言語、起動、開き方、表示モード、診断を設定します。"
+                    "description": "言語、起動方法、表示モードなどを設定します。"
                 },
                 "playback": {
                     "title": "再生画面",
-                    "description": "全画面プレイヤーに表示する内容とタイミングを選びます。"
+                    "description": "再生画面に表示する内容とタイミングを選びます。"
                 },
                 "lyrics": {
                     "title": "歌詞",
-                    "description": "歌詞の取得元、読みやすさ、追加情報を管理します。"
+                    "description": "歌詞の取得元、歌詞のスタイル、追加情報を管理します。"
                 },
                 "background": {
                     "title": "背景とモーション",
@@ -161,7 +180,7 @@
                 },
                 "updates": {
                     "title": "更新",
-                    "description": "GitHub Releases で公開された安定版を確認し、承認して切り替えます。"
+                    "description": "GitHub から更新を取得したり、バージョンを切り替えたりします。"
                 }
             },
             "groups": {
@@ -241,7 +260,7 @@
                 "invertColors": "明るい文字、暗い文字、背景による自動選択を指定します。"
             }
         },
-        "configReset": "設定をリセット"
+        "configReset": "デフォルトに戻す"
     },
-    "fullscreenBtnDesc": "全画面"
+    "fullscapeButtonDescription": "Fullscape"
 }

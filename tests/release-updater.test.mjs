@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { after, beforeEach, test } from "node:test";
 import { build } from "esbuild";
 
-const buildDirectory = await mkdtemp(join(tmpdir(), "full-screen-updater-test-"));
+const buildDirectory = await mkdtemp(join(tmpdir(), "fullscape-updater-test-"));
 const bundlePath = join(buildDirectory, "release-updater.mjs");
 await build({
     entryPoints: ["src/services/release-updater.ts"],
@@ -64,7 +64,7 @@ test("allows a verified release when IndexedDB is unavailable", async () => {
     const checksum = createHash("sha256").update(source).digest("hex");
     globalThis.fetch = async (url) =>
         String(url).endsWith(".sha256")
-            ? new Response(`${checksum}  fullScreen.js\n`)
+            ? new Response(`${checksum}  fullscape.js\n`)
             : new Response(source, {
                   headers: { "content-type": "application/javascript" },
               });
@@ -82,7 +82,7 @@ test("allows a verified release when IndexedDB is unavailable", async () => {
 test("rejects a release whose checksum does not match", async () => {
     globalThis.fetch = async (url) =>
         String(url).endsWith(".sha256")
-            ? new Response(`${"0".repeat(64)}  fullScreen.js\n`)
+            ? new Response(`${"0".repeat(64)}  fullscape.js\n`)
             : new Response("void 0;", {
                   headers: { "content-type": "application/javascript" },
               });
@@ -108,7 +108,7 @@ test("requires a matching runtime version from handshake-enabled releases", () =
     };
     const selected = { version: "9.8.4", tag: "v9.8.4" };
     const source = (version) =>
-        `window.__fullScreenRuntimeReport={protocol:"full-screen-runtime-handshake-v1",version:${JSON.stringify(version)}};`;
+        `window.__fullscapeRuntimeReport={protocol:"fullscape-runtime-handshake-v1",version:${JSON.stringify(version)}};`;
 
     assert.equal(ReleaseUpdater.executeReleaseSource(selected, source(selected.version)), true);
     assert.equal(ReleaseUpdater.executeReleaseSource(selected, source("9.8.3")), false);
@@ -116,7 +116,7 @@ test("requires a matching runtime version from handshake-enabled releases", () =
 
 test("marks an expired cached update result as stale when the network fails", async () => {
     localStorage.setItem(
-        "full-screen:update:release-cache",
+        "fullscape:update:release-cache",
         JSON.stringify({
             checkedAt: Date.now() - 7 * 60 * 60 * 1000,
             release: {
@@ -151,7 +151,7 @@ test("snoozes an update prompt for 24 hours instead of forever", () => {
     assert.equal(ReleaseUpdater.shouldPromptFor(release), false);
 
     localStorage.setItem(
-        "full-screen:update:prompted-version",
+        "fullscape:update:prompted-version",
         JSON.stringify({ version: release.version, promptedAt: Date.now() - 25 * 60 * 60 * 1000 }),
     );
     assert.equal(ReleaseUpdater.shouldPromptFor(release), true);
@@ -176,7 +176,7 @@ test("does not crash startup or reload when local storage throws", () => {
         publishedAt: "2026-01-01T00:00:00Z",
     };
 
-    assert.doesNotThrow(() => ReleaseUpdater.migrateUpdateModel());
+    assert.doesNotThrow(() => ReleaseUpdater.initializeUpdateModel());
     assert.equal(
         ReleaseUpdater.switchToRelease(release, () => {}),
         false,

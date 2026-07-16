@@ -1,6 +1,6 @@
 {
-    "name": "full-screen",
-    "version": "0.1.3",
+    "name": "fullscape",
+    "version": "1.0.0",
     "private": true,
     "license": "MIT",
     "scripts": {

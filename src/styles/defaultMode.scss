@@ -1,30 +1,30 @@
-#full-screen-display {
+#fullscape-display {
     &,
     &.lyrics-unavailable,
     &.lyrics-hide-force {
-        --fsd-foreground-transform: 50%;
-        --fsd-art-max-width: 600px;
-        --fsd-items-max-width: 580px;
-        --fsd-title-size: 50px;
-        --fsd-sec-size: 28px;
+        --fullscape-foreground-transform: 50%;
+        --fullscape-art-max-width: 600px;
+        --fullscape-items-max-width: 580px;
+        --fullscape-title-size: 50px;
+        --fullscape-sec-size: 28px;
     }
     &.lyrics-active
-        :not(#full-screen-display.lyrics-unavailable *, #full-screen-display.lyrics-hide-force *) {
-        --fsd-foreground-transform: 0px;
-        --fsd-art-max-width: 500px;
-        --fsd-items-max-width: 480px;
-        --fsd-title-size: 40px;
-        --fsd-sec-size: 23px;
+        :not(#fullscape-display.lyrics-unavailable *, #fullscape-display.lyrics-hide-force *) {
+        --fullscape-foreground-transform: 0px;
+        --fullscape-art-max-width: 500px;
+        --fullscape-items-max-width: 480px;
+        --fullscape-title-size: 40px;
+        --fullscape-sec-size: 23px;
     }
     &.vertical-mode.lyrics-active {
         // show lyrics container in the bottom instead of to the side
         --lyrics-alignment: center;
-        #fsd-foreground {
+        #fullscape-foreground {
             width: 100%;
             height: 50%;
             margin-top: 20px;
-            #fsd-art {
-                --fsd-art-max-width: 350px;
+            #fullscape-art {
+                --fullscape-art-max-width: 350px;
             }
         }
 
@@ -40,12 +40,12 @@
         }
         &.lyrics-unavailable,
         &.lyrics-hide-force {
-            --fsd-foreground-transform: 0%;
-            #fsd-foreground {
+            --fullscape-foreground-transform: 0%;
+            #fullscape-foreground {
                 width: 100%;
                 height: 100%;
-                #fsd-art {
-                    --fsd-art-max-width: 400px;
+                #fullscape-art {
+                    --fullscape-art-max-width: 400px;
                 }
             }
             #fad-lyrics-container {
@@ -58,22 +58,22 @@
         &,
         &.lyrics-unavailable,
         &.lyrics-hide-force {
-            --fsd-foreground-transform: 50%;
-            --fsd-art-max-width: 550px;
-            --fsd-items-max-width: 530px;
-            --fsd-title-size: 45px;
-            --fsd-sec-size: 26px;
+            --fullscape-foreground-transform: 50%;
+            --fullscape-art-max-width: 550px;
+            --fullscape-items-max-width: 530px;
+            --fullscape-title-size: 45px;
+            --fullscape-sec-size: 26px;
         }
         &.lyrics-active
             :not(
-                #full-screen-display.lyrics-unavailable *,
-                #full-screen-display.lyrics-hide-force *
+                #fullscape-display.lyrics-unavailable *,
+                #fullscape-display.lyrics-hide-force *
             ) {
-            --fsd-foreground-transform: 0px;
-            --fsd-art-max-width: 450px;
-            --fsd-items-max-width: 430px;
-            --fsd-title-size: 38px;
-            --fsd-sec-size: 20px;
+            --fullscape-foreground-transform: 0px;
+            --fullscape-art-max-width: 450px;
+            --fullscape-items-max-width: 430px;
+            --fullscape-title-size: 38px;
+            --fullscape-sec-size: 20px;
         }
     }
 
@@ -81,22 +81,22 @@
         &,
         &.lyrics-unavailable,
         &.lyrics-hide-force {
-            --fsd-foreground-transform: 50%;
-            --fsd-art-max-width: 500px;
-            --fsd-items-max-width: 480px;
-            --fsd-title-size: 40px;
-            --fsd-sec-size: 23px;
+            --fullscape-foreground-transform: 50%;
+            --fullscape-art-max-width: 500px;
+            --fullscape-items-max-width: 480px;
+            --fullscape-title-size: 40px;
+            --fullscape-sec-size: 23px;
         }
         &.lyrics-active
             :not(
-                #full-screen-display.lyrics-unavailable *,
-                #full-screen-display.lyrics-hide-force *
+                #fullscape-display.lyrics-unavailable *,
+                #fullscape-display.lyrics-hide-force *
             ) {
-            --fsd-foreground-transform: 0px;
-            --fsd-art-max-width: 400px;
-            --fsd-items-max-width: 380px;
-            --fsd-title-size: 38px;
-            --fsd-sec-size: 20px;
+            --fullscape-foreground-transform: 0px;
+            --fullscape-art-max-width: 400px;
+            --fullscape-items-max-width: 380px;
+            --fullscape-title-size: 38px;
+            --fullscape-sec-size: 20px;
         }
     }
 
@@ -104,22 +104,22 @@
         &,
         &.lyrics-unavailable,
         &.lyrics-hide-force {
-            --fsd-foreground-transform: 50%;
-            --fsd-art-max-width: 450px;
-            --fsd-items-max-width: 430px;
-            --fsd-title-size: 38px;
-            --fsd-sec-size: 21px;
+            --fullscape-foreground-transform: 50%;
+            --fullscape-art-max-width: 450px;
+            --fullscape-items-max-width: 430px;
+            --fullscape-title-size: 38px;
+            --fullscape-sec-size: 21px;
         }
         &.lyrics-active
             :not(
-                #full-screen-display.lyrics-unavailable *,
-                #full-screen-display.lyrics-hide-force *
+                #fullscape-display.lyrics-unavailable *,
+                #fullscape-display.lyrics-hide-force *
             ) {
-            --fsd-foreground-transform: 0px;
-            --fsd-art-max-width: 350px;
-            --fsd-items-max-width: 330px;
-            --fsd-title-size: 36px;
-            --fsd-sec-size: 20px;
+            --fullscape-foreground-transform: 0px;
+            --fullscape-art-max-width: 350px;
+            --fullscape-items-max-width: 330px;
+            --fullscape-title-size: 36px;
+            --fullscape-sec-size: 20px;
         }
     }
 
@@ -127,65 +127,65 @@
         &,
         &.lyrics-unavailable,
         &.lyrics-hide-force {
-            --fsd-foreground-transform: 50%;
-            --fsd-art-max-width: 400px;
-            --fsd-items-max-width: 380px;
-            --fsd-title-size: 40px;
-            --fsd-sec-size: 23px;
+            --fullscape-foreground-transform: 50%;
+            --fullscape-art-max-width: 400px;
+            --fullscape-items-max-width: 380px;
+            --fullscape-title-size: 40px;
+            --fullscape-sec-size: 23px;
         }
         &.lyrics-active
             :not(
-                #full-screen-display.lyrics-unavailable *,
-                #full-screen-display.lyrics-hide-force *
+                #fullscape-display.lyrics-unavailable *,
+                #fullscape-display.lyrics-hide-force *
             ) {
-            --fsd-foreground-transform: 0px;
-            --fsd-art-max-width: 300px;
-            --fsd-items-max-width: 280px;
-            --fsd-title-size: 36px;
-            --fsd-sec-size: 20px;
+            --fullscape-foreground-transform: 0px;
+            --fullscape-art-max-width: 300px;
+            --fullscape-items-max-width: 280px;
+            --fullscape-title-size: 36px;
+            --fullscape-sec-size: 20px;
         }
     }
 
-    #fsd-details,
-    #fsd-status,
-    #fsd-progress-parent {
+    #fullscape-details,
+    #fullscape-status,
+    #fullscape-progress-parent {
         transition: all var(--transition-duration) var(--transition-function);
     }
 
-    #fsd-foreground {
-        transform: translateX(var(--fsd-foreground-transform));
+    #fullscape-foreground {
+        transform: translateX(var(--fullscape-foreground-transform));
         width: 50%;
         flex-direction: column;
         text-align: center;
     }
-    #fsd-art {
+    #fullscape-art {
         width: calc(100vh - 300px);
-        max-width: var(--fsd-art-max-width);
+        max-width: var(--fullscape-art-max-width);
         min-width: 300px;
     }
 
-    #fsd-title {
+    #fullscape-title {
         display: flex;
         min-width: 0;
         align-items: baseline;
         justify-content: center;
         overflow: hidden;
     }
-    #fsd-progress-parent {
+    #fullscape-progress-parent {
         width: 28vw;
-        max-width: var(--fsd-items-max-width);
+        max-width: var(--fullscape-items-max-width);
         margin: 12px auto 0;
     }
-    #fsd-details {
+    #fullscape-details {
         padding-top: 30px;
         line-height: initial;
-        max-width: var(--fsd-items-max-width);
+        max-width: var(--fullscape-items-max-width);
         color: var(--primary-color);
     }
-    #fsd-status {
+    #fullscape-status {
         display: flex;
         width: 28vw;
-        max-width: var(--fsd-items-max-width);
+        max-width: var(--fullscape-items-max-width);
         align-items: center;
         justify-content: center;
         flex-direction: row;
@@ -194,31 +194,31 @@
             gap: 10px;
         }
     }
-    #fsd-title {
-        font-size: var(--fsd-title-size);
+    #fullscape-title {
+        font-size: var(--fullscape-title-size);
         font-weight: 700;
         font-family: inherit;
         font-synthesis: none;
         transition: all var(--transition-duration) var(--transition-function);
     }
-    #fsd-artist,
-    #fsd-album {
-        font-size: var(--fsd-sec-size);
+    #fullscape-artist,
+    #fullscape-album {
+        font-size: var(--fullscape-sec-size);
         transition: all var(--transition-duration) var(--transition-function);
     }
     @media (max-width: 900px), (max-height: 900px) {
-        #fsd-title {
+        #fullscape-title {
             font-size: 35px;
             font-weight: 600;
         }
     }
 
-    #fsd-title svg {
+    #fullscape-title svg {
         width: 35px;
         height: 35px;
     }
     &.lyrics-active {
-        #fsd-title svg {
+        #fullscape-title svg {
             width: 30px;
             height: 30px;
         }
@@ -228,7 +228,7 @@
     }
     &.lyrics-unavailable,
     &.lyrics-hide-force {
-        #fsd-title svg {
+        #fullscape-title svg {
             width: 35px;
             height: 35px;
         }
@@ -242,18 +242,18 @@
         margin-right: 7px;
     }
 
-    #fsd-artist svg,
-    #fsd-album svg {
-        width: calc(var(--fsd-sec-size) - 6px);
-        height: calc(var(--fsd-sec-size) - 6px);
+    #fullscape-artist svg,
+    #fullscape-album svg {
+        width: calc(var(--fullscape-sec-size) - 6px);
+        height: calc(var(--fullscape-sec-size) - 6px);
         margin-right: 5px;
     }
 
-    .fsd-controls {
+    .fullscape-controls {
         margin-top: 10px;
         margin-bottom: 5px;
     }
-    .fsd-controls-center {
+    .fullscape-controls-center {
         width: 100%;
         align-items: center;
         justify-content: center;

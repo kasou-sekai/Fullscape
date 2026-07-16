@@ -1,5 +1,5 @@
 import Kawarp from "@kawarp/core";
-import { BeatResponsePreset, Settings } from "../types/fullscreen";
+import { BeatResponsePreset, Settings } from "../types/fullscape";
 import { AudioAnalysis, getAudioAnalysis, getAudioMotion } from "../services/audio-analysis";
 import CFM from "./config";
 
@@ -294,7 +294,7 @@ function updateFluidDebug(
     warp = FLUID_BASE_WARP_INTENSITY,
     scale = FLUID_BASE_SCALE,
 ) {
-    const debug = document.querySelector<HTMLElement>("#fsd-background-debug");
+    const debug = document.querySelector<HTMLElement>("#fullscape-background-debug");
     if (!debug) return;
 
     const beatStrength = Math.min(1, Math.max(0, fluidSmoothedWarpPulse));

@@ -3,28 +3,28 @@
     "upnext": "下一首",
     "unknownArtist": "未知歌手",
     "settings": {
-        "fullscreenConfig": "全屏模式配置",
+        "fullscapeConfig": "插件设置",
         "exit": "退出",
         "pluginSettings": "插件设置",
-        "fsHideOriginal": "隐藏切换至原版按钮 (Spotify Premium)",
-        "fsHideOriginalDescription": "隐藏原版的全屏按钮(仅对**Premium**用户有效). 需要重启",
+        "hideSpotifyFullscreenButton": "隐藏切换至原版按钮",
+        "hideSpotifyFullscreenButtonDescription": "隐藏原版的全屏按钮，需要重启，在部分系统可能不生效",
         "language": "语言",
         "autoLaunch": {
-            "setting": "自动启动(当Spotify启动时)",
-            "description": "**限制:** 自动启动时Spotify窗口不能自动全屏",
+            "setting": "在Spotify启动时进入全屏",
+            "description": "**限制:** 开机自动启动 Spotify 时该项无法生效。",
             "never": "从不(默认)",
             "default": "进入默认模式"
         },
         "activationTypes": {
             "setting": "激活方式",
-            "description": "选择使用按钮、F 键或两者来激活全屏。",
-            "both": "按钮和键盘快捷方式",
+            "description": "选择使用按钮、F键或两者来激活全屏。",
+            "both": "按钮和F键",
             "btns": "仅按钮",
-            "keys": "仅键盘快捷方式"
+            "keys": "仅F键"
         },
         "debugMode": {
             "setting": "调试模式",
-            "description": "在设置中显示歌词诊断，并在播放界面标记背景响应节拍的时机。"
+            "description": "显示调试选项。"
         },
         "lyricsDebugHeader": "歌词调试",
         "lyricsHeader": "歌词设置",
@@ -33,15 +33,15 @@
         "thirdPartyLyrics": "使用网易云与 QQ 音乐增强歌词",
         "sharedLyricsBridge": {
             "setting": "连接 LyricShiori",
-            "description": "读取 LyricShiori 确认过的歌词，并通过本地桥把新匹配的歌词共享回去。"
+            "description": "连接 LyricShiori 共享歌词、手动指定歌词或者调整歌词延迟。"
         },
         "relaxedLyricsMatching": {
             "setting": "宽松歌词匹配",
-            "description": "开启后，时长和首句歌词符合条件的候选可忽略歌名、歌手与专辑差异。"
+            "description": "开启后，将会采取更佳宽松的匹配策略，但是有可能将错误的歌词匹配到当前歌曲。"
         },
         "showLyricsTranslation": "显示歌词翻译",
-        "showLyricsRomanization": "显示罗马音歌词",
-        "showLyricsFurigana": "显示假名注音",
+        "showLyricsRomanization": "显示读音",
+        "showLyricsFurigana": "显示日文假名注音",
         "lyricsChineseConversion": {
             "setting": "歌词繁简字形",
             "description": "将显示的原文和翻译转换为简体或繁体中文。",
@@ -112,7 +112,7 @@
             "dynamic": "动态逐字"
         },
         "lyricsSize": {
-            "setting": "歌词大小",
+            "setting": "歌词字号",
             "description": "点击加减按钮调整字号（12–99 像素）。"
         },
         "generalHeader": "通用设置",
@@ -187,7 +187,7 @@
             "custom": "自定义"
         },
         "bpmDrivenMotion": "BPM 驱动背景",
-        "bpmDrivenMotionDescription": "使用读取到的 BPM 调整流动速度，并在没有节拍时间点时生成节拍脉冲。关闭后，背景运动由你的设置控制。",
+        "bpmDrivenMotionDescription": "根据歌曲BPM调整背景流动速度和节拍响应强度。",
         "beatControls": {
             "header": "节拍响应",
             "description": "以下参数仅在“节拍响应”设为“自定义”时生效。",
@@ -223,10 +223,10 @@
             "cardTitle": "GitHub 发布版本",
             "currentVersion": "正在运行的版本",
             "bundledVersion": "本地安装版本",
-            "runningVersionDescription": "Spotify 当前实际执行的代码，可能是本地安装版本，也可能是你已确认的 GitHub Release。",
-            "bundledVersionDescription": "由 Spicetify 安装在本地的 fullScreen.js；选择本地安装版本或 GitHub 版本加载失败时会使用它。",
-            "releaseCache": "GitHub 版本本地缓存",
-            "releaseCacheDescription": "确认使用的 GitHub 版本只下载一次，并保存到 Spotify 的持久化本地存储中。以后启动会优先使用该副本；清除 Spotify 站点数据会删除它。",
+            "runningVersionDescription": "当前运行中的版本。",
+            "bundledVersionDescription": "由 Spicetify 安装在本地的 fullscape.js；选择本地安装版本或 GitHub 版本加载失败时会使用它。",
+            "releaseCache": "GitHub 版本缓存",
+            "releaseCacheDescription": "通过此更新器获取的 GitHub Release 版本缓存；如果网络检查失败，Fullscape 会使用此缓存。",
             "checking": "正在检查…",
             "checkingDescription": "正在从 GitHub 检查最新稳定版本。",
             "checkNow": "立即检查",
@@ -240,43 +240,43 @@
             "later": "稍后",
             "cancel": "取消",
             "releasePage": "发布说明",
-            "promptTitle": "Full Screen 有可用更新",
-            "promptDescription": "版本 {version} 已发布；你当前使用的是 {current}。在你手动确认前不会切换版本。",
+            "promptTitle": "Fullscape 有可用更新",
+            "promptDescription": "版本 {version} 已发布；你当前使用的是 {current}。",
             "autoCheck": "自动检测更新",
-            "autoCheckDescription": "只负责检测和提示；在你确认前，Full Screen 不会切换到新检测到的版本。",
+            "autoCheckDescription": "检查新版本。在你确认前，Fullscape 不会切换到新检测到的版本。",
             "versionSelectorTitle": "版本选择",
             "versionSelectorDescription": "选择一个稳定的 GitHub Release，或返回本地安装的版本。",
             "loadingVersions": "正在从 GitHub Releases 加载稳定版本…",
-            "versionListReady": "此列表从 GitHub Releases 动态加载，不在插件中写死。",
+            "versionListReady": "",
             "versionListFailed": "无法加载版本列表",
             "useSelectedVersion": "使用所选版本",
             "bundledVersionOption": "本地安装版本（v{version}）",
             "runningVersionOption": "v{version}（当前正在运行）",
-            "confirmVersionTitle": "切换到 Full Screen v{version}？",
+            "confirmVersionTitle": "切换到 Fullscape v{version}？",
             "confirmVersionDescription": "当前正在使用 v{current}。确认后将重载 Spotify 并使用 v{version}。",
             "confirmBundledTitle": "使用本地安装版本？",
             "confirmBundledDescription": "确认后将停止加载所选 Release，并重载本地安装版本 v{version}。",
             "confirmSwitch": "确认并重载",
             "cachingVersion": "正在校验并保存到本地…",
-            "cacheFailed": "无法下载并校验 Full Screen v{version}，版本没有发生变化。",
-            "storageFailed": "本地存储不可用，无法保存所选版本。",
+            "cacheFailed": "更新失败：无法下载并校验 Fullscape v{version}。",
+            "storageFailed": "更新失败：本地存储不可用，无法保存所选版本。",
             "reloadFallbackTitle": "从终端重载 Spotify",
             "reloadFallbackDescription": "Spotify 未能自动重载。请在终端运行以下命令以应用已确认的版本：",
-            "loadFailed": "无法加载 Full Screen v{version}，现已改用本地安装版本。"
+            "loadFailed": "无法加载 Fullscape v{version}，现已改用本地安装版本。"
         },
         "layout": {
             "sections": {
                 "general": {
-                    "title": "常规",
-                    "description": "设置语言、启动方式、激活方式、显示模式和诊断功能。"
+                    "title": "通用",
+                    "description": "设置语言、启动方式、显示模式等。"
                 },
                 "playback": {
                     "title": "播放界面",
-                    "description": "选择全屏播放界面显示哪些内容，以及何时显示。"
+                    "description": "选择播放界面显示哪些内容，以及何时显示。"
                 },
                 "lyrics": {
                     "title": "歌词",
-                    "description": "管理歌词来源、可读性和可选增强内容。"
+                    "description": "管理歌词来源、歌词样式以及可选增强内容。"
                 },
                 "background": {
                     "title": "背景与动画",
@@ -288,7 +288,7 @@
                 },
                 "updates": {
                     "title": "更新",
-                    "description": "检查、确认并切换通过 GitHub Releases 发布的稳定构建。"
+                    "description": "从 Github 上获取更新或者切换版本。"
                 }
             },
             "groups": {
@@ -359,7 +359,7 @@
                 "invertColors": "选择浅色或深色播放文字，也可以根据背景亮度自动决定。"
             }
         },
-        "configReset": "重置配置"
+        "configReset": "恢复默认"
     },
-    "fullscreenBtnDesc": "全屏"
+    "fullscapeButtonDescription": "Fullscape"
 }

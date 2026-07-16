@@ -3,7 +3,7 @@ import translations from "../../../resources/strings";
 import { DOM } from "../../elements";
 import Utils from "../../../utils/utils";
 import ICONS from "../../../constants";
-import { Settings, Config } from "../../../types/fullscreen";
+import { Settings, Config } from "../../../types/fullscape";
 import {
     createOverflowScrollAnimation,
     getOverflowScrollTiming,
@@ -18,7 +18,7 @@ export class UpNext {
 
     static async updateUpNextInfo() {
         const LOCALE = CFM.getGlobal("locale") as Config["locale"];
-        DOM.fsd_up_next_text.innerText = translations[LOCALE].upnext.toUpperCase();
+        DOM.upNextLabel.innerText = translations[LOCALE].upnext.toUpperCase();
         let metadata: Spicetify.Metadata = {};
         const queue_metadata = Spicetify.Queue.nextTracks[0];
         if (queue_metadata) {
@@ -56,15 +56,15 @@ export class UpNext {
         }
         return new Promise<void>((resolve) => {
             upnextImage.onload = () => {
-                DOM.fsd_nextCover.style.backgroundImage = `url("${upnextImage.src}")`;
-                DOM.fsd_first_span.innerText = songName + "  •  " + next_artist;
-                DOM.fsd_second_span.innerText = songName + "  •  " + next_artist;
+                DOM.upNextCover.style.backgroundImage = `url("${upnextImage.src}")`;
+                DOM.upNextPrimaryText.innerText = songName + "  •  " + next_artist;
+                DOM.upNextSecondaryText.innerText = songName + "  •  " + next_artist;
                 resolve();
             };
             upnextImage.onerror = () => {
-                DOM.fsd_nextCover.style.backgroundImage = `url("${ICONS.OFFLINE_SVG}")`;
-                DOM.fsd_first_span.innerText = songName + "  •  " + next_artist;
-                DOM.fsd_second_span.innerText = songName + "  •  " + next_artist;
+                DOM.upNextCover.style.backgroundImage = `url("${ICONS.OFFLINE_SVG}")`;
+                DOM.upNextPrimaryText.innerText = songName + "  •  " + next_artist;
+                DOM.upNextSecondaryText.innerText = songName + "  •  " + next_artist;
                 resolve();
             };
         });
@@ -98,30 +98,30 @@ export class UpNext {
     }
 
     static showUpNext() {
-        DOM.fsd_myUp.style.transform = this.visibleTransform;
-        DOM.fsd_myUp.style.opacity = "1";
-        DOM.fsd_myUp.style.pointerEvents = "auto";
+        DOM.upNextContainer.style.transform = this.visibleTransform;
+        DOM.upNextContainer.style.opacity = "1";
+        DOM.upNextContainer.style.pointerEvents = "auto";
         this.upNextShown = true;
         this.setupScrollingAnimation();
     }
 
     static hideUpNext() {
         this.upNextShown = false;
-        DOM.fsd_myUp.style.transform = this.hiddenTransform;
-        DOM.fsd_myUp.style.opacity = "0";
-        DOM.fsd_myUp.style.pointerEvents = "none";
+        DOM.upNextContainer.style.transform = this.hiddenTransform;
+        DOM.upNextContainer.style.opacity = "0";
+        DOM.upNextContainer.style.pointerEvents = "none";
         this.resetUpNextAnimation();
     }
 
     static setupScrollingAnimation() {
         this.resetUpNextAnimation();
         const overflow = Math.ceil(
-            DOM.fsd_first_span.offsetWidth - DOM.fsd_next_tit_art.clientWidth,
+            DOM.upNextPrimaryText.offsetWidth - DOM.upNextTitleViewport.clientWidth,
         );
         if (overflow <= 1 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
         this.scrollAnimation = createOverflowScrollAnimation(
-            DOM.fsd_next_tit_art_inner,
+            DOM.upNextTitleTrack,
             overflow,
             getOverflowScrollTiming(overflow),
         );
@@ -130,10 +130,10 @@ export class UpNext {
     static resetUpNextAnimation() {
         this.scrollAnimation?.cancel();
         this.scrollAnimation = null;
-        DOM.fsd_first_span.style.paddingRight = "0px";
-        DOM.fsd_next_tit_art_inner.style.animation = "none";
-        DOM.fsd_next_tit_art_inner.style.removeProperty("transform");
-        DOM.fsd_second_span.innerText = "";
+        DOM.upNextPrimaryText.style.paddingRight = "0px";
+        DOM.upNextTitleTrack.style.animation = "none";
+        DOM.upNextTitleTrack.style.removeProperty("transform");
+        DOM.upNextSecondaryText.innerText = "";
     }
 
     static updateUpNextShow() {
@@ -148,7 +148,7 @@ export class UpNext {
                 if (timetogo < 10) {
                     if (
                         !this.upNextShown ||
-                        DOM.fsd_myUp.style.transform !== this.visibleTransform
+                        DOM.upNextContainer.style.transform !== this.visibleTransform
                     ) {
                         this.updateUpNext();
                     }

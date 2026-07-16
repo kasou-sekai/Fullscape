@@ -1,4 +1,4 @@
-import { Config } from "../types/fullscreen";
+import { Config } from "../types/fullscape";
 
 export const DEFAULTS: Config = {
     def: {
@@ -44,7 +44,7 @@ export const DEFAULTS: Config = {
         verticalMonitorSupport: true,
     },
     locale: "en-US",
-    fsHideOriginal: false,
+    hideSpotifyFullscreenButton: false,
     autoLaunch: "never",
     activationTypes: "both",
     autoUpdateCheck: true,

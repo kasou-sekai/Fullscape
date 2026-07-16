@@ -9,7 +9,7 @@ import CFM from "./utils/config";
 import translations from "./resources/strings";
 import ICONS, { CLASSES_TO_ADD } from "./constants";
 import HtmlSelectors from "./utils/selectors";
-import { Config, Settings } from "./types/fullscreen";
+import { Config, Settings } from "./types/fullscape";
 import { createOverflowScrollAnimation, getOverflowScrollTiming } from "./utils/overflow-scroll";
 
 import { getHtmlContent } from "./services/html-creator";
@@ -30,7 +30,7 @@ import "./styles/base.scss";
 import "./styles/defaultMode.scss";
 import "./styles/settings.scss";
 
-async function startFullScreen() {
+async function startFullscape() {
     let INIT_RETRIES = 0;
     let entriesNotPresent = Utils.allNotExist();
 
@@ -50,10 +50,10 @@ async function startFullScreen() {
     startSharedBridgePresence();
 
     if (CFM.getGlobal("activationTypes") !== "btns") {
-        Spicetify.Mousetrap.bind("f", toggleFullscreen);
+        Spicetify.Mousetrap.bind("f", toggleFullscape);
     }
 
-    function toggleFullscreen() {
+    function toggleFullscape() {
         if (Utils.isModeActivated()) deactivate();
         else activate();
     }
@@ -80,7 +80,7 @@ async function startFullScreen() {
         metadataAnimations.forEach((animation) => animation.cancel());
         metadataAnimations = [];
         DOM.container
-            .querySelectorAll<HTMLElement>("#fsd-title-text-track, #fsd-secondary-meta-track")
+            .querySelectorAll<HTMLElement>("#fullscape-title-text-track, #fullscape-secondary-meta-track")
             .forEach((track) => {
                 track.style.removeProperty("transform");
             });
@@ -93,12 +93,12 @@ async function startFullScreen() {
             cancelMetadataAnimations();
             const targets = [
                 {
-                    viewport: DOM.container.querySelector<HTMLElement>("#fsd-title-text-viewport"),
-                    track: DOM.container.querySelector<HTMLElement>("#fsd-title-text-track"),
+                    viewport: DOM.container.querySelector<HTMLElement>("#fullscape-title-text-viewport"),
+                    track: DOM.container.querySelector<HTMLElement>("#fullscape-title-text-track"),
                 },
                 {
-                    viewport: DOM.container.querySelector<HTMLElement>("#fsd-secondary-meta"),
-                    track: DOM.container.querySelector<HTMLElement>("#fsd-secondary-meta-track"),
+                    viewport: DOM.container.querySelector<HTMLElement>("#fullscape-secondary-meta"),
+                    track: DOM.container.querySelector<HTMLElement>("#fullscape-secondary-meta-track"),
                 },
             ].filter(
                 (
@@ -135,9 +135,9 @@ async function startFullScreen() {
 
     function updateLyricsBounds() {
         if (!CFM.get("lyricsDisplay") || !DOM.lyrics?.isConnected) return;
-        const artwork = DOM.container.querySelector<HTMLElement>("#fsd-art");
-        const controls = DOM.container.querySelector<HTMLElement>("#fsd-status");
-        const progress = DOM.container.querySelector<HTMLElement>("#fsd-progress-parent");
+        const artwork = DOM.container.querySelector<HTMLElement>("#fullscape-art");
+        const controls = DOM.container.querySelector<HTMLElement>("#fullscape-status");
+        const progress = DOM.container.querySelector<HTMLElement>("#fullscape-progress-parent");
         if (!artwork || !controls) return;
 
         const containerRect = DOM.container.getBoundingClientRect();
@@ -184,7 +184,7 @@ async function startFullScreen() {
         Spicetify.Player.removeEventListener("onplaypause", updatePlayerControls);
         Spicetify.Player.removeEventListener("onplaypause", updatePlayingIcon);
         Spicetify.Player.removeEventListener("onplaypause", updatePlaybackLayout);
-        document.removeEventListener("fullscreenchange", fullScreenListener);
+        document.removeEventListener("fullscreenchange", fullscreenChangeListener);
 
         Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", updateUpNext);
         Spicetify.Platform.PlayerAPI._events.removeListener("update", updateUpNextShow);
@@ -208,7 +208,7 @@ async function startFullScreen() {
 
         const transitionTime = Number(CFM.get("backAnimationTime"));
         DOM.style.textContent = `
-        #full-screen-display {
+        #fullscape-display {
             --lyrics-alignment: left;
             --right-margin-lyrics: 0px;
             --icons-display: ${CFM.get("icons") ? "inline-block" : "none"};
@@ -223,29 +223,29 @@ async function startFullScreen() {
         }
         DOM.container.innerHTML = getHtmlContent();
 
-        DOM.back = DOM.container.querySelector("#fsd-background")!;
+        DOM.back = DOM.container.querySelector("#fullscape-background")!;
         DOM.back.width = window.innerWidth;
         DOM.back.height = window.innerHeight;
-        DOM.fluidBack = DOM.container.querySelector("#fsd-fluid-background")!;
+        DOM.fluidBack = DOM.container.querySelector("#fullscape-fluid-background")!;
 
-        DOM.cover = DOM.container.querySelector("#fsd-art-image")!;
-        DOM.title = DOM.container.querySelector("#fsd-title-text-track")!;
-        DOM.artist = DOM.container.querySelector("#fsd-artist .fsd-artist-list")!;
-        DOM.album = DOM.container.querySelector("#fsd-album span")!;
+        DOM.cover = DOM.container.querySelector("#fullscape-art-image")!;
+        DOM.title = DOM.container.querySelector("#fullscape-title-text-track")!;
+        DOM.artist = DOM.container.querySelector("#fullscape-artist .fullscape-artist-list")!;
+        DOM.album = DOM.container.querySelector("#fullscape-album span")!;
         if (CFM.get("lyricsDisplay")) {
             DOM.lyrics = DOM.container.querySelector("#fad-lyrics-container")!;
             Lyrics.attach(DOM.lyrics);
         }
 
         if (CFM.get("upnextDisplay") !== "never") {
-            DOM.fsd_myUp = DOM.container.querySelector("#fsd-upnext-container")!;
-            DOM.fsd_myUp.onclick = Spicetify.Player.next;
-            DOM.fsd_nextCover = DOM.container.querySelector("#fsd_next_art_image")!;
-            DOM.fsd_up_next_text = DOM.container.querySelector("#fsd_up_next_text")!;
-            DOM.fsd_next_tit_art = DOM.container.querySelector("#fsd_next_tit_art")!;
-            DOM.fsd_next_tit_art_inner = DOM.container.querySelector("#fsd_next_tit_art_inner")!;
-            DOM.fsd_first_span = DOM.container.querySelector("#fsd_first_span")!;
-            DOM.fsd_second_span = DOM.container.querySelector("#fsd_second_span")!;
+            DOM.upNextContainer = DOM.container.querySelector("#fullscape-upnext-container")!;
+            DOM.upNextContainer.onclick = Spicetify.Player.next;
+            DOM.upNextCover = DOM.container.querySelector("#fullscape-up-next-cover")!;
+            DOM.upNextLabel = DOM.container.querySelector("#upNextLabel")!;
+            DOM.upNextTitleViewport = DOM.container.querySelector("#upNextTitleViewport")!;
+            DOM.upNextTitleTrack = DOM.container.querySelector("#upNextTitleTrack")!;
+            DOM.upNextPrimaryText = DOM.container.querySelector("#upNextPrimaryText")!;
+            DOM.upNextSecondaryText = DOM.container.querySelector("#upNextSecondaryText")!;
         }
         if (CFM.get("icons")) {
             DOM.playingIcon = DOM.container.querySelector("#playing-icon")!;
@@ -265,17 +265,17 @@ async function startFullScreen() {
             };
         }
         if (CFM.get("playerControls") !== "never") {
-            DOM.play = DOM.container.querySelector("#fsd-play")!;
+            DOM.play = DOM.container.querySelector("#fullscape-play")!;
             DOM.play.onclick = () => {
                 Utils.fadeAnimation(DOM.play);
                 Spicetify.Player.togglePlay();
             };
-            DOM.nextControl = DOM.container.querySelector("#fsd-next")!;
+            DOM.nextControl = DOM.container.querySelector("#fullscape-next")!;
             DOM.nextControl.onclick = () => {
                 Utils.fadeAnimation(DOM.nextControl, "fade-ri");
                 Spicetify.Player.next();
             };
-            DOM.backControl = DOM.container.querySelector("#fsd-back")!;
+            DOM.backControl = DOM.container.querySelector("#fullscape-back")!;
             DOM.backControl.onclick = () => {
                 Utils.fadeAnimation(DOM.backControl, "fade-le");
                 Spicetify.Player.back();
@@ -429,7 +429,7 @@ async function startFullScreen() {
         if (PlayerControls.playerControlsTimer) clearTimeout(PlayerControls.playerControlsTimer);
     }
 
-    function fullScreenListener() {
+    function fullscreenChangeListener() {
         if (
             document.fullscreenElement === null &&
             CFM.get("enableFullscreen") &&
@@ -455,14 +455,14 @@ async function startFullScreen() {
         const sequence = ++activationSequence;
         Utils.toggleQueuePanel(null, true);
         document.body.classList.add(...CLASSES_TO_ADD);
-        if (CFM.get("enableFullscreen")) await Utils.fullScreenOn()?.catch(() => undefined);
-        else await Utils.fullScreenOff()?.catch(() => undefined);
+        if (CFM.get("enableFullscreen")) await Utils.enterFullscreen()?.catch(() => undefined);
+        else await Utils.exitFullscreen()?.catch(() => undefined);
         setTimeout(() => {
             if (sequence !== activationSequence || !Utils.isModeActivated()) return;
             updateInfo();
             window.addEventListener("resize", resizeEvents);
             resizeEvents();
-            DOM.container.querySelectorAll(".fsd-song-meta span").forEach((span) => {
+            DOM.container.querySelectorAll(".fullscape-song-meta span").forEach((span) => {
                 (span as HTMLElement).onclick = (evt: any) => {
                     handleNavigation(evt.target?.getAttribute("uri") ?? "");
                 };
@@ -470,9 +470,9 @@ async function startFullScreen() {
         }, 200);
         Spicetify.Player.addEventListener("songchange", updateInfo);
         handleMouseMoveActivation();
-        DOM.container.querySelector<HTMLElement>("#fsd-foreground")!.oncontextmenu =
+        DOM.container.querySelector<HTMLElement>("#fullscape-foreground")!.oncontextmenu =
             ConfigManager.openConfig.bind(ConfigManager);
-        DOM.container.querySelector<HTMLElement>("#fsd-foreground")!.ondblclick = deactivate;
+        DOM.container.querySelector<HTMLElement>("#fullscape-foreground")!.ondblclick = deactivate;
         DOM.back.oncontextmenu = ConfigManager.openConfig.bind(ConfigManager);
         DOM.back.ondblclick = deactivate;
         if (CFM.get("upnextDisplay") !== "never") {
@@ -489,7 +489,7 @@ async function startFullScreen() {
                 <SeekableProgressBar
                     state={CFM.get("progressBarDisplay") as Settings["progressBarDisplay"]}
                 />,
-                DOM.container.querySelector("#fsd-progress-parent"),
+                DOM.container.querySelector("#fullscape-progress-parent"),
             );
         }
         if (CFM.get("playerControls") !== "never") {
@@ -517,8 +517,8 @@ async function startFullScreen() {
                 handleLyricsQueueUpdate,
             );
         }
-        Spicetify.Mousetrap.bind("f11", fsToggle);
-        document.addEventListener("fullscreenchange", fullScreenListener);
+        Spicetify.Mousetrap.bind("f11", toggleNativeFullscreen);
+        document.addEventListener("fullscreenchange", fullscreenChangeListener);
         Spicetify.Mousetrap.bind("esc", deactivate);
         if (CFM.get("lyricsDisplay")) {
             Spicetify.Mousetrap.bind("l", Lyrics.toggleLyrics);
@@ -551,7 +551,7 @@ async function startFullScreen() {
             Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", updateUpNext);
             Spicetify.Platform.PlayerAPI._events.removeListener("update", updateUpNextShow);
         }
-        const progressRoot = DOM.container.querySelector("#fsd-progress-parent");
+        const progressRoot = DOM.container.querySelector("#fullscape-progress-parent");
         if (progressRoot) ReactDOM.unmountComponentAtNode(progressRoot);
         if (CFM.get("icons")) {
             Spicetify.Player.removeEventListener("onplaypause", updatePlayingIcon);
@@ -570,13 +570,13 @@ async function startFullScreen() {
         document.body.classList.remove(...CLASSES_TO_ADD);
         UpNext.upNextShown = false;
         if (CFM.get("enableFullscreen")) {
-            await Utils.fullScreenOff()?.catch(() => undefined);
+            await Utils.exitFullscreen()?.catch(() => undefined);
         }
         const popup = document.querySelector("body > generic-modal");
         if (popup) popup.remove();
         DOM.style.remove();
         DOM.container.remove();
-        document.removeEventListener("fullscreenchange", fullScreenListener);
+        document.removeEventListener("fullscreenchange", fullscreenChangeListener);
 
         Spicetify.Mousetrap.unbind("f11");
         Spicetify.Mousetrap.unbind("esc");
@@ -585,7 +585,7 @@ async function startFullScreen() {
         Spicetify.Mousetrap.unbind("q");
     }
 
-    function fsToggle() {
+    function toggleNativeFullscreen() {
         if (CFM.get("enableFullscreen")) {
             CFM.set("enableFullscreen", false);
             render();
@@ -640,7 +640,7 @@ async function startFullScreen() {
     );
 
     const extraBar = HtmlSelectors.getExtraBarSelector() as HTMLElement;
-    if (CFM.getGlobal("fsHideOriginal")) {
+    if (CFM.getGlobal("hideSpotifyFullscreenButton")) {
         const lastExtraBarItem = extraBar?.lastElementChild as HTMLElement | null;
         if (
             lastExtraBarItem?.classList.contains("control-button") ||
@@ -651,11 +651,11 @@ async function startFullScreen() {
     if (CFM.getGlobal("activationTypes") != "keys") {
         const defButton = document.createElement("button");
         defButton.classList.add("button");
-        defButton.id = "fullscreen-default-button";
-        defButton.setAttribute("title", translations[LOCALE].fullscreenBtnDesc);
+        defButton.id = "fullscape-default-button";
+        defButton.setAttribute("title", translations[LOCALE].fullscapeButtonDescription);
 
         defButton.innerHTML = ICONS.FULLSCREEN;
-        defButton.onclick = toggleFullscreen;
+        defButton.onclick = toggleFullscape;
 
         defButton.oncontextmenu = (evt) => {
             evt.preventDefault();
@@ -681,14 +681,14 @@ async function startFullScreen() {
         window.setTimeout(() => void ConfigManager.promptForUpdate(LOCALE), 2500);
     }
 
-    if (CFM.getGlobal("autoLaunch") === "default") toggleFullscreen();
+    if (CFM.getGlobal("autoLaunch") === "default") toggleFullscape();
 }
 
 async function main() {
     ReleaseUpdater.reportRuntimeVersion();
-    ReleaseUpdater.migrateUpdateModel();
+    ReleaseUpdater.initializeUpdateModel();
     if (!(await ReleaseUpdater.shouldStartBundledVersion())) return;
-    await startFullScreen();
+    await startFullscape();
 }
 
 export default main;

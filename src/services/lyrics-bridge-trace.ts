@@ -16,14 +16,14 @@ export type LyricsBridgeTraceEvent = {
 
 type TraceInput = Pick<LyricsCacheEntry, "trackUri" | "kind" | "cacheSource" | "cachedAt" | "lines">;
 
-const STORAGE_KEY = "full-screen:lyrics-bridge-trace-v1";
+const STORAGE_KEY = "fullscape:lyrics-bridge-trace-v1";
 const MAX_ENTRIES = 400;
 const DEDUPE_WINDOW_MS = 1500;
 let lastSignature = "";
 let lastRecordedAt = 0;
 
 export function traceLyricsBridge(event: string, entry: TraceInput, detail?: string) {
-    if (localStorage.getItem("full-screen:lyrics-bridge-debug") !== "1") return;
+    if (localStorage.getItem("fullscape:lyrics-bridge-debug") !== "1") return;
     const lines = entry.lines;
     const record: LyricsBridgeTraceEvent = {
         timestamp: new Date().toISOString(),
@@ -52,7 +52,7 @@ export function traceLyricsBridge(event: string, entry: TraceInput, detail?: str
     } catch {
         // Diagnostics must never affect lyric rendering or cache synchronization.
     }
-    console.debug("[Full-Screen lyrics bridge]", record);
+    console.debug("[Fullscape lyrics bridge]", record);
 }
 
 export function getLyricsBridgeTrace(): LyricsBridgeTraceEvent[] {

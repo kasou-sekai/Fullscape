@@ -3,27 +3,45 @@
     "upnext": "다음 곡",
     "unknownArtist": "알 수 없는 아티스트",
     "settings": {
-        "fullscreenConfig": "전체 화면 설정",
+        "fullscapeConfig": "플러그인 설정",
         "exit": "종료",
         "pluginSettings": "플러그인 설정",
-        "fsHideOriginal": "기본 버튼 숨기기",
-        "fsHideOriginalDescription": "Spotify의 기본 전체 화면 버튼 숨기기 (**Premium** 사용자용)",
+        "hideSpotifyFullscreenButton": "기본 버전 전환 버튼 숨기기",
+        "hideSpotifyFullscreenButtonDescription": "Spotify의 기본 전체 화면 버튼을 숨깁니다. 다시 시작해야 하며 일부 시스템에서는 작동하지 않을 수 있습니다.",
         "language": "언어",
         "autoLaunch": {
-            "setting": "자동 실행 (Spotify 시작 시)",
+            "setting": "Spotify 시작 시 전체 화면으로 열기",
             "description": "**제한:** 자동 실행 시 Spotify 창을 전체 화면으로 전환할 수 없습니다.",
             "never": "안 함 (기본값)",
             "default": "기본 모드 열기"
         },
         "activationTypes": {
             "setting": "활성화 방법",
-            "both": "버튼 및 키보드 단축키",
+            "description": "버튼, F 키 또는 둘 다를 사용해 전체 화면을 열지 선택합니다.",
+            "both": "버튼 및 F 키",
             "btns": "버튼만",
-            "keys": "키보드 단축키만"
+            "keys": "F 키만"
+        },
+        "debugMode": {
+            "setting": "디버그 모드",
+            "description": "디버그 옵션을 표시합니다."
         },
         "lyricsHeader": "가사 설정",
         "lyrics": "가사",
         "lyricsDescription": ["**참고:** 사용 가능한 경우 Spotify 기본 제공 가사를 사용합니다."],
+        "sharedLyricsBridge": {
+            "setting": "LyricShiori 연결",
+            "description": "LyricShiori에 연결해 가사를 공유하거나 가사를 직접 지정하고 가사 지연을 조정합니다."
+        },
+        "relaxedLyricsMatching": {
+            "setting": "느슨한 가사 일치",
+            "description": "더 느슨한 일치 방식을 사용하지만 현재 곡에 잘못된 가사가 연결될 수 있습니다."
+        },
+        "showLyricsRomanization": "발음 표시",
+        "showLyricsFurigana": "일본어 후리가나 표시",
+        "lyricsSize": {
+            "setting": "가사 글자 크기"
+        },
         "autoHideLyrics": "가사 자동 숨기기 (사용 불가 시)",
         "generalHeader": "일반 설정",
         "progressBar": "진행 표시줄",
@@ -89,6 +107,7 @@
         "verticalMonitorSupportDescription": "세로 모니터 설정인 경우 활성화하세요. 높이가 너비보다 크면 가사가 하단에 표시됩니다.",
         "backAnimationTime": "배경 애니메이션 시간 (이미지)",
         "animationSpeed": "⭐ 애니메이션 속도 (애니메이션)",
+        "bpmDrivenMotionDescription": "곡의 BPM에 따라 배경 흐름 속도와 비트 반응 강도를 조정합니다.",
         "upnextTime": "다음 곡 표시 시간",
         "backgroundBlur": "배경 흐림",
         "backgroundBrightness": "배경 밝기",
@@ -96,10 +115,10 @@
             "cardTitle": "GitHub Releases",
             "currentVersion": "실행 중인 버전",
             "bundledVersion": "로컬 설치 버전",
-            "runningVersionDescription": "Spotify가 현재 실행 중인 코드이며 로컬 설치 버전 또는 사용자가 확인한 GitHub Release입니다.",
-            "bundledVersionDescription": "Spicetify가 로컬에 설치한 fullScreen.js입니다. 로컬 설치 버전으로 돌아가거나 GitHub 버전을 불러올 수 없을 때 사용합니다.",
-            "releaseCache": "GitHub 버전 로컬 캐시",
-            "releaseCacheDescription": "확인한 GitHub 버전은 한 번만 다운로드되어 Spotify의 영구 로컬 저장소에 보관됩니다. 이후 시작할 때는 네트워크보다 이 복사본을 먼저 사용합니다. Spotify 사이트 데이터를 지우면 삭제됩니다.",
+            "runningVersionDescription": "현재 실행 중인 버전입니다.",
+            "bundledVersionDescription": "Spicetify가 로컬에 설치한 fullscape.js입니다. 로컬 설치 버전으로 돌아가거나 GitHub 버전을 불러올 수 없을 때 사용합니다.",
+            "releaseCache": "GitHub 버전 캐시",
+            "releaseCacheDescription": "이 업데이터로 가져온 GitHub Release 버전 캐시입니다. 네트워크 확인에 실패하면 Fullscape이 이 캐시를 사용합니다.",
             "checking": "확인 중…",
             "checkingDescription": "GitHub에서 최신 안정 버전을 확인하고 있습니다.",
             "checkNow": "지금 확인",
@@ -113,43 +132,43 @@
             "later": "나중에",
             "cancel": "취소",
             "releasePage": "릴리스 노트",
-            "promptTitle": "Full Screen 업데이트 사용 가능",
-            "promptDescription": "버전 {version}을 사용할 수 있습니다. 현재 버전은 {current}입니다. 직접 확인하기 전에는 버전이 전환되지 않습니다.",
+            "promptTitle": "Fullscape 업데이트 사용 가능",
+            "promptDescription": "버전 {version}을 사용할 수 있습니다. 현재 버전은 {current}입니다.",
             "autoCheck": "업데이트 자동 확인",
-            "autoCheckDescription": "확인과 알림만 수행합니다. 사용자가 확인하기 전에는 Full Screen이 새로 감지한 버전으로 전환되지 않습니다.",
+            "autoCheckDescription": "새 버전을 확인합니다. 사용자가 확인하기 전에는 Fullscape이 새로 감지한 버전으로 전환되지 않습니다.",
             "versionSelectorTitle": "버전 선택",
             "versionSelectorDescription": "안정적인 GitHub Release를 선택하거나 로컬 설치 버전으로 돌아갑니다.",
             "loadingVersions": "GitHub Releases에서 안정 버전을 불러오는 중…",
-            "versionListReady": "이 목록은 GitHub Releases에서 동적으로 불러옵니다.",
+            "versionListReady": "",
             "versionListFailed": "버전 목록을 불러올 수 없습니다",
             "useSelectedVersion": "선택한 버전 사용",
             "bundledVersionOption": "로컬 설치 버전(v{version})",
             "runningVersionOption": "v{version}(현재 실행 중)",
-            "confirmVersionTitle": "Full Screen v{version}으로 전환할까요?",
+            "confirmVersionTitle": "Fullscape v{version}으로 전환할까요?",
             "confirmVersionDescription": "현재 v{current}을 사용 중입니다. 확인하면 Spotify를 다시 불러와 v{version}을 사용합니다.",
             "confirmBundledTitle": "로컬 설치 버전을 사용할까요?",
             "confirmBundledDescription": "확인하면 선택한 Release 불러오기를 중지하고 로컬 설치 버전 v{version}을 다시 불러옵니다.",
             "confirmSwitch": "확인 후 다시 불러오기",
             "cachingVersion": "검증 후 로컬에 저장 중…",
-            "cacheFailed": "Full Screen v{version}을 다운로드하고 검증하지 못했습니다. 버전은 변경되지 않았습니다.",
-            "storageFailed": "로컬 저장소를 사용할 수 없어 선택한 버전을 저장하지 못했습니다.",
+            "cacheFailed": "업데이트 실패: Fullscape v{version}을 다운로드하고 검증하지 못했습니다.",
+            "storageFailed": "업데이트 실패: 로컬 저장소를 사용할 수 없어 선택한 버전을 저장하지 못했습니다.",
             "reloadFallbackTitle": "터미널에서 Spotify 다시 불러오기",
             "reloadFallbackDescription": "Spotify를 자동으로 다시 불러오지 못했습니다. 확인한 버전을 적용하려면 다음 명령을 실행하세요:",
-            "loadFailed": "Full Screen v{version}을 불러오지 못해 로컬 설치 버전을 사용합니다."
+            "loadFailed": "Fullscape v{version}을 불러오지 못해 로컬 설치 버전을 사용합니다."
         },
         "layout": {
             "sections": {
                 "general": {
                     "title": "일반",
-                    "description": "언어, 시작, 실행 방법, 표시 모드 및 진단을 설정합니다."
+                    "description": "언어, 시작 방법, 표시 모드 등을 설정합니다."
                 },
                 "playback": {
                     "title": "재생 화면",
-                    "description": "전체 화면 플레이어에 표시할 내용과 시점을 선택합니다."
+                    "description": "재생 화면에 표시할 내용과 시점을 선택합니다."
                 },
                 "lyrics": {
                     "title": "가사",
-                    "description": "가사 소스, 가독성 및 선택적 향상 기능을 관리합니다."
+                    "description": "가사 소스, 가사 스타일 및 선택적 향상 기능을 관리합니다."
                 },
                 "background": {
                     "title": "배경 및 모션",
@@ -161,7 +180,7 @@
                 },
                 "updates": {
                     "title": "업데이트",
-                    "description": "GitHub Releases에 게시된 안정 빌드를 확인하고 승인한 뒤 전환합니다."
+                    "description": "GitHub에서 업데이트를 가져오거나 버전을 전환합니다."
                 }
             },
             "groups": {
@@ -241,7 +260,7 @@
                 "invertColors": "밝은 글자, 어두운 글자 또는 배경 기반 자동 선택을 지정합니다."
             }
         },
-        "configReset": "설정 초기화"
+        "configReset": "기본값 복원"
     },
-    "fullscreenBtnDesc": "전체 화면"
+    "fullscapeButtonDescription": "Fullscape"
 }

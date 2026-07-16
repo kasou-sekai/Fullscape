@@ -1,6 +1,6 @@
 import packageJson from "../../package.json";
 
-const REPOSITORY = "kasou-sekai/Spotify-Full-Screen-Playing";
+const REPOSITORY = "kasou-sekai/Fullscape";
 const LATEST_RELEASE_API = `https://api.github.com/repos/${REPOSITORY}/releases/latest`;
 const RELEASE_LIST_API = `https://api.github.com/repos/${REPOSITORY}/releases?per_page=50`;
 const RELEASE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -8,20 +8,20 @@ const UPDATE_PROMPT_SNOOZE_MS = 24 * 60 * 60 * 1000;
 const RELEASE_LOAD_TIMEOUT_MS = 15000;
 const RELEASE_DB_OPEN_TIMEOUT_MS = 5000;
 const MAX_RELEASE_SCRIPT_BYTES = 5 * 1024 * 1024;
-const RELEASE_SCRIPT_DB_NAME = "full-screen-release-cache";
-const RELEASE_SCRIPT_DB_VERSION = 2;
+const RELEASE_SCRIPT_DB_NAME = "fullscape-release-cache";
+const RELEASE_SCRIPT_DB_VERSION = 1;
 const RELEASE_SCRIPT_STORE = "scripts";
 const MAX_CACHED_RELEASES = 3;
-const UPDATE_MODEL_VERSION = "verified-release-cache-v2";
-const RELEASE_RUNTIME_HANDSHAKE = "full-screen-runtime-handshake-v1";
+const UPDATE_MODEL_VERSION = "verified-release-cache-v1";
+const RELEASE_RUNTIME_HANDSHAKE = "fullscape-runtime-handshake-v1";
 
 const STORAGE_KEYS = {
-    selectedRelease: "full-screen:update:selected-release",
-    latestReleaseCache: "full-screen:update:release-cache",
-    releaseListCache: "full-screen:update:release-list-cache",
-    promptedVersion: "full-screen:update:prompted-version",
-    loadFailure: "full-screen:update:load-failure",
-    modelVersion: "full-screen:update:model-version",
+    selectedRelease: "fullscape:update:selected-release",
+    latestReleaseCache: "fullscape:update:release-cache",
+    releaseListCache: "fullscape:update:release-list-cache",
+    promptedVersion: "fullscape:update:prompted-version",
+    loadFailure: "fullscape:update:load-failure",
+    modelVersion: "fullscape:update:model-version",
 } as const;
 
 export const CURRENT_VERSION = packageJson.version;
@@ -34,7 +34,7 @@ export type ReleaseInfo = {
 };
 
 export type SelectedRelease = Pick<ReleaseInfo, "version" | "tag"> & {
-    selectionModel?: "confirmed-version-v1";
+    selectionModel: "confirmed-version-v1";
 };
 
 export type UpdateCheckResult =
@@ -80,10 +80,10 @@ type GitHubRelease = {
 };
 
 type UpdateRuntimeWindow = Window & {
-    __fullScreenBundledVersion?: string;
-    __fullScreenLoadingRelease?: string;
-    __fullScreenExecutedRelease?: string;
-    __fullScreenRuntimeReport?: {
+    __fullscapeBundledVersion?: string;
+    __fullscapeLoadingRelease?: string;
+    __fullscapeExecutedRelease?: string;
+    __fullscapeRuntimeReport?: {
         protocol: string;
         version: string;
     };
@@ -93,7 +93,7 @@ function storageGet(key: string) {
     try {
         return localStorage.getItem(key);
     } catch (error) {
-        console.warn("[Full Screen] Unable to read update state from local storage.", error);
+        console.warn("[Fullscape] Unable to read update state from local storage.", error);
         return null;
     }
 }
@@ -103,7 +103,7 @@ function storageSet(key: string, value: string) {
         localStorage.setItem(key, value);
         return true;
     } catch (error) {
-        console.warn("[Full Screen] Unable to save update state to local storage.", error);
+        console.warn("[Fullscape] Unable to save update state to local storage.", error);
         return false;
     }
 }
@@ -113,7 +113,7 @@ function storageRemove(key: string) {
         localStorage.removeItem(key);
         return true;
     } catch (error) {
-        console.warn("[Full Screen] Unable to remove update state from local storage.", error);
+        console.warn("[Fullscape] Unable to remove update state from local storage.", error);
         return false;
     }
 }
@@ -163,7 +163,12 @@ function parseRelease(payload: GitHubRelease): ReleaseInfo | null {
 }
 
 function isSelectedRelease(value: SelectedRelease | null): value is SelectedRelease {
-    return Boolean(value && parseVersion(value.version) && value.tag === `v${value.version}`);
+    return Boolean(
+        value &&
+            parseVersion(value.version) &&
+            value.tag === `v${value.version}` &&
+            value.selectionModel === "confirmed-version-v1",
+    );
 }
 
 function isReleaseInfo(value: ReleaseInfo | null): value is ReleaseInfo {
@@ -181,11 +186,11 @@ function isReleaseList(value: unknown): value is ReleaseInfo[] {
 }
 
 function getReleaseScriptUrl(tag: string) {
-    return `https://cdn.jsdelivr.net/gh/${REPOSITORY}@${encodeURIComponent(tag)}/dist/fullScreen.js`;
+    return `https://cdn.jsdelivr.net/gh/${REPOSITORY}@${encodeURIComponent(tag)}/dist/fullscape.js`;
 }
 
 function getReleaseChecksumUrl(tag: string) {
-    return `https://github.com/${REPOSITORY}/releases/download/${encodeURIComponent(tag)}/fullScreen.js.sha256`;
+    return `https://github.com/${REPOSITORY}/releases/download/${encodeURIComponent(tag)}/fullscape.js.sha256`;
 }
 
 function resultForRelease(
@@ -241,33 +246,25 @@ export class ReleaseUpdater {
     private static storagePersistenceRequested = false;
     private static releaseListWarning: string | null = null;
 
-    static migrateUpdateModel() {
+    static initializeUpdateModel() {
         if (storageGet(STORAGE_KEYS.modelVersion) === UPDATE_MODEL_VERSION) return;
-        storageRemove(STORAGE_KEYS.latestReleaseCache);
-        storageRemove(STORAGE_KEYS.releaseListCache);
-        storageRemove(STORAGE_KEYS.promptedVersion);
         storageSet(STORAGE_KEYS.modelVersion, UPDATE_MODEL_VERSION);
     }
 
     static reportRuntimeVersion() {
-        (window as UpdateRuntimeWindow).__fullScreenRuntimeReport = {
+        (window as UpdateRuntimeWindow).__fullscapeRuntimeReport = {
             protocol: RELEASE_RUNTIME_HANDSHAKE,
             version: CURRENT_VERSION,
         };
     }
 
     static getBundledVersion() {
-        return (window as UpdateRuntimeWindow).__fullScreenBundledVersion ?? CURRENT_VERSION;
+        return (window as UpdateRuntimeWindow).__fullscapeBundledVersion ?? CURRENT_VERSION;
     }
 
     static getSelectedRelease(): SelectedRelease | null {
         const selected = parseJson<SelectedRelease>(storageGet(STORAGE_KEYS.selectedRelease));
-        if (isSelectedRelease(selected)) {
-            const isLegacyDowngrade =
-                compareVersions(CURRENT_VERSION, selected.version) > 0 &&
-                selected.selectionModel !== "confirmed-version-v1";
-            if (!isLegacyDowngrade) return selected;
-        }
+        if (isSelectedRelease(selected)) return selected;
         if (selected) storageRemove(STORAGE_KEYS.selectedRelease);
         return null;
     }
@@ -294,15 +291,13 @@ export class ReleaseUpdater {
                 RELEASE_SCRIPT_DB_VERSION,
             );
             const timeout = window.setTimeout(() => {
-                console.warn("[Full Screen] Timed out opening the local release cache.");
+                console.warn("[Fullscape] Timed out opening the local release cache.");
                 finish(null);
             }, RELEASE_DB_OPEN_TIMEOUT_MS);
-            request.onupgradeneeded = (event) => {
+            request.onupgradeneeded = () => {
                 const database = request.result;
                 if (!database.objectStoreNames.contains(RELEASE_SCRIPT_STORE)) {
                     database.createObjectStore(RELEASE_SCRIPT_STORE, { keyPath: "tag" });
-                } else if (event.oldVersion < RELEASE_SCRIPT_DB_VERSION) {
-                    request.transaction?.objectStore(RELEASE_SCRIPT_STORE).clear();
                 }
             };
             request.onsuccess = () => {
@@ -314,11 +309,11 @@ export class ReleaseUpdater {
                 finish(database);
             };
             request.onerror = () => {
-                console.warn("[Full Screen] Unable to open the local release cache.");
+                console.warn("[Fullscape] Unable to open the local release cache.");
                 finish(null);
             };
             request.onblocked = () => {
-                console.warn("[Full Screen] The local release cache is blocked.");
+                console.warn("[Fullscape] The local release cache is blocked.");
             };
         });
         void this.releaseDbPromise.then((database) => {
@@ -353,7 +348,7 @@ export class ReleaseUpdater {
             }
             const actualChecksum = await sha256Hex(new TextEncoder().encode(cached.source));
             if (actualChecksum !== cached.checksum) {
-                console.warn(`[Full Screen] Discarding corrupt cached ${tag}.`);
+                console.warn(`[Fullscape] Discarding corrupt cached ${tag}.`);
                 await this.deleteCachedReleaseSource(tag);
                 return null;
             }
@@ -480,40 +475,40 @@ export class ReleaseUpdater {
             const verifiedSource: VerifiedReleaseSource = { source, checksum };
             return verifiedSource;
         } catch (error) {
-            console.warn(`[Full Screen] Unable to download ${tag}.`, error);
+            console.warn(`[Fullscape] Unable to download ${tag}.`, error);
             return null;
         }
     }
 
     private static executeReleaseSource(selected: SelectedRelease, source: string) {
         const runtimeWindow = window as UpdateRuntimeWindow;
-        delete runtimeWindow.__fullScreenExecutedRelease;
-        delete runtimeWindow.__fullScreenRuntimeReport;
+        delete runtimeWindow.__fullscapeExecutedRelease;
+        delete runtimeWindow.__fullscapeRuntimeReport;
         const script = document.createElement("script");
-        script.dataset.fullScreenRelease = selected.tag;
-        script.dataset.fullScreenReleaseSource = "indexeddb";
-        script.textContent = `${source}\n;window.__fullScreenExecutedRelease=${JSON.stringify(
+        script.dataset.fullscapeRelease = selected.tag;
+        script.dataset.fullscapeReleaseSource = "indexeddb";
+        script.textContent = `${source}\n;window.__fullscapeExecutedRelease=${JSON.stringify(
             selected.tag,
         )};\n//# sourceURL=${getReleaseScriptUrl(selected.tag)}`;
         let executed = false;
         try {
             (document.head ?? document.documentElement).append(script);
-            const reachedEnd = runtimeWindow.__fullScreenExecutedRelease === selected.tag;
-            const report = runtimeWindow.__fullScreenRuntimeReport;
+            const reachedEnd = runtimeWindow.__fullscapeExecutedRelease === selected.tag;
+            const report = runtimeWindow.__fullscapeRuntimeReport;
             executed = source.includes(RELEASE_RUNTIME_HANDSHAKE)
                 ? reachedEnd &&
                   report?.protocol === RELEASE_RUNTIME_HANDSHAKE &&
                   report.version === selected.version
                 : reachedEnd;
             if (!executed) {
-                console.warn(`[Full Screen] ${selected.tag} failed its runtime version handshake.`);
+                console.warn(`[Fullscape] ${selected.tag} failed its runtime version handshake.`);
             }
         } catch (error) {
-            console.warn(`[Full Screen] Unable to execute cached ${selected.tag}.`, error);
+            console.warn(`[Fullscape] Unable to execute cached ${selected.tag}.`, error);
         } finally {
             script.remove();
-            delete runtimeWindow.__fullScreenExecutedRelease;
-            delete runtimeWindow.__fullScreenRuntimeReport;
+            delete runtimeWindow.__fullscapeExecutedRelease;
+            delete runtimeWindow.__fullscapeRuntimeReport;
         }
         return executed;
     }
@@ -530,7 +525,7 @@ export class ReleaseUpdater {
         const stored = await this.storeReleaseSource(selected.tag, downloaded);
         if (!stored) {
             console.warn(
-                `[Full Screen] ${selected.tag} will run, but could not be saved to the local cache.`,
+                `[Fullscape] ${selected.tag} will run, but could not be saved to the local cache.`,
             );
         }
         const executed = this.executeReleaseSource(selected, downloaded.source);
@@ -545,7 +540,7 @@ export class ReleaseUpdater {
         if (!source) return false;
         if (!(await this.storeReleaseSource(release.tag, source))) {
             console.warn(
-                `[Full Screen] ${release.tag} was verified but could not be saved; it will be downloaded again after reload.`,
+                `[Fullscape] ${release.tag} was verified but could not be saved; it will be downloaded again after reload.`,
             );
         }
         return true;
@@ -557,30 +552,30 @@ export class ReleaseUpdater {
      */
     static async shouldStartBundledVersion(): Promise<boolean> {
         const runtimeWindow = window as UpdateRuntimeWindow;
-        runtimeWindow.__fullScreenBundledVersion ??= CURRENT_VERSION;
+        runtimeWindow.__fullscapeBundledVersion ??= CURRENT_VERSION;
 
         const selected = this.getSelectedRelease();
         if (!selected || selected.version === CURRENT_VERSION) return true;
 
-        if (runtimeWindow.__fullScreenLoadingRelease === selected.tag) {
+        if (runtimeWindow.__fullscapeLoadingRelease === selected.tag) {
             console.error(
-                `[Full Screen] ${selected.tag} did not contain the expected version and will not start.`,
+                `[Fullscape] ${selected.tag} did not contain the expected version and will not start.`,
             );
             return false;
         }
-        runtimeWindow.__fullScreenLoadingRelease = selected.tag;
+        runtimeWindow.__fullscapeLoadingRelease = selected.tag;
 
         const loaded = await this.loadSelectedRelease(selected);
 
         if (loaded) return false;
 
         console.warn(
-            `[Full Screen] Unable to load ${selected.tag}; starting bundled v${CURRENT_VERSION}.`,
+            `[Fullscape] Unable to load ${selected.tag}; starting bundled v${CURRENT_VERSION}.`,
         );
         const loadFailure: LoadFailure = { version: selected.version, failedAt: Date.now() };
         storageSet(STORAGE_KEYS.loadFailure, JSON.stringify(loadFailure));
         storageRemove(STORAGE_KEYS.selectedRelease);
-        delete runtimeWindow.__fullScreenLoadingRelease;
+        delete runtimeWindow.__fullscapeLoadingRelease;
         return true;
     }
 

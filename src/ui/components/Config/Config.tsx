@@ -3,7 +3,7 @@ import ReactDOM from "react-dom";
 import CFM from "../../../utils/config";
 import translations from "../../../resources/strings";
 import { DEFAULTS } from "../../../constants";
-import { Config, Settings } from "../../../types/fullscreen";
+import { Config, Settings } from "../../../types/fullscape";
 import Utils from "../../../utils/utils";
 import { DOM } from "../../elements";
 import { headerText, getSettingCard, createAdjust } from "../../../utils/setting";
@@ -76,7 +76,7 @@ export class ConfigManager {
     static getSettingsFooter(LOCALE: string) {
         const container = document.createElement("div");
         container.innerHTML = `
-        <div class="setting-button-row">
+        <div class="setting-button-row settings-footer">
           <button class="main-buttons-button main-button-secondary" id="reset-switch">${translations[LOCALE].settings.configReset}</button>
         </div>`;
         const resetButton = container.querySelector<HTMLElement>("#reset-switch");
@@ -528,7 +528,7 @@ export class ConfigManager {
 
     private static createDebugSettings(LOCALE: string) {
         const section = document.createElement("section");
-        section.classList.add("fsd-debug-settings", "settings-nested-section");
+        section.classList.add("fullscape-debug-settings", "settings-nested-section");
         section.hidden = !CFM.get("debugMode");
         section.append(
             headerText(translations[LOCALE].settings.lyricsDebugHeader),
@@ -541,7 +541,7 @@ export class ConfigManager {
     private static createBeatSettings(LOCALE: string) {
         const strings = translations[LOCALE].settings.beatControls;
         const section = document.createElement("section");
-        section.classList.add("fsd-beat-settings", "settings-nested-section");
+        section.classList.add("fullscape-beat-settings", "settings-nested-section");
         section.hidden = CFM.get("beatResponsePreset") !== "custom";
         section.append(
             headerText(strings.header, strings.description),
@@ -630,7 +630,7 @@ export class ConfigManager {
             "beatResponsePreset",
             (value) => {
                 const section =
-                    this.configContainer.querySelector<HTMLElement>(".fsd-beat-settings");
+                    this.configContainer.querySelector<HTMLElement>(".fullscape-beat-settings");
                 if (section) section.hidden = value !== "custom";
                 CFM.set("beatResponsePreset", value as Settings["beatResponsePreset"]);
                 CFM.set("beatBounce", value !== "off");
@@ -642,14 +642,24 @@ export class ConfigManager {
     private static showReloadFallback(LOCALE: string) {
         const strings = translations[LOCALE].settings.updates;
         const content = document.createElement("div");
-        content.id = "full-screen-update-fallback";
-        content.classList.add("update-fallback");
+        content.id = "fullscape-update-fallback";
+        content.classList.add("update-dialog", "update-dialog-fallback");
+
+        const icon = document.createElement("div");
+        icon.classList.add("update-dialog-icon");
+        icon.setAttribute("aria-hidden", "true");
+        icon.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none">
+                <path d="M5 6.75 9.5 12 5 17.25M11.5 17.25H19" />
+            </svg>`;
 
         const description = document.createElement("p");
+        description.classList.add("update-dialog-description");
         description.textContent = strings.reloadFallbackDescription;
-        const command = document.createElement("code");
-        command.textContent = "spicetify apply";
-        content.append(description, command);
+        const command = document.createElement("div");
+        command.classList.add("update-command");
+        command.innerHTML = `<span aria-hidden="true">$</span><code>spicetify apply</code>`;
+        content.append(icon, description, command);
 
         Spicetify.PopupModal.display({
             title: strings.reloadFallbackTitle,
@@ -660,10 +670,22 @@ export class ConfigManager {
     private static showVersionConfirmation(target: ReleaseInfo | "bundled", LOCALE: string) {
         const strings = translations[LOCALE].settings.updates;
         const content = document.createElement("div");
-        content.id = "full-screen-version-confirmation";
-        content.classList.add("update-prompt");
+        content.id = "fullscape-version-confirmation";
+        content.classList.add("update-dialog", "update-dialog-confirmation");
+
+        const targetVersion =
+            target === "bundled" ? ReleaseUpdater.getBundledVersion() : target.version;
+        const icon = document.createElement("div");
+        icon.classList.add("update-dialog-icon");
+        icon.setAttribute("aria-hidden", "true");
+        icon.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none">
+                <path d="M20 7v5h-5M4 17v-5h5" />
+                <path d="M6.1 8.2A7 7 0 0 1 18.7 10M17.9 15.8A7 7 0 0 1 5.3 14" />
+            </svg>`;
 
         const description = document.createElement("p");
+        description.classList.add("update-dialog-description");
         description.textContent =
             target === "bundled"
                 ? strings.confirmBundledDescription.replace(
@@ -674,8 +696,21 @@ export class ConfigManager {
                       .replace("{current}", CURRENT_VERSION)
                       .replace("{version}", target.version);
 
+        const versionFlow = document.createElement("div");
+        versionFlow.classList.add("update-version-flow");
+        versionFlow.innerHTML = `
+            <div class="update-version-stop">
+                <span>${strings.currentVersion}</span>
+                <strong>v${CURRENT_VERSION}</strong>
+            </div>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
+            <div class="update-version-stop update-version-stop-target">
+                <span>${target === "bundled" ? strings.bundledVersion : strings.cardTitle}</span>
+                <strong>v${targetVersion}</strong>
+            </div>`;
+
         const actions = document.createElement("div");
-        actions.classList.add("setting-button-row");
+        actions.classList.add("setting-button-row", "update-dialog-actions");
         const cancel = document.createElement("button");
         cancel.classList.add("main-buttons-button", "main-button-secondary");
         cancel.textContent = strings.cancel;
@@ -716,7 +751,7 @@ export class ConfigManager {
             Spicetify.PopupModal.hide();
         };
         actions.append(cancel, confirm);
-        content.append(description, actions);
+        content.append(icon, versionFlow, description, actions);
 
         // PopupModal reuses one custom element. Replacing its contents during the
         // selector button's click makes the old overlay treat that same click as
@@ -1000,15 +1035,43 @@ export class ConfigManager {
 
         const strings = translations[LOCALE].settings.updates;
         const content = document.createElement("div");
-        content.id = "full-screen-update-prompt";
-        content.classList.add("update-prompt");
+        content.id = "fullscape-update-prompt";
+        content.classList.add("update-dialog", "update-dialog-available");
+
+        const icon = document.createElement("div");
+        icon.classList.add("update-dialog-icon");
+        icon.setAttribute("aria-hidden", "true");
+        icon.innerHTML = `
+            <svg viewBox="0 0 24 24" fill="none">
+                <path d="M12 3v12M7 10l5 5 5-5M5 20h14" />
+            </svg>`;
         const description = document.createElement("p");
+        description.classList.add("update-dialog-description");
         description.textContent = strings.promptDescription
             .replace("{current}", CURRENT_VERSION)
             .replace("{version}", result.release.version);
 
+        const versionFlow = document.createElement("div");
+        versionFlow.classList.add("update-version-flow");
+        versionFlow.innerHTML = `
+            <div class="update-version-stop">
+                <span>${strings.currentVersion}</span>
+                <strong>v${CURRENT_VERSION}</strong>
+            </div>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
+            <div class="update-version-stop update-version-stop-target">
+                <span>${strings.cardTitle}</span>
+                <strong>v${result.release.version}</strong>
+            </div>`;
+
         const actions = document.createElement("div");
-        actions.classList.add("setting-button-row");
+        actions.classList.add("setting-button-row", "update-dialog-actions");
+        const releaseNotes = document.createElement("a");
+        releaseNotes.classList.add("update-dialog-link");
+        releaseNotes.href = result.release.pageUrl;
+        releaseNotes.target = "_blank";
+        releaseNotes.rel = "noreferrer";
+        releaseNotes.textContent = strings.releasePage;
         const later = document.createElement("button");
         later.classList.add("main-buttons-button", "main-button-secondary");
         later.textContent = strings.later;
@@ -1044,8 +1107,8 @@ export class ConfigManager {
             }
             Spicetify.PopupModal.hide();
         };
-        actions.append(later, update);
-        content.append(description, actions);
+        actions.append(releaseNotes, later, update);
+        content.append(icon, versionFlow, description, actions);
 
         Spicetify.PopupModal.display({
             title: strings.promptTitle,
@@ -1062,7 +1125,7 @@ export class ConfigManager {
         const strings = translations[LOCALE].settings;
         const layout = strings.layout;
         this.configContainer = document.createElement("div");
-        this.configContainer.id = "full-screen-config-container";
+        this.configContainer.id = "fullscape-config-container";
         const sections = [
             {
                 id: "general",
@@ -1124,13 +1187,13 @@ export class ConfigManager {
                               )
                             : "",
                         this.createToggle(
-                            strings.fsHideOriginal,
-                            "fsHideOriginal",
+                            strings.hideSpotifyFullscreenButton,
+                            "hideSpotifyFullscreenButton",
                             (value) => {
-                                this.saveGlobalOption("fsHideOriginal", value);
+                                this.saveGlobalOption("hideSpotifyFullscreenButton", value);
                                 location.reload();
                             },
-                            strings.fsHideOriginalDescription,
+                            strings.hideSpotifyFullscreenButtonDescription,
                         ),
                         this.createToggle(
                             strings.verticalMonitorSupport,
@@ -1148,7 +1211,7 @@ export class ConfigManager {
                             (value) => {
                                 const section =
                                     this.configContainer.querySelector<HTMLElement>(
-                                        ".fsd-debug-settings",
+                                        ".fullscape-debug-settings",
                                     );
                                 if (section) section.hidden = !value;
                                 this.saveOption("debugMode", value);
@@ -1184,11 +1247,11 @@ export class ConfigManager {
                                 if (value !== "never") {
                                     ReactDOM.render(
                                         <SeekableProgressBar state={value} />,
-                                        DOM.container.querySelector("#fsd-progress-parent"),
+                                        DOM.container.querySelector("#fullscape-progress-parent"),
                                     );
                                 } else {
                                     const root =
-                                        DOM.container.querySelector("#fsd-progress-parent");
+                                        DOM.container.querySelector("#fullscape-progress-parent");
                                     if (root) ReactDOM.unmountComponentAtNode(root);
                                 }
                             },
@@ -1529,7 +1592,7 @@ export class ConfigManager {
             this.getSettingsFooter(LOCALE),
         );
         Spicetify.PopupModal.display({
-            title: strings.fullscreenConfig,
+            title: strings.fullscapeConfig,
             content: this.configContainer,
         });
         window.requestAnimationFrame(() => void this.applyAlbumAccent());

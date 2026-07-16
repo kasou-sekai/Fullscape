@@ -32,4 +32,4 @@ jobs:
               run: npm run build-local
 
             - name: Verify committed distribution
-              run: git diff --exit-code -- dist/fullScreen.js
+              run: git diff --exit-code -- dist/fullscape.js
