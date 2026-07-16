@@ -11,6 +11,7 @@ import type {
     TrackInfo,
 } from "../../../services/third-party-lyrics";
 import {
+    consumeSharedManualReset,
     deleteCachedLyrics,
     getCachedLyricsDebug,
     getCachedLyricsFullEntry,
@@ -18,6 +19,7 @@ import {
     getSharedCachedLyrics,
     setSharedBridgeLease,
     setCachedLyrics,
+    syncCachedLyricsToShared,
 } from "../../../services/lyrics-cache";
 import type { LyricsCacheEntry, LyricsCacheKind } from "../../../services/lyrics-cache";
 import { parseFuriganaMarkup } from "../../../utils/furigana";
@@ -60,6 +62,12 @@ type LyricsDiagnostics = {
     translations: number;
     romanizations: number;
     karaoke: number;
+};
+type BridgeLease = {
+    count: number;
+    generation: number;
+    timer: ReturnType<typeof setInterval>;
+    ready: Promise<boolean>;
 };
 
 export class Lyrics {
@@ -114,11 +122,8 @@ export class Lyrics {
     private static lastSharedSyncSignature: string | null = null;
     private static renderedLyricsSignature: string | null = null;
     private static authoritativeRevision = 0;
-    private static readonly bridgeLeaseCounts = new Map<string, number>();
-    private static readonly bridgeLeaseTimers = new Map<
-        string,
-        ReturnType<typeof setInterval>
-    >();
+    private static bridgeLeaseGeneration = 0;
+    private static readonly bridgeLeases = new Map<string, BridgeLease>();
 
     static attach(container: HTMLElement) {
         this.container = container;
@@ -148,6 +153,9 @@ export class Lyrics {
         this.stopAllBridgeLeases();
         this.renderedLyricsSignature = null;
         this.prefetchedTrackUris.clear();
+        this.spotifyRequests.clear();
+        this.enhancedRequests.clear();
+        this.authoritativeRevision += 1;
         this.loadSequence += 1;
     }
 
@@ -205,7 +213,7 @@ export class Lyrics {
             if (
                 cachedLines.length &&
                 CFM.get("thirdPartyLyrics") &&
-                getThirdPartyLyricsDebug().status === "error"
+                this.shouldRetryThirdParty(getThirdPartyLyricsDebug())
             ) {
                 this.scheduleRefetch(trackUri, "enhanced");
             }
@@ -213,7 +221,7 @@ export class Lyrics {
         }
         this.lastStatus = "loading";
         this.renderStatus("Loading lyrics…", false);
-        const releaseLease = this.beginBridgeLease(trackUri);
+        const releaseLease = await this.beginBridgeLease(trackUri);
         try {
             // One bounded bridge read before external requests avoids issuing
             // Spotify/provider requests when Shiori already has a selection.
@@ -232,7 +240,7 @@ export class Lyrics {
                 return;
             }
             this.applyLines(lines);
-            if (CFM.get("thirdPartyLyrics") && getThirdPartyLyricsDebug().status === "error") {
+            if (CFM.get("thirdPartyLyrics") && this.shouldRetryThirdParty(getThirdPartyLyricsDebug())) {
                 this.scheduleRefetch(trackUri, "enhanced");
             } else {
                 this.clearRefetch();
@@ -318,6 +326,10 @@ export class Lyrics {
         }
         const spotifyLines = await this.getSpotifyLyrics(track);
         if (
+            this.authoritativeRevision !== authorityRevision &&
+            (this.currentTrackUri === null || this.isCurrentTrack(track.uri))
+        ) return [];
+        if (
             !thirdPartyEnabled ||
             !track.title ||
             !track.duration ||
@@ -341,7 +353,7 @@ export class Lyrics {
         }
 
         let debugSnapshot: ThirdPartyLyricsDebug | undefined;
-        const releaseLease = this.beginBridgeLease(track.uri);
+        const releaseLease = await this.beginBridgeLease(track.uri);
         const request = enhanceWithThirdPartyLyrics(
             spotifyLines,
             track,
@@ -355,7 +367,10 @@ export class Lyrics {
                 const resolvedLines = lines.length || !automaticFallback
                     ? lines
                     : this.linesForEntry(automaticFallback);
-                if (debugSnapshot?.status !== "error") {
+                const canPublish =
+                    !this.isCurrentTrack(track.uri) ||
+                    this.authoritativeRevision === authorityRevision;
+                if (canPublish && !this.shouldRetryThirdParty(debugSnapshot)) {
                     setCachedLyrics(track.uri, kind, lines, debugSnapshot, true, {
                         source: "plugin",
                         cacheSource: "plugin",
@@ -371,7 +386,7 @@ export class Lyrics {
                 // lyrics visible, then replace them in place once richer data is ready.
                 if (
                     this.isCurrentTrack(track.uri) &&
-                    this.authoritativeRevision === authorityRevision &&
+                    canPublish &&
                     resolvedLines.length
                 ) {
                     this.applyLines(resolvedLines);
@@ -379,7 +394,9 @@ export class Lyrics {
                 return resolvedLines;
             })
             .finally(() => {
-                this.enhancedRequests.delete(requestKey);
+                if (this.enhancedRequests.get(requestKey) === request) {
+                    this.enhancedRequests.delete(requestKey);
+                }
                 releaseLease();
             });
         this.enhancedRequests.set(requestKey, request);
@@ -408,6 +425,15 @@ export class Lyrics {
             false,
             this.cacheMetadataForTrack(track),
         );
+        if (entry && consumeSharedManualReset(entry)) {
+            if (this.isCurrentTrack(track.uri)) {
+                this.authoritativeRevision += 1;
+                this.loadSequence += 1;
+                this.renderStatus("Loading lyrics…", false);
+                void this.loadLyrics(track.uri, "none");
+            }
+            return null;
+        }
         return entry && this.isPreferredCacheEntry(entry) ? entry : null;
     }
 
@@ -536,6 +562,17 @@ export class Lyrics {
             if (!this.isCurrentTrack(trackUri)) return;
             const signature = entry ? this.cacheEntrySignature(entry) : null;
             if (!signature) {
+                // Only publish local state after the bridge read has had a
+                // chance to deliver a Shiori reset tombstone. This both keeps
+                // warm plugin caches available to a newly started Shiori and
+                // prevents stale manual entries from racing a reset.
+                const kind = CFM.get("thirdPartyLyrics")
+                    ? this.getEnhancedCacheKind()
+                    : "spotify";
+                const local = getCachedLyricsFullEntry(trackUri, kind);
+                if (local && this.isPreferredCacheEntry(local)) {
+                    syncCachedLyricsToShared(local);
+                }
                 this.sharedSyncMissCount = Math.min(this.sharedSyncMissCount + 1, 3);
                 this.lastSharedSyncSignature = null;
                 return;
@@ -567,6 +604,7 @@ export class Lyrics {
             entry.offsetMilliseconds ?? 0,
             entry.timingOffsetApplied === true ? "applied" : "pending",
             entry.hidden === true ? "hidden" : "visible",
+            entry.manualResetAt ?? 0,
             colorSignature,
             this.linesSignature(this.linesForEntry(entry)),
         ].join("|");
@@ -581,7 +619,7 @@ export class Lyrics {
     private static applySharedLyricsEntry(trackUri: string, entry: LyricsCacheEntry) {
         if (!this.isCurrentTrack(trackUri)) return;
         const lines = this.linesForEntry(entry);
-        const isAuthoritative = entry.hidden === true || getEffectiveCacheSource(entry) === "manual";
+        const isAuthoritative = entry.hidden === true || this.isPreferredCacheEntry(entry);
         if (isAuthoritative) {
             this.authoritativeRevision += 1;
             this.loadSequence += 1;
@@ -689,6 +727,10 @@ export class Lyrics {
         return Boolean(line.words?.some((word) => word.text.trim()));
     }
 
+    private static shouldRetryThirdParty(debug?: ThirdPartyLyricsDebug) {
+        return debug?.status === "error" && !debug.matchedSong;
+    }
+
     private static async getSpotifyLyrics(track: LyricsTrack) {
         const cached = getCachedLyricsFullEntry(track.uri, "spotify");
         if (cached !== null && this.isPreferredCacheEntry(cached)) return this.linesForEntry(cached);
@@ -698,11 +740,20 @@ export class Lyrics {
 
         const trackId = track.uri.split(":").pop();
         if (!trackId) return [];
-        const releaseLease = this.beginBridgeLease(track.uri);
+        const releaseLease = await this.beginBridgeLease(track.uri);
+        const requestStartedAt = Date.now();
         const request = this.getLyricsWithRetry(trackId)
             .then((response) => this.normalizeLines(response?.lyrics?.lines))
             .catch(() => [])
             .then((lines) => {
+                const authoritative = getCachedLyricsFullEntry(track.uri, "spotify");
+                if (
+                    authoritative &&
+                    this.isPreferredCacheEntry(authoritative) &&
+                    authoritative.cachedAt > requestStartedAt
+                ) {
+                    return this.linesForEntry(authoritative);
+                }
                 setCachedLyrics(track.uri, "spotify", lines, undefined, true, {
                     source: "plugin",
                     cacheSource: "plugin",
@@ -718,7 +769,9 @@ export class Lyrics {
                     : this.linesForEntry(automaticFallback);
             })
             .finally(() => {
-                this.spotifyRequests.delete(track.uri);
+                if (this.spotifyRequests.get(track.uri) === request) {
+                    this.spotifyRequests.delete(track.uri);
+                }
                 releaseLease();
             });
         this.spotifyRequests.set(track.uri, request);
@@ -840,41 +893,43 @@ export class Lyrics {
         }
     }
 
-    private static beginBridgeLease(trackUri: string) {
+    private static async beginBridgeLease(trackUri: string) {
         if (!CFM.get("sharedLyricsBridge")) return () => {};
-        const count = this.bridgeLeaseCounts.get(trackUri) ?? 0;
-        this.bridgeLeaseCounts.set(trackUri, count + 1);
-        if (count === 0) {
-            void setSharedBridgeLease(trackUri, true);
-            this.bridgeLeaseTimers.set(
-                trackUri,
-                setInterval(() => void setSharedBridgeLease(trackUri, true), 5_000),
-            );
+        let state = this.bridgeLeases.get(trackUri);
+        if (state) {
+            state.count += 1;
+        } else {
+            const generation = ++this.bridgeLeaseGeneration;
+            const ready = setSharedBridgeLease(trackUri, true);
+            const timer = setInterval(() => {
+                if (this.bridgeLeases.get(trackUri)?.generation !== generation) return;
+                void setSharedBridgeLease(trackUri, true);
+            }, 5_000);
+            state = { count: 1, generation, timer, ready };
+            this.bridgeLeases.set(trackUri, state);
         }
+        await state.ready;
+        const generation = state.generation;
         let released = false;
         return () => {
             if (released) return;
             released = true;
-            const remaining = Math.max((this.bridgeLeaseCounts.get(trackUri) ?? 1) - 1, 0);
-            if (remaining > 0) {
-                this.bridgeLeaseCounts.set(trackUri, remaining);
-                return;
-            }
-            this.bridgeLeaseCounts.delete(trackUri);
-            const timer = this.bridgeLeaseTimers.get(trackUri);
-            if (timer) clearInterval(timer);
-            this.bridgeLeaseTimers.delete(trackUri);
+            const current = this.bridgeLeases.get(trackUri);
+            if (!current || current.generation !== generation) return;
+            current.count = Math.max(current.count - 1, 0);
+            if (current.count > 0) return;
+            this.bridgeLeases.delete(trackUri);
+            clearInterval(current.timer);
             void setSharedBridgeLease(trackUri, false);
         };
     }
 
     private static stopAllBridgeLeases() {
-        for (const [trackUri, timer] of this.bridgeLeaseTimers) {
-            clearInterval(timer);
+        for (const [trackUri, state] of this.bridgeLeases) {
+            clearInterval(state.timer);
+            this.bridgeLeases.delete(trackUri);
             void setSharedBridgeLease(trackUri, false);
         }
-        this.bridgeLeaseTimers.clear();
-        this.bridgeLeaseCounts.clear();
     }
 
     private static isCurrentLoad(sequence: number) {

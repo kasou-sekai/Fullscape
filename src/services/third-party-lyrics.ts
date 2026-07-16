@@ -215,7 +215,11 @@ export async function enhanceWithThirdPartyLyrics(
             const features = countMergedFeatures(selected.lines);
             debug = {
                 ...debug,
-                status: searchErrors.length ? "error" : "matched",
+                // A provider failure does not invalidate a fully evaluated
+                // match from the other provider. Keep the diagnostic detail,
+                // but expose this as a successful result so it is cached and
+                // does not trigger duplicate retries.
+                status: "matched",
                 reason: searchErrors.length
                     ? `暂时使用${providerName(selected.song.provider)}候选；${searchErrors.join("；")}`
                     : `已比较网易云与 QQ 音乐候选，选择${providerName(selected.song.provider)}的最高质量版本`,

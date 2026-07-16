@@ -40,11 +40,13 @@ export type LyricsCacheEntry = {
     hidden?: boolean;
     desktopLyricsColors?: DesktopLyricsColors;
     debug?: ThirdPartyLyricsDebug;
+    manualResetAt?: number;
 };
 
 type LyricsCacheStore = {
     version: 1;
     entries: Record<string, LyricsCacheEntry>;
+    manualResets?: Record<string, number>;
 };
 
 const STORAGE_KEY = "fullscape:lyrics-cache-v1";
@@ -53,7 +55,7 @@ const READY_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const EMPTY_TTL_MS = 30 * 60 * 1000;
 const MAX_ENTRIES = 40;
 const MAX_SERIALIZED_LENGTH = 1_750_000;
-const SHARED_REQUEST_TIMEOUT_MS = 800;
+const SHARED_REQUEST_TIMEOUT_MS = 2_000;
 const SHARED_BRIDGE_ORIGIN = "http://127.0.0.1:24887";
 const SHARED_CACHE_ENDPOINT = `${SHARED_BRIDGE_ORIGIN}/lyrics-cache`;
 const SHARED_PRESENCE_ENDPOINT = `${SHARED_BRIDGE_ORIGIN}/bridge-presence`;
@@ -62,6 +64,7 @@ const SHARED_PRESENCE_INTERVAL_MS = 5_000;
 let store: LyricsCacheStore | null = null;
 let sharedSessionToken: string | null = null;
 let sharedPresenceTimer: ReturnType<typeof setInterval> | null = null;
+const bridgeStateUpdates = new Map<string, Promise<boolean>>();
 
 /**
  * Announces that the extension runtime itself is alive. This is intentionally
@@ -203,6 +206,28 @@ export function deleteCachedLyrics(trackUri: string, kind?: LyricsCacheKind) {
     if (changed) persistStore();
 }
 
+/** Applies a LyricShiori reset even though normal deletion preserves manual entries. */
+export function consumeSharedManualReset(entry: LyricsCacheEntry) {
+    const resetAt = Number(entry.manualResetAt ?? 0);
+    if (!Number.isFinite(resetAt) || resetAt <= 0) return false;
+    const cache = getStore();
+    const manualResets = cache.manualResets ?? {};
+    if ((manualResets[entry.trackUri] ?? 0) >= resetAt) return false;
+    manualResets[entry.trackUri] = resetAt;
+    cache.manualResets = Object.fromEntries(
+        Object.entries(manualResets)
+            .sort(([, first], [, second]) => second - first)
+            .slice(0, 200),
+    );
+    for (const kind of ["spotify", "enhanced", "enhanced-relaxed"] as LyricsCacheKind[]) {
+        const key = getCacheKey(entry.trackUri, kind);
+        if (getEffectiveCacheSource(cache.entries[key]) !== "manual") continue;
+        delete cache.entries[key];
+    }
+    persistStore();
+    return true;
+}
+
 export function getEffectiveCacheSource(entry?: Pick<LyricsCacheEntry, "cacheSource" | "source" | "isManualSelection" | "cachedWithoutPlugin"> | null): LyricsCacheSourceKind {
     if (!entry) return "without-plugin";
     if (entry.cacheSource) return entry.cacheSource;
@@ -232,7 +257,7 @@ function getStore(): LyricsCacheStore {
     } catch {
         // Start with a clean cache when stored data is unavailable or malformed.
     }
-    store = { version: CACHE_VERSION, entries: {} };
+    store = { version: CACHE_VERSION, entries: {}, manualResets: {} };
     return store;
 }
 
@@ -268,15 +293,28 @@ async function setSharedCachedLyrics(entry: LyricsCacheEntry) {
 
 export async function setSharedBridgeLease(trackUri: string, active: boolean) {
     if (!CFM.get("sharedLyricsBridge")) return false;
-    try {
-        const response = await fetchBridge(`${SHARED_BRIDGE_ORIGIN}/bridge-state`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ trackUri, active, leaseMilliseconds: 8_000 }),
+    const previous = bridgeStateUpdates.get(trackUri) ?? Promise.resolve(true);
+    const update = previous
+        .catch(() => false)
+        .then(async () => {
+            try {
+                const response = await fetchBridge(`${SHARED_BRIDGE_ORIGIN}/bridge-state`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ trackUri, active, leaseMilliseconds: 8_000 }),
+                });
+                return response.ok;
+            } catch {
+                return false;
+            }
         });
-        return response.ok;
-    } catch {
-        return false;
+    bridgeStateUpdates.set(trackUri, update);
+    try {
+        return await update;
+    } finally {
+        if (bridgeStateUpdates.get(trackUri) === update) {
+            bridgeStateUpdates.delete(trackUri);
+        }
     }
 }
 
@@ -332,6 +370,7 @@ function entriesEqual(first: LyricsCacheEntry, second: LyricsCacheEntry) {
         first.offsetMilliseconds === second.offsetMilliseconds &&
         first.timingOffsetApplied === second.timingOffsetApplied &&
         first.hidden === second.hidden &&
+        first.manualResetAt === second.manualResetAt &&
         JSON.stringify(first.desktopLyricsColors) === JSON.stringify(second.desktopLyricsColors) &&
         JSON.stringify(first.lines) === JSON.stringify(second.lines)
     );
