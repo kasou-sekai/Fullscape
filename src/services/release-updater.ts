@@ -77,6 +77,12 @@ type GitHubRelease = {
     published_at?: unknown;
     draft?: unknown;
     prerelease?: unknown;
+    assets?: unknown;
+};
+
+type GitHubReleaseAsset = {
+    name?: unknown;
+    digest?: unknown;
 };
 
 type UpdateRuntimeWindow = Window & {
@@ -189,8 +195,20 @@ function getReleaseScriptUrl(tag: string) {
     return `https://cdn.jsdelivr.net/gh/${REPOSITORY}@${encodeURIComponent(tag)}/dist/fullscape.js`;
 }
 
-function getReleaseChecksumUrl(tag: string) {
-    return `https://github.com/${REPOSITORY}/releases/download/${encodeURIComponent(tag)}/fullscape.js.sha256`;
+function getReleaseMetadataUrl(tag: string) {
+    return `https://api.github.com/repos/${REPOSITORY}/releases/tags/${encodeURIComponent(tag)}`;
+}
+
+function getReleaseScriptChecksum(payload: GitHubRelease, tag: string) {
+    if (payload.tag_name !== tag || !Array.isArray(payload.assets)) return null;
+    const asset = payload.assets.find(
+        (candidate): candidate is GitHubReleaseAsset =>
+            Boolean(candidate) &&
+            typeof candidate === "object" &&
+            (candidate as GitHubReleaseAsset).name === "fullscape.js",
+    );
+    if (typeof asset?.digest !== "string") return null;
+    return /^sha256:([a-f0-9]{64})$/i.exec(asset.digest)?.[1]?.toLowerCase() ?? null;
 }
 
 function resultForRelease(
@@ -433,21 +451,21 @@ export class ReleaseUpdater {
     private static async downloadReleaseSource(tag: string, bypassCache = false) {
         try {
             const cacheMode: RequestCache = bypassCache ? "reload" : "no-cache";
-            const [scriptResponse, checksumResponse] = await Promise.all([
+            const [scriptResponse, releaseResponse] = await Promise.all([
                 fetchWithTimeout(getReleaseScriptUrl(tag), {
                     cache: cacheMode,
                     headers: { Accept: "application/javascript" },
                 }),
-                fetchWithTimeout(getReleaseChecksumUrl(tag), {
+                fetchWithTimeout(getReleaseMetadataUrl(tag), {
                     cache: cacheMode,
-                    headers: { Accept: "text/plain" },
+                    headers: { Accept: "application/vnd.github+json" },
                 }),
             ]);
             if (!scriptResponse.ok) {
                 throw new Error(`jsDelivr returned HTTP ${scriptResponse.status}`);
             }
-            if (!checksumResponse.ok) {
-                throw new Error(`GitHub checksum returned HTTP ${checksumResponse.status}`);
+            if (!releaseResponse.ok) {
+                throw new Error(`GitHub release metadata returned HTTP ${releaseResponse.status}`);
             }
             if (scriptResponse.headers.get("content-type")?.includes("text/html")) {
                 throw new Error("The release script response was HTML instead of JavaScript");
@@ -457,15 +475,15 @@ export class ReleaseUpdater {
                 throw new Error("The release script is unexpectedly large");
             }
 
-            const [scriptBytes, checksumText] = await Promise.all([
+            const [scriptBytes, releasePayload] = await Promise.all([
                 scriptResponse.arrayBuffer(),
-                checksumResponse.text(),
+                releaseResponse.json() as Promise<GitHubRelease>,
             ]);
             if (!scriptBytes.byteLength || scriptBytes.byteLength > MAX_RELEASE_SCRIPT_BYTES) {
                 throw new Error("The release script is empty or unexpectedly large");
             }
-            const checksum = checksumText.match(/\b[a-f0-9]{64}\b/i)?.[0]?.toLowerCase();
-            if (!checksum) throw new Error("The release checksum is invalid");
+            const checksum = getReleaseScriptChecksum(releasePayload, tag);
+            if (!checksum) throw new Error("The release script digest is missing or invalid");
             const actualChecksum = await sha256Hex(scriptBytes);
             if (actualChecksum !== checksum) {
                 throw new Error("The release script does not match its SHA-256 checksum");

@@ -63,8 +63,11 @@ test("allows a verified release when IndexedDB is unavailable", async () => {
     const source = "void 0;";
     const checksum = createHash("sha256").update(source).digest("hex");
     globalThis.fetch = async (url) =>
-        String(url).endsWith(".sha256")
-            ? new Response(`${checksum}  fullscape.js\n`)
+        String(url).includes("/releases/tags/")
+            ? new Response(JSON.stringify({
+                  tag_name: "v9.8.7",
+                  assets: [{ name: "fullscape.js", digest: `sha256:${checksum}` }],
+              }))
             : new Response(source, {
                   headers: { "content-type": "application/javascript" },
               });
@@ -81,8 +84,32 @@ test("allows a verified release when IndexedDB is unavailable", async () => {
 
 test("rejects a release whose checksum does not match", async () => {
     globalThis.fetch = async (url) =>
-        String(url).endsWith(".sha256")
-            ? new Response(`${"0".repeat(64)}  fullscape.js\n`)
+        String(url).includes("/releases/tags/")
+            ? new Response(JSON.stringify({
+                  tag_name: "v9.8.6",
+                  assets: [{ name: "fullscape.js", digest: `sha256:${"0".repeat(64)}` }],
+              }))
+            : new Response("void 0;", {
+                  headers: { "content-type": "application/javascript" },
+              });
+
+    const cached = await ReleaseUpdater.cacheRelease({
+        version: "9.8.6",
+        tag: "v9.8.6",
+        pageUrl: "https://example.test/v9.8.6",
+        publishedAt: "2026-01-01T00:00:00Z",
+    });
+
+    assert.equal(cached, false);
+});
+
+test("rejects release metadata without the fullscape script digest", async () => {
+    globalThis.fetch = async (url) =>
+        String(url).includes("/releases/tags/")
+            ? new Response(JSON.stringify({
+                  tag_name: "v9.8.6",
+                  assets: [{ name: "fullscape.js", digest: null }],
+              }))
             : new Response("void 0;", {
                   headers: { "content-type": "application/javascript" },
               });
