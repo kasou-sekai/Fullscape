@@ -176,7 +176,8 @@ export class Lyrics {
         if (!trackUri) return null;
         const kinds: LyricsCacheKind[] = ["spotify", "enhanced", "enhanced-relaxed"];
         return kinds.some(
-            (kind) => getEffectiveCacheSource(getCachedLyricsFullEntry(trackUri, kind)) === "manual",
+            (kind) =>
+                getEffectiveCacheSource(getCachedLyricsFullEntry(trackUri, kind)) === "manual",
         )
             ? "manual-selection"
             : null;
@@ -195,7 +196,9 @@ export class Lyrics {
             this.renderStatus("Lyrics unavailable", true);
             return;
         }
-        this.startSharedCacheSync();
+        const bypassAutomaticSharedCache = force !== "none";
+        if (bypassAutomaticSharedCache) this.stopSharedCacheSync();
+        else this.startSharedCacheSync();
         if (force !== "none") {
             deleteCachedLyrics(
                 trackUri,
@@ -227,12 +230,15 @@ export class Lyrics {
             // Spotify/provider requests when Shiori already has a selection.
             const shared = await this.bestSharedPreferredEntry(track);
             if (!this.isCurrentLoad(sequence)) return;
-            if (shared) {
+            const shouldUseShared =
+                shared &&
+                (!bypassAutomaticSharedCache || getEffectiveCacheSource(shared) === "manual");
+            if (shouldUseShared) {
                 this.rememberSharedSignature(trackUri, shared);
                 this.applySharedLyricsEntry(trackUri, shared);
                 return;
             }
-            const lines = await this.getPreparedLyrics(track, true);
+            const lines = await this.getPreparedLyrics(track, true, bypassAutomaticSharedCache);
             if (!this.isCurrentLoad(sequence)) return;
             if (!lines.length) {
                 this.renderStatus("Lyrics unavailable", true);
@@ -240,7 +246,10 @@ export class Lyrics {
                 return;
             }
             this.applyLines(lines);
-            if (CFM.get("thirdPartyLyrics") && this.shouldRetryThirdParty(getThirdPartyLyricsDebug())) {
+            if (
+                CFM.get("thirdPartyLyrics") &&
+                this.shouldRetryThirdParty(getThirdPartyLyricsDebug())
+            ) {
                 this.scheduleRefetch(trackUri, "enhanced");
             } else {
                 this.clearRefetch();
@@ -252,6 +261,9 @@ export class Lyrics {
             this.scheduleRefetch(trackUri, "all");
         } finally {
             releaseLease();
+            if (bypassAutomaticSharedCache && this.isCurrentTrack(trackUri)) {
+                this.startSharedCacheSync();
+            }
         }
     }
 
@@ -302,7 +314,11 @@ export class Lyrics {
         return cached && this.isPreferredCacheEntry(cached) ? this.linesForEntry(cached) : null;
     }
 
-    private static async getPreparedLyrics(track: LyricsTrack, publishDebug: boolean) {
+    private static async getPreparedLyrics(
+        track: LyricsTrack,
+        publishDebug: boolean,
+        waitForEnhancement = false,
+    ) {
         const authorityRevision = this.authoritativeRevision;
         const thirdPartyEnabled = Boolean(CFM.get("thirdPartyLyrics"));
         const relaxedMatching = Boolean(CFM.get("relaxedLyricsMatching"));
@@ -328,7 +344,8 @@ export class Lyrics {
         if (
             this.authoritativeRevision !== authorityRevision &&
             (this.currentTrackUri === null || this.isCurrentTrack(track.uri))
-        ) return [];
+        )
+            return [];
         if (
             !thirdPartyEnabled ||
             !track.title ||
@@ -346,7 +363,7 @@ export class Lyrics {
         const requestKey = `${kind}:${track.uri}`;
         const pending = this.enhancedRequests.get(requestKey);
         if (pending) {
-            if (spotifyLines.length) return spotifyLines;
+            if (spotifyLines.length && !waitForEnhancement) return spotifyLines;
             const lines = await pending;
             if (publishDebug) this.publishCachedDebug(track.uri);
             return lines;
@@ -364,9 +381,10 @@ export class Lyrics {
             },
         )
             .then((lines) => {
-                const resolvedLines = lines.length || !automaticFallback
-                    ? lines
-                    : this.linesForEntry(automaticFallback);
+                const resolvedLines =
+                    lines.length || !automaticFallback
+                        ? lines
+                        : this.linesForEntry(automaticFallback);
                 const canPublish =
                     !this.isCurrentTrack(track.uri) ||
                     this.authoritativeRevision === authorityRevision;
@@ -384,11 +402,7 @@ export class Lyrics {
                 }
                 // Third-party enrichment can take several seconds. Keep the base Spotify
                 // lyrics visible, then replace them in place once richer data is ready.
-                if (
-                    this.isCurrentTrack(track.uri) &&
-                    canPublish &&
-                    resolvedLines.length
-                ) {
+                if (this.isCurrentTrack(track.uri) && canPublish && resolvedLines.length) {
                     this.applyLines(resolvedLines);
                 }
                 return resolvedLines;
@@ -400,7 +414,7 @@ export class Lyrics {
                 releaseLease();
             });
         this.enhancedRequests.set(requestKey, request);
-        return spotifyLines.length ? spotifyLines : request;
+        return spotifyLines.length && !waitForEnhancement ? spotifyLines : request;
     }
 
     private static publishCachedDebug(trackUri: string) {
@@ -466,15 +480,20 @@ export class Lyrics {
     private static bestEntry(
         candidates: Array<{ source: "shared" | "cached"; entry: LyricsCacheEntry }>,
     ) {
-        return candidates.sort((first, second) => {
-            const sourcePriority = this.cacheSourcePriority(first.entry) - this.cacheSourcePriority(second.entry);
-            if (sourcePriority !== 0) return sourcePriority;
-            const quality = this.compareLyricsQuality(second.entry.lines, first.entry.lines);
-            if (quality !== 0) return quality;
-            const kindPriority = this.cacheKindPriority(first.entry.kind) - this.cacheKindPriority(second.entry.kind);
-            if (kindPriority !== 0) return kindPriority;
-            return (second.entry.cachedAt ?? 0) - (first.entry.cachedAt ?? 0);
-        })[0] ?? null;
+        return (
+            candidates.sort((first, second) => {
+                const sourcePriority =
+                    this.cacheSourcePriority(first.entry) - this.cacheSourcePriority(second.entry);
+                if (sourcePriority !== 0) return sourcePriority;
+                const quality = this.compareLyricsQuality(second.entry.lines, first.entry.lines);
+                if (quality !== 0) return quality;
+                const kindPriority =
+                    this.cacheKindPriority(first.entry.kind) -
+                    this.cacheKindPriority(second.entry.kind);
+                if (kindPriority !== 0) return kindPriority;
+                return (second.entry.cachedAt ?? 0) - (first.entry.cachedAt ?? 0);
+            })[0] ?? null
+        );
     }
 
     private static cacheSourcePriority(entry: LyricsCacheEntry) {
@@ -490,8 +509,10 @@ export class Lyrics {
 
     private static cacheKindPriority(kind: LyricsCacheKind) {
         const preferred = CFM.get("thirdPartyLyrics") ? this.getEnhancedCacheKind() : "spotify";
-        return [preferred, ...this.CACHE_KINDS.filter((candidate) => candidate !== preferred)]
-            .indexOf(kind);
+        return [
+            preferred,
+            ...this.CACHE_KINDS.filter((candidate) => candidate !== preferred),
+        ].indexOf(kind);
     }
 
     private static linesForEntry(entry: LyricsCacheEntry): LyricLine[] {
@@ -550,7 +571,11 @@ export class Lyrics {
     }
 
     private static async syncSharedCacheForCurrentTrack() {
-        if (this.sharedSyncInFlight || !CFM.get("lyricsDisplay") || !CFM.get("sharedLyricsBridge")) {
+        if (
+            this.sharedSyncInFlight ||
+            !CFM.get("lyricsDisplay") ||
+            !CFM.get("sharedLyricsBridge")
+        ) {
             return;
         }
         const trackUri = this.currentTrackUri;
@@ -566,9 +591,7 @@ export class Lyrics {
                 // chance to deliver a Shiori reset tombstone. This both keeps
                 // warm plugin caches available to a newly started Shiori and
                 // prevents stale manual entries from racing a reset.
-                const kind = CFM.get("thirdPartyLyrics")
-                    ? this.getEnhancedCacheKind()
-                    : "spotify";
+                const kind = CFM.get("thirdPartyLyrics") ? this.getEnhancedCacheKind() : "spotify";
                 const local = getCachedLyricsFullEntry(trackUri, kind);
                 if (local && this.isPreferredCacheEntry(local)) {
                     syncCachedLyricsToShared(local);
@@ -592,7 +615,12 @@ export class Lyrics {
     private static cacheEntrySignature(entry: LyricsCacheEntry) {
         const colors = entry.desktopLyricsColors;
         const colorSignature = colors
-            ? [colors.preset ?? "", colors.unplayedColor, colors.playedColor, colors.outlineColor].join(",")
+            ? [
+                  colors.preset ?? "",
+                  colors.unplayedColor,
+                  colors.playedColor,
+                  colors.outlineColor,
+              ].join(",")
             : "";
         return [
             entry.kind,
@@ -670,9 +698,7 @@ export class Lyrics {
             line.translation ?? "",
             line.romanization ?? "",
             line.furigana ?? "",
-            ...(line.words ?? []).map((word) =>
-                [word.time, word.duration, word.text].join(","),
-            ),
+            ...(line.words ?? []).map((word) => [word.time, word.duration, word.text].join(",")),
         ].join("\u001f");
     }
 
@@ -733,7 +759,8 @@ export class Lyrics {
 
     private static async getSpotifyLyrics(track: LyricsTrack) {
         const cached = getCachedLyricsFullEntry(track.uri, "spotify");
-        if (cached !== null && this.isPreferredCacheEntry(cached)) return this.linesForEntry(cached);
+        if (cached !== null && this.isPreferredCacheEntry(cached))
+            return this.linesForEntry(cached);
         const automaticFallback = cached;
         const pending = this.spotifyRequests.get(track.uri);
         if (pending) return pending;

@@ -358,11 +358,7 @@ async function evaluateLyricsCandidate(
                 ? parseNetEaseLyrics(await fetchNetEaseLyrics(Number(song.id)))
                 : await fetchQQMusicLyrics(song);
         parsed.lines = trimLeadingProviderMetadata(parsed.lines, song, spotifyLines);
-        parsed.dynamicLines = trimLeadingProviderMetadata(
-            parsed.dynamicLines,
-            song,
-            spotifyLines,
-        );
+        parsed.dynamicLines = trimLeadingProviderMetadata(parsed.dynamicLines, song, spotifyLines);
         candidateDebug.counts = {
             lrc: parsed.lines.length,
             translation: parsed.translations.length,
@@ -804,20 +800,15 @@ function decodeQQMusicLyricContent(content: string) {
     const markerIndex = decoded.indexOf(marker);
     if (markerIndex < 0) return decoded;
     const start = markerIndex + marker.length;
-    let escaped = false;
-    for (let index = start; index < decoded.length; index++) {
-        const character = decoded[index];
-        if (escaped) {
-            escaped = false;
-            continue;
-        }
-        if (character === "\\") {
-            escaped = true;
-            continue;
-        }
-        if (character !== '"') continue;
+    // QQ's decrypted QRC is not always valid XML: lyric text may contain raw
+    // ASCII quotes, so the first unescaped quote is not necessarily the end of
+    // the LyricContent attribute. The attribute is the final one on Lyric_n;
+    // use the element terminator to distinguish its closing quote from lyrics.
+    const elementEnd = decoded.slice(start).match(/"\s*\/>/);
+    if (elementEnd?.index !== undefined) {
+        const end = start + elementEnd.index;
         return normalizeQQMusicContent(
-            decodeXmlEntities(decoded.slice(start, index))
+            decodeXmlEntities(decoded.slice(start, end))
                 .replace(/\\"/g, '"')
                 .replace(/\\r\\n|\\n|\\r/g, "\n"),
         );
