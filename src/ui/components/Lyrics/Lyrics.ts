@@ -77,6 +77,7 @@ export class Lyrics {
     private static readonly SHARED_SYNC_POLL_MS = 1000;
     private static readonly SHARED_SYNC_MAX_POLL_MS = 5000;
     private static readonly LINE_RENDER_OVERSCAN = 0.5;
+    private static readonly QQ_MUSIC_RENDER_ADVANCE_MS = 200;
     private static readonly CACHE_KINDS: LyricsCacheKind[] = [
         "enhanced",
         "enhanced-relaxed",
@@ -90,12 +91,17 @@ export class Lyrics {
     private static lineNodes: HTMLElement[] = [];
     private static timedLines: TimedLyricLine[] = [];
     private static karaokeWordsByLine: KaraokeWordRenderState[][] = [];
-    private static playbackBoundaries: number[] = [];
     private static lineHeights: number[] = [];
     private static containerHeight = 0;
     private static lines: LyricLine[] = [];
     private static activeIndex = -1;
     private static updateTimer: ReturnType<typeof setTimeout> | null = null;
+    private static updateFrame: number | null = null;
+    private static playbackClockProgress: number | null = null;
+    private static playbackClockTime = 0;
+    private static lastRawPlaybackProgress: number | null = null;
+    private static lastRawPlaybackChangeTime = 0;
+    private static playbackClockDrift = 0;
     private static karaokeAnimationLine = -1;
     private static karaokeAnimationsPlaying = false;
     private static karaokePropertiesRegistered = false;
@@ -136,7 +142,6 @@ export class Lyrics {
         this.lineNodes = [];
         this.timedLines = [];
         this.karaokeWordsByLine = [];
-        this.playbackBoundaries = [];
         this.lineHeights = [];
         this.containerHeight = 0;
         this.activeIndex = -1;
@@ -284,6 +289,11 @@ export class Lyrics {
         });
     }
 
+    static syncPlaybackProgress() {
+        if (!this.isSynced || !this.container) return;
+        this.updateActive(this.getSynchronizedPlaybackProgress());
+    }
+
     private static async prefetchNextLyricsFromBestSource(track: LyricsTrack) {
         // Prefetching happens while the current track is still playing, so it
         // can wait briefly for LyricShiori before issuing external requests.
@@ -327,7 +337,7 @@ export class Lyrics {
         if (kind !== "spotify") {
             const cached = getCachedLyricsFullEntry(track.uri, kind);
             const selected = this.selectBestCachedLyrics(null, cached, false);
-            if (selected !== null) {
+            if (selected !== null && this.isPreferredCacheEntry(selected.entry)) {
                 if (publishDebug) {
                     this.publishCachedDebug(track.uri);
                 }
@@ -381,9 +391,10 @@ export class Lyrics {
             },
         )
             .then((lines) => {
+                const sourceName = this.thirdPartySourceName(debugSnapshot);
                 const resolvedLines =
                     lines.length || !automaticFallback
-                        ? lines
+                        ? this.applySourceTimingCorrection(lines, sourceName)
                         : this.linesForEntry(automaticFallback);
                 const canPublish =
                     !this.isCurrentTrack(track.uri) ||
@@ -392,7 +403,7 @@ export class Lyrics {
                     setCachedLyrics(track.uri, kind, lines, debugSnapshot, true, {
                         source: "plugin",
                         cacheSource: "plugin",
-                        sourceName: this.thirdPartySourceName(debugSnapshot),
+                        sourceName,
                         isManualSelection: false,
                         cachedWithoutPlugin: false,
                         metadata: this.cacheMetadataForTrack(track),
@@ -402,7 +413,13 @@ export class Lyrics {
                 }
                 // Third-party enrichment can take several seconds. Keep the base Spotify
                 // lyrics visible, then replace them in place once richer data is ready.
-                if (this.isCurrentTrack(track.uri) && canPublish && resolvedLines.length) {
+                if (
+                    this.isCurrentTrack(track.uri) &&
+                    canPublish &&
+                    resolvedLines.length &&
+                    (!this.lines.length ||
+                        this.compareLyricsQuality(resolvedLines, this.lines) >= 0)
+                ) {
                     this.applyLines(resolvedLines);
                 }
                 return resolvedLines;
@@ -453,7 +470,15 @@ export class Lyrics {
 
     private static isPreferredCacheEntry(entry: LyricsCacheEntry) {
         const source = getEffectiveCacheSource(entry);
-        return source === "manual" || source === "plugin";
+        if (source === "manual") return true;
+        if (source !== "plugin") return false;
+        if (entry.kind === "spotify") return true;
+
+        // LyricShiori can expose the Spotify base entry under the requested
+        // enhanced cache kind. It is a useful fallback, but it must not be
+        // treated as completed enrichment or the provider request is skipped.
+        const sourceName = entry.sourceName?.trim().toLowerCase();
+        return entry.debug?.status === "matched" || Boolean(sourceName && sourceName !== "spotify");
     }
 
     private static selectBestCachedLyrics(
@@ -516,10 +541,28 @@ export class Lyrics {
     }
 
     private static linesForEntry(entry: LyricsCacheEntry): LyricLine[] {
-        const offset = Number(entry.offsetMilliseconds ?? 0);
-        if (!Number.isFinite(offset) || offset === 0) return entry.lines;
-        if (entry.timingOffsetApplied) return entry.lines;
-        return entry.lines.map((line) => ({
+        const configuredOffset = Number(entry.offsetMilliseconds ?? 0);
+        const manualOffset =
+            !entry.timingOffsetApplied && Number.isFinite(configuredOffset)
+                ? configuredOffset
+                : 0;
+        const providerOffset = this.sourceTimingCorrection(entry.sourceName);
+        return this.applyTimingOffset(entry.lines, manualOffset + providerOffset);
+    }
+
+    private static applySourceTimingCorrection(lines: LyricLine[], sourceName?: string) {
+        return this.applyTimingOffset(lines, this.sourceTimingCorrection(sourceName));
+    }
+
+    private static sourceTimingCorrection(sourceName?: string) {
+        return sourceName?.trim().toLowerCase() === "qqmusic"
+            ? this.QQ_MUSIC_RENDER_ADVANCE_MS
+            : 0;
+    }
+
+    private static applyTimingOffset(lines: LyricLine[], offset: number) {
+        if (!Number.isFinite(offset) || offset === 0) return lines;
+        return lines.map((line) => ({
             ...line,
             time: typeof line.time === "number" ? Math.max(0, line.time - offset) : line.time,
             words: line.words?.map((word) => ({
@@ -647,12 +690,11 @@ export class Lyrics {
     private static applySharedLyricsEntry(trackUri: string, entry: LyricsCacheEntry) {
         if (!this.isCurrentTrack(trackUri)) return;
         const lines = this.linesForEntry(entry);
-        const isAuthoritative = entry.hidden === true || this.isPreferredCacheEntry(entry);
-        if (isAuthoritative) {
+        if (entry.hidden === true) {
+            // A Shiori hide action is always authoritative and must cancel any
+            // in-flight fetch that could otherwise make lyrics visible again.
             this.authoritativeRevision += 1;
             this.loadSequence += 1;
-        }
-        if (entry.hidden === true) {
             setCachedLyrics(
                 trackUri,
                 entry.kind,
@@ -667,6 +709,14 @@ export class Lyrics {
             return;
         }
         if (!lines.length || !this.shouldApplySharedLyricsEntry(entry, lines)) return;
+        if (getEffectiveCacheSource(entry) === "manual") {
+            // Only an explicit manual choice may invalidate an in-flight local
+            // enrichment request. Automatic bridge entries can render in the
+            // meantime, but the richer provider result must still be allowed
+            // to replace them when it arrives.
+            this.authoritativeRevision += 1;
+            this.loadSequence += 1;
+        }
         setCachedLyrics(
             trackUri,
             entry.kind,
@@ -975,7 +1025,6 @@ export class Lyrics {
         this.lineNodes = [];
         this.timedLines = [];
         this.karaokeWordsByLine = [];
-        this.playbackBoundaries = [];
         this.lineHeights = [];
         this.containerHeight = 0;
         this.activeIndex = -1;
@@ -996,11 +1045,20 @@ export class Lyrics {
         if (signature === this.renderedLyricsSignature && this.lyricsRoot?.isConnected) {
             return;
         }
+        const timingShift = this.uniformTimingShift(this.lines, lines);
         const timeValues = lines.map((line) => line.time).filter((t): t is number => t !== null);
         const lastTime = timeValues.length ? timeValues[timeValues.length - 1] : null;
         const hasNonZero = timeValues.some((t) => t > 0);
-        this.isSynced = Boolean(timeValues.length && hasNonZero && (lastTime ?? 0) > 0);
+        const wasSynced = this.isSynced;
+        const nextIsSynced = Boolean(timeValues.length && hasNonZero && (lastTime ?? 0) > 0);
+        const canUpdateTimingInPlace =
+            wasSynced &&
+            nextIsSynced &&
+            timingShift !== null &&
+            this.lyricsRoot?.isConnected &&
+            this.lineNodes.length === lines.length;
         this.stopLoop();
+        this.isSynced = nextIsSynced;
         this.lines = lines;
         this.renderedLyricsSignature = signature;
         this.timedLines = lines.flatMap((line, index) =>
@@ -1014,11 +1072,77 @@ export class Lyrics {
             romanizations: lines.filter((line) => Boolean(line.romanization)).length,
             karaoke: lines.filter((line) => this.hasKaraokeText(line)).length,
         };
-        this.activeIndex = this.isSynced ? -1 : 0;
         DOM.container.classList.remove("lyrics-unavailable");
         this.container?.classList.toggle("lyrics-unsynced", !this.isSynced);
+        if (canUpdateTimingInPlace) {
+            this.updateTimingInPlace(lines, timingShift);
+            this.startLoop();
+            return;
+        }
+        this.activeIndex = this.isSynced ? -1 : 0;
         this.renderLines();
         if (this.isSynced) this.startLoop();
+    }
+
+    private static uniformTimingShift(previous: LyricLine[], next: LyricLine[]) {
+        if (previous.length !== next.length || !previous.length) return null;
+        let shift: number | null = null;
+        const compareTime = (before: number | null, after: number | null) => {
+            if (before === null || after === null) return before === after;
+            const difference = after - before;
+            if (shift === null) shift = difference;
+            return Math.abs(difference - shift) < 0.5;
+        };
+        for (let index = 0; index < previous.length; index += 1) {
+            const before = previous[index];
+            const after = next[index];
+            if (
+                before.text !== after.text ||
+                before.translation !== after.translation ||
+                before.romanization !== after.romanization ||
+                before.furigana !== after.furigana ||
+                before.duration !== after.duration ||
+                !compareTime(before.time, after.time)
+            ) {
+                return null;
+            }
+            const beforeWords = before.words ?? [];
+            const afterWords = after.words ?? [];
+            if (beforeWords.length !== afterWords.length) return null;
+            for (let wordIndex = 0; wordIndex < beforeWords.length; wordIndex += 1) {
+                const beforeWord = beforeWords[wordIndex];
+                const afterWord = afterWords[wordIndex];
+                if (
+                    beforeWord.text !== afterWord.text ||
+                    beforeWord.duration !== afterWord.duration ||
+                    !compareTime(beforeWord.time, afterWord.time)
+                ) {
+                    return null;
+                }
+            }
+        }
+        return shift;
+    }
+
+    private static updateTimingInPlace(lines: LyricLine[], shift: number) {
+        this.cancelKaraokeAnimations();
+        this.lineNodes.forEach((node, index) => {
+            node.dataset.time = `${lines[index].time ?? ""}`;
+        });
+        this.lineNodes.forEach((lineNode) => {
+            lineNode.querySelectorAll<HTMLElement>(".rnp-karaoke-word").forEach((wordNode) => {
+                const previousTime = Number(wordNode.dataset.time);
+                if (Number.isFinite(previousTime)) {
+                    wordNode.dataset.time = `${previousTime + shift}`;
+                }
+                wordNode.classList.remove("active", "finished", "glowing");
+                wordNode.style.removeProperty("--karaoke-progress");
+                wordNode.style.removeProperty("--karaoke-lift");
+                wordNode.style.removeProperty("--karaoke-scale");
+                wordNode.style.removeProperty("--karaoke-glow");
+            });
+        });
+        this.buildKaraokeWordCache();
     }
 
     private static renderLines() {
@@ -1057,7 +1181,6 @@ export class Lyrics {
             this.container.querySelectorAll<HTMLElement>(".rnp-lyrics-line"),
         );
         this.buildKaraokeWordCache();
-        this.buildPlaybackBoundaries();
         if (!this.isSynced) {
             this.stopLoop();
             this.lineNodes.forEach((node, idx) => node.classList.toggle("active", idx === 0));
@@ -1383,17 +1506,68 @@ export class Lyrics {
         this.stopLoop();
         const tick = () => {
             if (!this.container || !this.isSynced) return;
-            const progress = Spicetify.Player?.getProgress?.() ?? 0;
+            const progress = this.getSynchronizedPlaybackProgress();
             this.updateActive(progress);
-            const delay = Spicetify.Player.isPlaying() ? this.getNextPlaybackDelay(progress) : 250;
-            this.updateTimer = setTimeout(tick, delay);
+            if (Spicetify.Player.isPlaying()) {
+                this.updateFrame = requestAnimationFrame(tick);
+            } else {
+                this.updateTimer = setTimeout(tick, 250);
+            }
         };
         tick();
     }
 
     private static stopLoop() {
         if (this.updateTimer) clearTimeout(this.updateTimer);
+        if (this.updateFrame !== null) cancelAnimationFrame(this.updateFrame);
         this.updateTimer = null;
+        this.updateFrame = null;
+        this.resetPlaybackClock();
+    }
+
+    private static resetPlaybackClock() {
+        this.playbackClockProgress = null;
+        this.playbackClockTime = 0;
+        this.lastRawPlaybackProgress = null;
+        this.lastRawPlaybackChangeTime = 0;
+        this.playbackClockDrift = 0;
+    }
+
+    private static getSynchronizedPlaybackProgress() {
+        const rawProgress = Number(Spicetify.Player?.getProgress?.() ?? 0);
+        const now = performance.now();
+        const isPlaying = Boolean(Spicetify.Player?.isPlaying?.());
+        if (!Number.isFinite(rawProgress)) return this.playbackClockProgress ?? 0;
+
+        if (
+            this.playbackClockProgress === null ||
+            !isPlaying ||
+            this.lastRawPlaybackProgress === null
+        ) {
+            this.playbackClockProgress = rawProgress;
+            this.playbackClockTime = now;
+            this.lastRawPlaybackProgress = rawProgress;
+            this.lastRawPlaybackChangeTime = now;
+            this.playbackClockDrift = 0;
+            return rawProgress;
+        }
+
+        const predicted = this.playbackClockProgress + Math.max(0, now - this.playbackClockTime);
+        const rawChanged = Math.abs(rawProgress - this.lastRawPlaybackProgress) > 1;
+        if (rawChanged) this.lastRawPlaybackChangeTime = now;
+
+        const drift = rawProgress - predicted;
+        const playbackJumped =
+            rawProgress < this.lastRawPlaybackProgress - 120 || Math.abs(drift) > 750;
+        const rawProgressStalled = now - this.lastRawPlaybackChangeTime > 2500;
+        const synchronizedProgress =
+            playbackJumped || rawProgressStalled ? rawProgress : Math.max(rawProgress, predicted);
+
+        this.playbackClockProgress = synchronizedProgress;
+        this.playbackClockTime = now;
+        this.lastRawPlaybackProgress = rawProgress;
+        this.playbackClockDrift = rawProgress - synchronizedProgress;
+        return synchronizedProgress;
     }
 
     private static updateActive(progress: number) {
@@ -1497,40 +1671,6 @@ export class Lyrics {
                 ];
             });
         });
-    }
-
-    private static buildPlaybackBoundaries() {
-        const boundaries = this.timedLines.map((line) => line.time);
-        this.karaokeWordsByLine.forEach((words) => {
-            words.forEach((word) => {
-                boundaries.push(
-                    word.time,
-                    word.effectiveEnd,
-                    word.effectiveEnd + word.releaseDuration,
-                );
-            });
-        });
-        this.playbackBoundaries = Array.from(new Set(boundaries))
-            .filter((time) => Number.isFinite(time) && time >= 0)
-            .sort((a, b) => a - b);
-    }
-
-    private static getNextPlaybackDelay(progress: number) {
-        let low = 0;
-        let high = this.playbackBoundaries.length - 1;
-        let nextBoundary: number | null = null;
-        while (low <= high) {
-            const middle = (low + high) >> 1;
-            const boundary = this.playbackBoundaries[middle];
-            if (boundary > progress + 2) {
-                nextBoundary = boundary;
-                high = middle - 1;
-            } else {
-                low = middle + 1;
-            }
-        }
-        if (nextBoundary === null) return 250;
-        return Math.max(12, Math.min(250, nextBoundary - progress));
     }
 
     private static resetKaraokeLine(lineIndex: number) {
@@ -1954,6 +2094,11 @@ export class Lyrics {
     static getDiagnostics() {
         return {
             status: this.lastStatus,
+            playback: {
+                rawProgress: this.lastRawPlaybackProgress,
+                synchronizedProgress: this.playbackClockProgress,
+                driftMilliseconds: this.playbackClockDrift,
+            },
             lines: { ...this.diagnostics },
             rendered: this.lines.map((line) => ({
                 ...line,

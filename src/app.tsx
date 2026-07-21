@@ -446,7 +446,10 @@ async function startFullscape() {
         Lyrics.prefetchNextLyrics();
     };
 
-    const handleLyricsProgress = () => Lyrics.prefetchNextLyrics();
+    const handleLyricsProgress = () => {
+        Lyrics.syncPlaybackProgress();
+        Lyrics.prefetchNextLyrics();
+    };
     const handleLyricsQueueUpdate = () => Lyrics.prefetchNextLyrics();
 
     let activationSequence = 0;
