@@ -30,10 +30,26 @@
         transition: all var(--transition-duration) var(--transition-function);
         display: var(--icons-display);
     }
-    .fullscape-song-meta span:hover,
-    .fullscape-artist-list span:hover {
+    #fullscape-title-text-viewport,
+    .fullscape-artist-list span:not(.fullscape-artist-separator),
+    #fullscape-album span {
+        transition: transform 180ms ease-out;
+        transform-origin: center;
+    }
+    .fullscape-artist-list span:not(.fullscape-artist-separator),
+    #fullscape-album span {
+        display: inline-block;
+    }
+    .fullscape-artist-separator {
+        display: inline-block;
+        margin-inline: 0.2em;
+        color: var(--tertiary-color);
+    }
+    #fullscape-title-text-viewport:hover,
+    .fullscape-artist-list span:not(.fullscape-artist-separator):hover,
+    #fullscape-album span:hover {
         cursor: pointer;
-        text-decoration: underline;
+        transform: scale(1.05);
     }
     .unavailable {
         color: var(--tertiary-color) !important;
@@ -539,7 +555,9 @@
         width: 94%;
         height: 94%;
         z-index: -1;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6) !important;
+        box-shadow:
+            0 0 24px rgba(0, 0, 0, 0.28),
+            0 0 56px rgba(0, 0, 0, 0.16) !important;
         transform: translateZ(0);
     }
     #fullscape-artist {
@@ -736,8 +754,6 @@
             transform 0.1s var(--transition-function);
         &:hover {
             transform: scale(1.2);
-            filter: saturate(1.5) contrast(1.5) !important;
-            background: var(--theme-hover-color);
         }
         &.button-active {
             background: var(--theme-background-color) !important;
@@ -750,8 +766,8 @@
         height: 58px;
     }
     #fullscape-play {
-        width: 64px;
-        height: 64px;
+        width: 84px;
+        height: 84px;
     }
     .apple-music-skip-icon {
         width: 44px;
@@ -759,8 +775,8 @@
     }
     .apple-music-play-icon,
     .apple-music-pause-icon {
-        width: 52px;
-        height: 52px;
+        width: 68px;
+        height: 68px;
     }
     .apple-music-control-icon {
         display: block;

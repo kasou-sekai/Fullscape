@@ -202,9 +202,7 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
                 id="fullscape-progress-bar"
                 ref={progSlider}
                 className={classNames({ dragging: changingProgress.isChanging })}>
-                <div id="fullscape-progress-bar-inner" style={{ width: `${progressPercentage}%` }}>
-                    <div id="progress-thumb" />
-                </div>
+                <div id="fullscape-progress-bar-inner" style={{ width: `${progressPercentage}%` }} />
             </div>
             <div id="fullscape-progress-times">
                 <div className="progress-number" id="fullscape-elapsed">

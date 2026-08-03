@@ -5,6 +5,12 @@ import type { FuriganaRenderData } from "./furigana";
 export type LyricsChineseConversion = "original" | "simplified" | "traditional";
 export type ChineseScript = Exclude<LyricsChineseConversion, "original">;
 
+export interface ChineseLyricsPresentation {
+    sourceScript: ChineseScript | null;
+    displayScript: ChineseScript | null;
+    conversion: LyricsChineseConversion;
+}
+
 let simplifiedConverter: ConverterFunction | null = null;
 let traditionalConverter: ConverterFunction | null = null;
 
@@ -32,7 +38,32 @@ export function isChineseLyrics(text: string) {
     const hanCount = text.match(/\p{Script=Han}/gu)?.length ?? 0;
     const kanaCount = text.match(/[\p{Script=Hiragana}\p{Script=Katakana}]/gu)?.length ?? 0;
     const hangulCount = text.match(/\p{Script=Hangul}/gu)?.length ?? 0;
-    return hanCount >= 4 && hanCount > (kanaCount + hangulCount) * 2;
+    const latinCount = text.match(/\p{Script=Latin}/gu)?.length ?? 0;
+
+    if (hanCount < 4) return false;
+
+    // Inspect the complete lyrics rather than isolated lines. Kana and Hangul
+    // are strong song-level signals for Japanese and Korean respectively, while
+    // the Latin ratio prevents a few CJK characters in otherwise English lyrics
+    // from selecting a Chinese font.
+    const isLikelyJapanese = kanaCount >= 4 && kanaCount * 5 >= hanCount;
+    const isLikelyKorean = hangulCount >= 4 && hangulCount * 5 >= hanCount;
+    const isMostlyLatin = latinCount > hanCount * 5;
+    return !isLikelyJapanese && !isLikelyKorean && !isMostlyLatin;
+}
+
+export function getChineseLyricsPresentation(
+    text: string,
+    target: LyricsChineseConversion,
+): ChineseLyricsPresentation {
+    if (!isChineseLyrics(text)) {
+        return { sourceScript: null, displayScript: null, conversion: "original" };
+    }
+
+    const sourceScript = detectChineseScript(text);
+    const displayScript = target === "original" ? sourceScript : target;
+    const conversion = target === "original" || target === sourceScript ? "original" : target;
+    return { sourceScript, displayScript, conversion };
 }
 
 export function detectChineseScript(text: string): ChineseScript {

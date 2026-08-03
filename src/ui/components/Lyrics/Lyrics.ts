@@ -27,8 +27,7 @@ import type { FuriganaAnnotation } from "../../../utils/furigana";
 import {
     convertChineseText,
     convertFuriganaRenderData,
-    detectChineseScript,
-    isChineseLyrics,
+    getChineseLyricsPresentation,
 } from "../../../utils/chinese-conversion";
 import type { LyricsChineseConversion } from "../../../utils/chinese-conversion";
 
@@ -98,9 +97,7 @@ export class Lyrics {
     private static updateTimer: ReturnType<typeof setTimeout> | null = null;
     private static updateFrame: number | null = null;
     private static playbackClockProgress: number | null = null;
-    private static playbackClockTime = 0;
     private static lastRawPlaybackProgress: number | null = null;
-    private static lastRawPlaybackChangeTime = 0;
     private static playbackClockDrift = 0;
     private static karaokeAnimationLine = -1;
     private static karaokeAnimationsPlaying = false;
@@ -1150,11 +1147,11 @@ export class Lyrics {
         this.cancelKaraokeAnimations();
         const chineseConversion = this.getChineseConversion();
         const originalLyricsText = this.lines.map((line) => line.text).join("\n");
-        const chineseScript = isChineseLyrics(originalLyricsText)
-            ? chineseConversion === "original"
-                ? detectChineseScript(originalLyricsText)
-                : chineseConversion
-            : null;
+        const chinesePresentation = getChineseLyricsPresentation(
+            originalLyricsText,
+            chineseConversion,
+        );
+        const chineseScript = chinesePresentation.displayScript;
         const scriptClass = chineseScript ? ` rnp-lyrics-script-${chineseScript}` : "";
         const language =
             chineseScript === "simplified"
@@ -1166,7 +1163,7 @@ export class Lyrics {
             .map(
                 (line, idx) =>
                     `<div class="rnp-lyrics-line" data-index="${idx}" data-time="${line.time ?? ""}">
-                        ${this.renderLineContent(line)}
+                        ${this.renderLineContent(line, chinesePresentation.conversion)}
                     </div>`,
             )
             .join("");
@@ -1192,21 +1189,15 @@ export class Lyrics {
         this.setupResizeObserver();
     }
 
-    private static renderLineContent(line: LyricLine) {
+    private static renderLineContent(line: LyricLine, chineseConversion: LyricsChineseConversion) {
         const showKaraoke = Boolean(CFM.get("karaokeLyrics")) && this.hasKaraokeText(line);
-        const chineseConversion = this.getChineseConversion();
-        const lineChineseConversion = this.getLineChineseConversion(
-            line.text,
-            chineseConversion,
-            line.words?.map((word) => word.text).join("") ?? "",
-        );
         const words = (line.words ?? []).map((word) => ({
             ...word,
-            text: convertChineseText(word.text, lineChineseConversion),
+            text: convertChineseText(word.text, chineseConversion),
         }));
         const furigana = convertFuriganaRenderData(
             parseFuriganaMarkup(line.text, line.furigana),
-            lineChineseConversion,
+            chineseConversion,
         );
         const visibleAnnotations = CFM.get("showLyricsFurigana") ? furigana.annotations : [];
         const karaokeText = words.map((word) => word.text).join("");
@@ -1218,11 +1209,11 @@ export class Lyrics {
 
         const romanization =
             CFM.get("showLyricsRomanization") && line.romanization
-                ? `<div class="rnp-lyrics-line-romaji">${this.escapeHtml(this.convertDisplayChineseText(line.romanization, chineseConversion))}</div>`
+                ? `<div class="rnp-lyrics-line-romaji">${this.escapeHtml(convertChineseText(line.romanization, chineseConversion))}</div>`
                 : "";
         const translation =
             CFM.get("showLyricsTranslation") && line.translation && line.translation.trim() !== "//"
-                ? `<div class="rnp-lyrics-line-translated">${this.escapeHtml(this.convertDisplayChineseText(line.translation, chineseConversion))}</div>`
+                ? `<div class="rnp-lyrics-line-translated">${this.escapeHtml(convertChineseText(line.translation, chineseConversion))}</div>`
                 : "";
 
         return `${original}${romanization}${translation}`;
@@ -1230,19 +1221,6 @@ export class Lyrics {
 
     private static getChineseConversion(): LyricsChineseConversion {
         return CFM.get("lyricsChineseConversion") as LyricsChineseConversion;
-    }
-
-    private static getLineChineseConversion(
-        text: string,
-        target: LyricsChineseConversion,
-        fallbackText = "",
-    ): LyricsChineseConversion {
-        if (target === "original") return target;
-        return isChineseLyrics(`${text}\n${fallbackText}`) ? target : "original";
-    }
-
-    private static convertDisplayChineseText(text: string, target: LyricsChineseConversion) {
-        return convertChineseText(text, this.getLineChineseConversion(text, target));
     }
 
     private static renderKaraokeLine(
@@ -1527,47 +1505,17 @@ export class Lyrics {
 
     private static resetPlaybackClock() {
         this.playbackClockProgress = null;
-        this.playbackClockTime = 0;
         this.lastRawPlaybackProgress = null;
-        this.lastRawPlaybackChangeTime = 0;
         this.playbackClockDrift = 0;
     }
 
     private static getSynchronizedPlaybackProgress() {
         const rawProgress = Number(Spicetify.Player?.getProgress?.() ?? 0);
-        const now = performance.now();
-        const isPlaying = Boolean(Spicetify.Player?.isPlaying?.());
         if (!Number.isFinite(rawProgress)) return this.playbackClockProgress ?? 0;
-
-        if (
-            this.playbackClockProgress === null ||
-            !isPlaying ||
-            this.lastRawPlaybackProgress === null
-        ) {
-            this.playbackClockProgress = rawProgress;
-            this.playbackClockTime = now;
-            this.lastRawPlaybackProgress = rawProgress;
-            this.lastRawPlaybackChangeTime = now;
-            this.playbackClockDrift = 0;
-            return rawProgress;
-        }
-
-        const predicted = this.playbackClockProgress + Math.max(0, now - this.playbackClockTime);
-        const rawChanged = Math.abs(rawProgress - this.lastRawPlaybackProgress) > 1;
-        if (rawChanged) this.lastRawPlaybackChangeTime = now;
-
-        const drift = rawProgress - predicted;
-        const playbackJumped =
-            rawProgress < this.lastRawPlaybackProgress - 120 || Math.abs(drift) > 750;
-        const rawProgressStalled = now - this.lastRawPlaybackChangeTime > 2500;
-        const synchronizedProgress =
-            playbackJumped || rawProgressStalled ? rawProgress : Math.max(rawProgress, predicted);
-
-        this.playbackClockProgress = synchronizedProgress;
-        this.playbackClockTime = now;
         this.lastRawPlaybackProgress = rawProgress;
-        this.playbackClockDrift = rawProgress - synchronizedProgress;
-        return synchronizedProgress;
+        this.playbackClockProgress = rawProgress;
+        this.playbackClockDrift = 0;
+        return rawProgress;
     }
 
     private static updateActive(progress: number) {

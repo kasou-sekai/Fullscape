@@ -367,7 +367,13 @@ async function startFullscape() {
             // combine artist in a list with each span and separated by comma
             DOM.artist.replaceChildren();
             artistData.forEach(([name, uri], index) => {
-                if (index > 0) DOM.artist.append(document.createTextNode(", "));
+                if (index > 0) {
+                    const separator = document.createElement("span");
+                    separator.className = "fullscape-artist-separator";
+                    separator.textContent = ",";
+                    separator.setAttribute("aria-hidden", "true");
+                    DOM.artist.append(separator);
+                }
                 const artist = document.createElement("span");
                 artist.textContent = name ?? "";
                 if (uri) artist.dataset.uri = uri;

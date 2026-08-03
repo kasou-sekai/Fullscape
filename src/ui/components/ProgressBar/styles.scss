@@ -7,49 +7,31 @@
     transition: opacity 1s ease-in-out;
     #fullscape-progress-bar {
         width: 100%;
-        height: 7px;
-        border-radius: 5px;
+        height: 10px;
+        border-radius: 999px;
         background: rgba(var(--main-color), 0.35);
         cursor: pointer;
         margin: 10px 0 7px;
         display: flex;
         align-items: center;
-        &:hover,
-        &.dragging {
-            #fullscape-progress-bar-inner,
-            #progress-thumb {
-                background: var(--theme-main-color);
-                filter: saturate(1.5) contrast(1.5);
-            }
-            #progress-thumb {
-                display: block;
-            }
+        transform: scale(1);
+        transform-origin: center;
+        transition: transform 180ms ease-out;
+        &:hover {
+            transform: scale(1.02);
         }
         &.dragging {
-            #progress-thumb {
-                transform: scale(1.4);
-            }
+            transform: scale(1.05);
+            transition-delay: 40ms;
         }
     }
     #fullscape-progress-bar-inner {
         height: 100%;
-        border-radius: 5px;
+        border-radius: inherit;
         background: var(--primary-color);
         will-change: width;
     }
 
-    #progress-thumb {
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
-        background: var(--primary-color);
-        float: right;
-        position: relative;
-        left: 9px;
-        top: -3px;
-        display: none;
-        pointer-events: none;
-    }
     #fullscape-progress-times {
         width: 100%;
         display: flex;
