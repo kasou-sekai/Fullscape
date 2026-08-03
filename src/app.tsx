@@ -479,10 +479,8 @@ async function startFullscape() {
         }, 200);
         Spicetify.Player.addEventListener("songchange", updateInfo);
         handleMouseMoveActivation();
-        DOM.container.querySelector<HTMLElement>("#fullscape-foreground")!.oncontextmenu =
-            ConfigManager.openConfig.bind(ConfigManager);
+        DOM.container.oncontextmenu = ConfigManager.openConfig.bind(ConfigManager);
         DOM.container.querySelector<HTMLElement>("#fullscape-foreground")!.ondblclick = deactivate;
-        DOM.back.oncontextmenu = ConfigManager.openConfig.bind(ConfigManager);
         DOM.back.ondblclick = deactivate;
         if (CFM.get("upnextDisplay") !== "never") {
             UpNext.updateUpNextShow();
