@@ -2084,9 +2084,10 @@ export class Lyrics {
             const overscan = containerHeight * this.LINE_RENDER_OVERSCAN;
             const outsideViewport =
                 t.top + scaledHeight < -overscan || t.top > containerHeight + overscan;
+            const wasOutsideViewport = node.classList.contains("rnp-lyrics-line-outside");
             node.classList.toggle("rnp-lyrics-line-outside", outsideViewport);
-            if (outsideViewport && !this.manualScrollActive) return;
-            const duration = skipAnimation || this.manualScrollActive ? 0 : 520;
+            const enteredViewport = wasOutsideViewport && !outsideViewport;
+            const duration = skipAnimation || this.manualScrollActive || enteredViewport ? 0 : 520;
             node.style.setProperty("--lyrics-line-transform-duration", `${duration}ms`);
             node.style.setProperty(
                 "--lyrics-line-transform-delay",
