@@ -33,7 +33,9 @@
     #fullscape-title-text-viewport,
     .fullscape-artist-list span:not(.fullscape-artist-separator),
     #fullscape-album span {
-        transition: transform 180ms ease-out;
+        transition:
+            transform 180ms ease-out,
+            padding-inline 180ms ease-out;
         transform-origin: center;
     }
     .fullscape-artist-list span:not(.fullscape-artist-separator),
@@ -50,6 +52,10 @@
     #fullscape-album span:hover {
         cursor: pointer;
         transform: scale(1.05);
+        padding-inline: 0.08em;
+    }
+    #fullscape-title-text-viewport:hover {
+        padding-inline: 0.42em;
     }
     .unavailable {
         color: var(--tertiary-color) !important;
@@ -572,6 +578,7 @@
         flex: 0 1 auto;
         min-width: 0;
         overflow: hidden;
+        padding-inline: 0.3em;
         white-space: nowrap;
     }
     #fullscape-title-text-track {
@@ -593,6 +600,7 @@
         max-width: none;
         margin-inline: auto;
         align-items: center;
+        padding-inline: 0.3em;
         white-space: nowrap;
         will-change: transform;
     }
