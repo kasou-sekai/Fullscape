@@ -94,6 +94,7 @@ export class Lyrics {
     private static containerHeight = 0;
     private static lines: LyricLine[] = [];
     private static activeIndex = -1;
+    private static lineContentNodes: (HTMLElement | null)[] = [];
     private static updateTimer: ReturnType<typeof setTimeout> | null = null;
     private static updateFrame: number | null = null;
     private static playbackClockProgress: number | null = null;
@@ -126,6 +127,15 @@ export class Lyrics {
     private static renderedLyricsSignature: string | null = null;
     private static authoritativeRevision = 0;
     private static bridgeLeaseGeneration = 0;
+    private static lyricsInteractionTimer: ReturnType<typeof setTimeout> | null = null;
+    private static lyricsInteractionActive = false;
+    private static lyricsPointerInside = false;
+    private static hoveredLine: HTMLElement | null = null;
+    private static manualScrollActive = false;
+    private static manualScrollTargetPosition = -1;
+    private static manualScrollRenderPosition = -1;
+    private static manualScrollFrame: number | null = null;
+    private static lineRightSpaces: number[] = [];
     private static readonly bridgeLeases = new Map<string, BridgeLease>();
 
     static attach(container: HTMLElement) {
@@ -135,11 +145,14 @@ export class Lyrics {
     static teardown() {
         this.stopLoop();
         this.cancelKaraokeAnimations();
+        this.resetLyricsInteraction(false);
         this.lines = [];
         this.lineNodes = [];
+        this.lineContentNodes = [];
         this.timedLines = [];
         this.karaokeWordsByLine = [];
         this.lineHeights = [];
+        this.lineRightSpaces = [];
         this.containerHeight = 0;
         this.activeIndex = -1;
         this.stopResizeObserver();
@@ -1018,11 +1031,14 @@ export class Lyrics {
         if (!this.container) return;
         this.stopResizeObserver();
         this.cancelKaraokeAnimations();
+        this.resetLyricsInteraction(false);
         this.lines = [];
         this.lineNodes = [];
+        this.lineContentNodes = [];
         this.timedLines = [];
         this.karaokeWordsByLine = [];
         this.lineHeights = [];
+        this.lineRightSpaces = [];
         this.containerHeight = 0;
         this.activeIndex = -1;
         this.lastMeasuredFontSize = 0;
@@ -1144,6 +1160,7 @@ export class Lyrics {
 
     private static renderLines() {
         if (!this.container) return;
+        this.resetLyricsInteraction(false);
         this.cancelKaraokeAnimations();
         const chineseConversion = this.getChineseConversion();
         const originalLyricsText = this.lines.map((line) => line.text).join("\n");
@@ -1162,8 +1179,10 @@ export class Lyrics {
         const body = this.lines
             .map(
                 (line, idx) =>
-                    `<div class="rnp-lyrics-line" data-index="${idx}" data-time="${line.time ?? ""}">
-                        ${this.renderLineContent(line, chinesePresentation.conversion)}
+                    `<div class="rnp-lyrics-line${line.time !== null ? " rnp-lyrics-line-seekable" : ""}" data-index="${idx}" data-time="${line.time ?? ""}">
+                        <div class="rnp-lyrics-line-content">
+                            ${this.renderLineContent(line, chinesePresentation.conversion)}
+                        </div>
                     </div>`,
             )
             .join("");
@@ -1177,7 +1196,11 @@ export class Lyrics {
         this.lineNodes = Array.from(
             this.container.querySelectorAll<HTMLElement>(".rnp-lyrics-line"),
         );
+        this.lineContentNodes = this.lineNodes.map((node) =>
+            node.querySelector<HTMLElement>(".rnp-lyrics-line-content"),
+        );
         this.buildKaraokeWordCache();
+        this.setupLyricsInteraction();
         if (!this.isSynced) {
             this.stopLoop();
             this.lineNodes.forEach((node, idx) => node.classList.toggle("active", idx === 0));
@@ -1531,7 +1554,13 @@ export class Lyrics {
         const previousIndex = this.activeIndex;
         this.activeIndex = nextIndex;
         if (previousIndex !== nextIndex) this.resetKaraokeLine(previousIndex);
-        this.applyTransforms();
+        if (this.manualScrollActive) {
+            this.lineNodes.forEach((node, index) =>
+                node.classList.toggle("active", index === this.activeIndex),
+            );
+        } else {
+            this.applyTransforms();
+        }
         this.updateKaraokeProgress(progress);
     }
 
@@ -1770,6 +1799,137 @@ export class Lyrics {
         this.lastKaraokeClockTime = 0;
     }
 
+    private static setupLyricsInteraction() {
+        if (!this.lyricsRoot) return;
+        const lyricsRoot = this.lyricsRoot;
+        lyricsRoot.addEventListener("mouseenter", () => {
+            this.lyricsPointerInside = true;
+            this.beginLyricsInteraction(10_000);
+        });
+        lyricsRoot.addEventListener("mousemove", (event) => {
+            if (!this.lyricsPointerInside) this.lyricsPointerInside = true;
+            const currentHoveredLine = this.hoveredLine;
+            const currentRect = currentHoveredLine?.getBoundingClientRect();
+            const pointerStillOverCurrent = Boolean(
+                currentRect &&
+                    event.clientX >= currentRect.left &&
+                    event.clientX <= currentRect.right &&
+                    event.clientY >= currentRect.top &&
+                    event.clientY <= currentRect.bottom,
+            );
+            const hoveredLine = pointerStillOverCurrent
+                ? currentHoveredLine
+                : (event.target as HTMLElement | null)?.closest<HTMLElement>(
+                      ".rnp-lyrics-line-seekable",
+                  );
+            if (hoveredLine !== this.hoveredLine) {
+                this.hoveredLine = hoveredLine;
+                if (this.isSynced) this.applyTransforms();
+            }
+            this.beginLyricsInteraction(10_000);
+        });
+        lyricsRoot.addEventListener("mouseleave", () => {
+            this.lyricsPointerInside = false;
+            this.hoveredLine = null;
+            if (this.isSynced) this.applyTransforms();
+            this.scheduleLyricsInteractionReset(3_000);
+        });
+        lyricsRoot.addEventListener(
+            "wheel",
+            (event) => {
+                if (!this.isSynced || !this.lineNodes.length) return;
+                event.preventDefault();
+                if (!this.manualScrollActive) {
+                    const startPosition = Math.max(this.activeIndex, 0);
+                    this.manualScrollTargetPosition = startPosition;
+                    this.manualScrollRenderPosition = startPosition;
+                }
+                this.manualScrollActive = true;
+                this.beginLyricsInteraction(10_000);
+                if (event.deltaY === 0) return;
+                const fontSize = this.getFontSize();
+                const lineDistance = Math.max(64, Math.min(96, fontSize * 3.2));
+                const deltaPixels =
+                    event.deltaMode === 1
+                        ? event.deltaY * fontSize
+                        : event.deltaMode === 2
+                          ? event.deltaY * (this.containerHeight || lyricsRoot.clientHeight)
+                          : event.deltaY;
+                this.manualScrollTargetPosition = Math.max(
+                    0,
+                    Math.min(
+                        this.lines.length - 1,
+                        this.manualScrollTargetPosition + deltaPixels / lineDistance,
+                    ),
+                );
+                this.scheduleManualScrollRender();
+            },
+            { passive: false },
+        );
+        lyricsRoot.addEventListener("click", (event) => {
+            const target = (event.target as HTMLElement | null)?.closest<HTMLElement>(
+                ".rnp-lyrics-line-seekable",
+            );
+            if (!target || !lyricsRoot.contains(target)) return;
+            const index = Number(target.dataset.index);
+            const time = Number(target.dataset.time);
+            if (!Number.isInteger(index) || !Number.isFinite(time) || time < 0) return;
+            Spicetify.Player.seek(time);
+            this.resetLyricsInteraction();
+            this.updateActive(time);
+        });
+    }
+
+    private static beginLyricsInteraction(resetAfterMs: number) {
+        const wasInactive = !this.lyricsInteractionActive;
+        this.lyricsInteractionActive = true;
+        this.lyricsRoot?.classList.add("rnp-lyrics-interacting");
+        this.scheduleLyricsInteractionReset(resetAfterMs);
+        if (wasInactive && this.isSynced) this.applyTransforms();
+    }
+
+    private static scheduleLyricsInteractionReset(delayMs: number) {
+        if (this.lyricsInteractionTimer) clearTimeout(this.lyricsInteractionTimer);
+        this.lyricsInteractionTimer = setTimeout(() => {
+            this.lyricsInteractionTimer = null;
+            this.resetLyricsInteraction();
+        }, delayMs);
+    }
+
+    private static scheduleManualScrollRender() {
+        if (this.manualScrollFrame !== null) return;
+        const render = () => {
+            this.manualScrollFrame = null;
+            if (!this.manualScrollActive || !this.lines.length) return;
+            const distance = this.manualScrollTargetPosition - this.manualScrollRenderPosition;
+            if (Math.abs(distance) < 0.002) {
+                this.manualScrollRenderPosition = this.manualScrollTargetPosition;
+                this.applyTransforms();
+                return;
+            }
+            this.manualScrollRenderPosition += distance * 0.28;
+            this.applyTransforms();
+            this.manualScrollFrame = requestAnimationFrame(render);
+        };
+        this.manualScrollFrame = requestAnimationFrame(render);
+    }
+
+    private static resetLyricsInteraction(apply = true) {
+        const wasManualScrollActive = this.manualScrollActive;
+        if (this.lyricsInteractionTimer) clearTimeout(this.lyricsInteractionTimer);
+        this.lyricsInteractionTimer = null;
+        if (this.manualScrollFrame !== null) cancelAnimationFrame(this.manualScrollFrame);
+        this.manualScrollFrame = null;
+        this.lyricsInteractionActive = false;
+        this.lyricsPointerInside = false;
+        this.hoveredLine = null;
+        this.manualScrollActive = false;
+        this.manualScrollTargetPosition = -1;
+        this.manualScrollRenderPosition = -1;
+        this.lyricsRoot?.classList.remove("rnp-lyrics-interacting");
+        if (apply && this.isSynced) this.applyTransforms(!wasManualScrollActive);
+    }
+
     private static applyTransforms(skipAnimation = false) {
         if (!this.isSynced) return;
         if (!this.lyricsRoot || !this.lineNodes.length) return;
@@ -1777,13 +1937,8 @@ export class Lyrics {
         if (!this.lineHeights.length || this.lineHeights.length !== this.lineNodes.length) {
             this.measureHeights();
         }
-        const hasActive = this.activeIndex >= 0;
-        const current = Math.max(
-            0,
-            Math.min(hasActive ? this.activeIndex : 0, this.lineNodes.length - 1),
-        );
         this.lineNodes.forEach((node, idx) =>
-            node.classList.toggle("active", hasActive && idx === current),
+            node.classList.toggle("active", this.activeIndex >= 0 && idx === this.activeIndex),
         );
 
         const fontSize = this.getFontSize();
@@ -1796,53 +1951,64 @@ export class Lyrics {
         const centerY = containerHeight * 0.38;
         const baseIndent = Math.max(12, Math.min(36, fontSize * 0.8));
 
-        const transforms: {
+        type LyricTransform = {
             top: number;
             scale: number;
             blur: number;
             opacity: number;
             delay: number;
             translate: number;
-        }[] = new Array(this.lineNodes.length).fill(null as never);
-
-        const scaleByOffset = (offset: number) => Math.max(0.72, 1 - 0.12 * offset);
-        const blurByOffset = (offset: number) => Math.min(4.5, offset * 0.9);
-        const opacityByOffset = (offset: number) =>
-            Math.max(0.32, 1 - Math.max(0, offset - 1) * 0.22);
-        const translateByOffset = (offset: number) => Math.max(0, baseIndent - offset * 6);
-        const translateForLine = (index: number, offset: number) =>
-            Math.min(
-                translateByOffset(offset),
-                Math.max(
-                    0,
-                    lyricsRoot.clientWidth -
-                        this.lineNodes[index].offsetLeft -
-                        this.lineNodes[index].offsetWidth,
-                ),
+        };
+        const buildTransforms = (layoutActiveIndex: number): LyricTransform[] => {
+            const hasActive = layoutActiveIndex >= 0;
+            const current = Math.max(
+                0,
+                Math.min(hasActive ? layoutActiveIndex : 0, this.lineNodes.length - 1),
             );
-        const delayByOffset = (offset: number) => Math.min(6, offset) * 45;
+            const transforms: LyricTransform[] = new Array(this.lineNodes.length).fill(null as never);
+            const scaleByOffset = (offset: number) => Math.max(0.72, 1 - 0.12 * offset);
+            const blurByOffset = (offset: number) =>
+                this.manualScrollActive ? 0 : Math.min(4.5, offset * 0.9);
+            const opacityByOffset = (offset: number) =>
+                this.manualScrollActive
+                    ? 1
+                    : Math.max(0.32, 1 - Math.max(0, offset - 1) * 0.22);
+            const translateByOffset = (offset: number) => Math.max(0, baseIndent - offset * 6);
+            const translateForLine = (index: number, offset: number) => {
+                const rightSpace =
+                    this.lineRightSpaces[index] ??
+                    Math.max(
+                        0,
+                        lyricsRoot.clientWidth -
+                            this.lineNodes[index].offsetLeft -
+                            this.lineNodes[index].offsetWidth,
+                    );
+                return Math.min(translateByOffset(offset), rightSpace);
+            };
+            const delayByOffset = (offset: number) =>
+                this.manualScrollActive ? 0 : Math.min(6, offset) * 45;
 
-        if (!hasActive) {
-            const firstHeight = this.lineHeights[0] || fontSize * 1.1;
-            const firstScale = scaleByOffset(1);
-            let runningTop = centerY + (firstHeight * firstScale) / 2 + baseGap;
-            for (let i = 0; i < this.lineNodes.length; i++) {
-                const offset = i + 1;
-                const scale = scaleByOffset(offset);
-                const blur = blurByOffset(offset);
-                const opacity = opacityByOffset(offset);
-                transforms[i] = {
-                    top: runningTop,
-                    scale,
-                    blur,
-                    opacity,
-                    delay: 0,
-                    translate: translateForLine(i, offset),
-                };
-                const h = (this.lineHeights[i] || fontSize) * scale;
-                runningTop += h + baseGap;
+            if (!hasActive) {
+                const firstHeight = this.lineHeights[0] || fontSize * 1.1;
+                const firstScale = scaleByOffset(1);
+                let runningTop = centerY + (firstHeight * firstScale) / 2 + baseGap;
+                for (let i = 0; i < this.lineNodes.length; i++) {
+                    const offset = i + 1;
+                    const scale = scaleByOffset(offset);
+                    transforms[i] = {
+                        top: runningTop,
+                        scale,
+                        blur: blurByOffset(offset),
+                        opacity: opacityByOffset(offset),
+                        delay: 0,
+                        translate: translateForLine(i, offset),
+                    };
+                    const h = (this.lineHeights[i] || fontSize) * scale;
+                    runningTop += h + baseGap;
+                }
+                return transforms;
             }
-        } else {
+
             transforms[current] = {
                 top: centerY - this.lineHeights[current] / 2,
                 scale: 1,
@@ -1856,9 +2022,8 @@ export class Lyrics {
                 const offset = current - i;
                 const scale = scaleByOffset(offset);
                 const height = this.lineHeights[i] * scale;
-                const top = transforms[i + 1].top - height - baseGap;
                 transforms[i] = {
-                    top,
+                    top: transforms[i + 1].top - height - baseGap,
                     scale,
                     blur: blurByOffset(offset),
                     opacity: opacityByOffset(offset),
@@ -1871,9 +2036,8 @@ export class Lyrics {
                 const offset = i - current;
                 const scale = scaleByOffset(offset);
                 const height = this.lineHeights[i - 1] * transforms[i - 1].scale;
-                const top = transforms[i - 1].top + height + baseGap;
                 transforms[i] = {
-                    top,
+                    top: transforms[i - 1].top + height + baseGap,
                     scale,
                     blur: blurByOffset(offset),
                     opacity: opacityByOffset(offset),
@@ -1881,6 +2045,36 @@ export class Lyrics {
                     translate: translateForLine(i, offset),
                 };
             }
+            return transforms;
+        };
+
+        let transforms: LyricTransform[];
+        if (!this.manualScrollActive) {
+            transforms = buildTransforms(this.activeIndex);
+        } else {
+            const position = Math.max(
+                0,
+                Math.min(
+                    this.lines.length - 1,
+                    this.manualScrollRenderPosition >= 0
+                        ? this.manualScrollRenderPosition
+                        : Math.max(this.activeIndex, 0),
+                ),
+            );
+            const lowerIndex = Math.floor(position);
+            const upperIndex = Math.min(this.lines.length - 1, lowerIndex + 1);
+            const fraction = position - lowerIndex;
+            const from = buildTransforms(lowerIndex);
+            const to = buildTransforms(upperIndex);
+            transforms = from.map((transform, index) => ({
+                top: transform.top + (to[index].top - transform.top) * fraction,
+                scale: transform.scale + (to[index].scale - transform.scale) * fraction,
+                blur: transform.blur + (to[index].blur - transform.blur) * fraction,
+                opacity: transform.opacity + (to[index].opacity - transform.opacity) * fraction,
+                delay: 0,
+                translate:
+                    transform.translate + (to[index].translate - transform.translate) * fraction,
+            }));
         }
 
         this.lineNodes.forEach((node, idx) => {
@@ -1891,13 +2085,24 @@ export class Lyrics {
             const outsideViewport =
                 t.top + scaledHeight < -overscan || t.top > containerHeight + overscan;
             node.classList.toggle("rnp-lyrics-line-outside", outsideViewport);
-            const duration = skipAnimation ? 0 : 520;
-            node.style.transitionDuration = `${duration}ms`;
-            node.style.transitionDelay = `${skipAnimation ? 0 : t.delay}ms`;
-            node.style.transitionTimingFunction = "var(--lyric-timing-function, ease)";
+            if (outsideViewport && !this.manualScrollActive) return;
+            const duration = skipAnimation || this.manualScrollActive ? 0 : 520;
+            node.style.setProperty("--lyrics-line-transform-duration", `${duration}ms`);
+            node.style.setProperty(
+                "--lyrics-line-transform-delay",
+                `${skipAnimation || this.manualScrollActive ? 0 : t.delay}ms`,
+            );
+            const isHovered = this.lyricsInteractionActive && node === this.hoveredLine;
+            node.style.transformOrigin = "left center";
             node.style.transform = `translate3d(${t.translate}px, ${t.top}px, 0) scale(${t.scale})`;
             node.style.opacity = `${t.opacity}`;
-            node.style.filter = t.blur ? `blur(${t.blur}px)` : "none";
+            node.style.filter =
+                t.blur && !this.lyricsInteractionActive ? `blur(${t.blur}px)` : "none";
+            const contentNode = this.lineContentNodes[idx];
+            if (contentNode) {
+                contentNode.style.scale = isHovered ? "1.02" : "1";
+                contentNode.style.transformOrigin = "center center";
+            }
         });
     }
 
@@ -1969,11 +2174,15 @@ export class Lyrics {
     }
 
     private static measureHeights() {
-        if (!this.lyricsRoot) return;
+        const lyricsRoot = this.lyricsRoot;
+        if (!lyricsRoot) return;
         this.lineHeights = this.lineNodes.map(
             (node) => node.offsetHeight || node.scrollHeight || 0,
         );
-        this.containerHeight = this.lyricsRoot.clientHeight;
+        this.lineRightSpaces = this.lineNodes.map((node) =>
+            Math.max(0, lyricsRoot.clientWidth - node.offsetLeft - node.offsetWidth),
+        );
+        this.containerHeight = lyricsRoot.clientHeight;
         this.lastMeasuredFontSize = this.getFontSize();
     }
 
@@ -1981,6 +2190,7 @@ export class Lyrics {
         if (!this.lyricsRoot || typeof ResizeObserver === "undefined") return;
         this.stopResizeObserver();
         this.resizeObserver = new ResizeObserver(() => {
+            if (this.manualScrollActive) this.resetLyricsInteraction(false);
             this.stabilizeLineWrapping();
             this.measureHeights();
             this.applyTransforms(true);

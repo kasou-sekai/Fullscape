@@ -410,12 +410,14 @@ async function startFullscape() {
 
     let curTimer: ReturnType<typeof setTimeout>;
 
-    function hideCursor() {
+    function hideCursor(event?: MouseEvent) {
         if (curTimer) {
             clearTimeout(curTimer);
         }
         DOM.container.style.cursor = "default";
-        curTimer = setTimeout(() => (DOM.container.style.cursor = "none"), 2000);
+        const isInsideLyrics = Boolean(event?.target && DOM.lyrics?.contains(event.target as Node));
+        const delay = isInsideLyrics ? 10_000 : 3_000;
+        curTimer = setTimeout(() => (DOM.container.style.cursor = "none"), delay);
     }
 
     function handleMouseMoveActivation() {
