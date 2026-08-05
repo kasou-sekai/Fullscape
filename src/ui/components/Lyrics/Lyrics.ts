@@ -76,6 +76,7 @@ export class Lyrics {
     private static readonly SHARED_SYNC_POLL_MS = 1000;
     private static readonly SHARED_SYNC_MAX_POLL_MS = 5000;
     private static readonly LINE_RENDER_OVERSCAN = 0.5;
+    private static readonly KARAOKE_RENDER_RADIUS = 10;
     private static readonly QQ_MUSIC_RENDER_ADVANCE_MS = 200;
     private static readonly CACHE_KINDS: LyricsCacheKind[] = [
         "enhanced",
@@ -95,6 +96,7 @@ export class Lyrics {
     private static lines: LyricLine[] = [];
     private static activeIndex = -1;
     private static lineContentNodes: (HTMLElement | null)[] = [];
+    private static karaokeRenderCenter = -1;
     private static updateTimer: ReturnType<typeof setTimeout> | null = null;
     private static updateFrame: number | null = null;
     private static playbackClockProgress: number | null = null;
@@ -149,6 +151,7 @@ export class Lyrics {
         this.lines = [];
         this.lineNodes = [];
         this.lineContentNodes = [];
+        this.karaokeRenderCenter = -1;
         this.timedLines = [];
         this.karaokeWordsByLine = [];
         this.lineHeights = [];
@@ -1035,6 +1038,7 @@ export class Lyrics {
         this.lines = [];
         this.lineNodes = [];
         this.lineContentNodes = [];
+        this.karaokeRenderCenter = -1;
         this.timedLines = [];
         this.karaokeWordsByLine = [];
         this.lineHeights = [];
@@ -1162,6 +1166,7 @@ export class Lyrics {
         if (!this.container) return;
         this.resetLyricsInteraction(false);
         this.cancelKaraokeAnimations();
+        this.karaokeRenderCenter = -1;
         const chineseConversion = this.getChineseConversion();
         const originalLyricsText = this.lines.map((line) => line.text).join("\n");
         const chinesePresentation = getChineseLyricsPresentation(
@@ -1181,7 +1186,7 @@ export class Lyrics {
                 (line, idx) =>
                     `<div class="rnp-lyrics-line${line.time !== null ? " rnp-lyrics-line-seekable" : ""}" data-index="${idx}" data-time="${line.time ?? ""}">
                         <div class="rnp-lyrics-line-content">
-                            ${this.renderLineContent(line, chinesePresentation.conversion)}
+                            ${this.renderLineContent(line, chinesePresentation.conversion, false)}
                         </div>
                     </div>`,
             )
@@ -1199,6 +1204,9 @@ export class Lyrics {
         this.lineContentNodes = this.lineNodes.map((node) =>
             node.querySelector<HTMLElement>(".rnp-lyrics-line-content"),
         );
+        if (this.isSynced) {
+            this.ensureKaraokeRenderRange(Math.max(this.activeIndex, 0));
+        }
         this.buildKaraokeWordCache();
         this.setupLyricsInteraction();
         if (!this.isSynced) {
@@ -1212,7 +1220,11 @@ export class Lyrics {
         this.setupResizeObserver();
     }
 
-    private static renderLineContent(line: LyricLine, chineseConversion: LyricsChineseConversion) {
+    private static renderLineContent(
+        line: LyricLine,
+        chineseConversion: LyricsChineseConversion,
+        renderKaraoke = true,
+    ) {
         const showKaraoke = Boolean(CFM.get("karaokeLyrics")) && this.hasKaraokeText(line);
         const words = (line.words ?? []).map((word) => ({
             ...word,
@@ -1226,9 +1238,11 @@ export class Lyrics {
         const karaokeText = words.map((word) => word.text).join("");
         const annotations = karaokeText === furigana.text ? visibleAnnotations : [];
         const furiganaClass = annotations.length ? " rnp-lyrics-has-furigana" : "";
-        const original = showKaraoke
-            ? `<div class="rnp-lyrics-line-karaoke${furiganaClass}">${this.renderKaraokeLine(words, annotations)}</div>`
-            : `<div class="rnp-lyrics-line-original${visibleAnnotations.length ? " rnp-lyrics-has-furigana" : ""}">${this.formatLyricText(furigana.text, visibleAnnotations)}</div>`;
+        const karaoke = `<div class="rnp-lyrics-line-karaoke${furiganaClass}">${this.renderKaraokeLine(words, annotations)}</div>`;
+        const original = `<div class="rnp-lyrics-line-original${visibleAnnotations.length ? " rnp-lyrics-has-furigana" : ""}">${this.formatLyricText(furigana.text, visibleAnnotations)}</div>`;
+        const primary = showKaraoke && renderKaraoke
+            ? karaoke
+            : original;
 
         const romanization =
             CFM.get("showLyricsRomanization") && line.romanization
@@ -1239,7 +1253,40 @@ export class Lyrics {
                 ? `<div class="rnp-lyrics-line-translated">${this.escapeHtml(convertChineseText(line.translation, chineseConversion))}</div>`
                 : "";
 
-        return `${original}${romanization}${translation}`;
+        return `${primary}${romanization}${translation}`;
+    }
+
+    private static ensureKaraokeRenderRange(centerIndex: number) {
+        if (!this.lineNodes.length || !CFM.get("karaokeLyrics")) return;
+        const nextCenter = Math.max(0, Math.min(this.lines.length - 1, centerIndex));
+        if (nextCenter === this.karaokeRenderCenter) return;
+        this.karaokeRenderCenter = nextCenter;
+        const chineseConversion = this.getChineseConversion();
+        const lowerBound = Math.max(0, nextCenter - this.KARAOKE_RENDER_RADIUS);
+        const upperBound = Math.min(this.lines.length - 1, nextCenter + this.KARAOKE_RENDER_RADIUS);
+        let changed = false;
+
+        this.lineNodes.forEach((_, index) => {
+            const contentNode = this.lineContentNodes[index];
+            const line = this.lines[index];
+            if (!contentNode || !line || !this.hasKaraokeText(line)) return;
+            const shouldRenderKaraoke = index >= lowerBound && index <= upperBound;
+            const isRendered = contentNode.dataset.karaokeRendered === "true";
+            if (isRendered === shouldRenderKaraoke) return;
+            contentNode.innerHTML = this.renderLineContent(
+                line,
+                chineseConversion,
+                shouldRenderKaraoke,
+            );
+            contentNode.dataset.karaokeRendered = shouldRenderKaraoke ? "true" : "false";
+            changed = true;
+        });
+
+        if (changed) {
+            this.buildKaraokeWordCache();
+            this.stabilizeLineWrapping();
+            this.measureHeights();
+        }
     }
 
     private static getChineseConversion(): LyricsChineseConversion {
@@ -1554,6 +1601,9 @@ export class Lyrics {
         const previousIndex = this.activeIndex;
         this.activeIndex = nextIndex;
         if (previousIndex !== nextIndex) this.resetKaraokeLine(previousIndex);
+        if (!this.manualScrollActive) {
+            this.ensureKaraokeRenderRange(Math.max(this.activeIndex, 0));
+        }
         if (this.manualScrollActive) {
             this.lineNodes.forEach((node, index) =>
                 node.classList.toggle("active", index === this.activeIndex),
@@ -1908,6 +1958,7 @@ export class Lyrics {
                 return;
             }
             this.manualScrollRenderPosition += distance * 0.28;
+            this.ensureKaraokeRenderRange(Math.floor(this.manualScrollRenderPosition));
             this.applyTransforms();
             this.manualScrollFrame = requestAnimationFrame(render);
         };
@@ -1927,7 +1978,10 @@ export class Lyrics {
         this.manualScrollTargetPosition = -1;
         this.manualScrollRenderPosition = -1;
         this.lyricsRoot?.classList.remove("rnp-lyrics-interacting");
-        if (apply && this.isSynced) this.applyTransforms(!wasManualScrollActive);
+        if (apply && this.isSynced) {
+            this.ensureKaraokeRenderRange(Math.max(this.activeIndex, 0));
+            this.applyTransforms(!wasManualScrollActive);
+        }
     }
 
     private static applyTransforms(skipAnimation = false) {
