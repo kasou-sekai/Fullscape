@@ -24,6 +24,7 @@ export type Settings = {
     debugMode: boolean;
     progressBarDisplay: "never" | "mousemove" | "always";
     playerControls: "never" | "mousemove" | "always";
+    playbackTimelineResync: boolean;
     trimTitle: boolean;
     trimTitleUpNext: boolean;
     trimAlbum: boolean;

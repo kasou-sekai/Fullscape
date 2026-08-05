@@ -22,6 +22,9 @@ export const getHtmlContent = () => {
                 <span>WARP <b data-debug-warp>0.00</b></span>
                 <span>SCALE <b data-debug-scale>0.00</b></span>
                 <span>TIME <b data-debug-time>0:00.0</b></span>
+                <span>DEVICE <b data-debug-device>--</b></span>
+                <span>DEVICE ID <b data-debug-device-id>--</b></span>
+                <span>DEVICE SRC <b data-debug-device-source>--</b></span>
             </div>
         </aside>`
                 : ""

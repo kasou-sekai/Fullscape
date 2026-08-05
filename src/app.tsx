@@ -73,6 +73,473 @@ async function startFullscape() {
     const updateUpNext = UpNext.updateUpNext.bind(UpNext);
     const updateUpNextShow = UpNext.updateUpNextShow.bind(UpNext);
     const hidePlayerControls = PlayerControls.hidePlayerControls.bind(PlayerControls);
+    const PLAYBACK_TIMELINE_RESYNC_TARGET_MS = 1000;
+    const PLAYBACK_TIMELINE_RESYNC_DELAY_MS = 1;
+    const PLAYBACK_TIMELINE_RESYNC_CHECK_INTERVAL_MS = 100;
+    let playbackTimelineResyncTimer: ReturnType<typeof setTimeout> | null = null;
+    let playbackTimelineResyncCheckTimer: ReturnType<typeof setTimeout> | null = null;
+    let playbackTimelineResyncResumeReleaseTimer: ReturnType<typeof setTimeout> | null = null;
+    let playbackTimelineResyncSequence = 0;
+    let isPlaybackTimelineResyncing = false;
+    let isPlaybackTimelineResyncAwaitingResume = false;
+    let playbackTimelineResyncPending = false;
+    let playbackTimelineResyncTrackUri: string | null = null;
+    let playbackTimelineResyncCheckingDevice = false;
+    let playbackDeviceDebugUpdatedAt = 0;
+    let playbackDeviceDebugRequest: Promise<void> | null = null;
+    let playbackStateEventData: any = null;
+    let playbackDeviceDebugSource = "NONE";
+
+    function finishPlaybackTimelineResyncVisualState() {
+        if (playbackTimelineResyncResumeReleaseTimer !== null) {
+            clearTimeout(playbackTimelineResyncResumeReleaseTimer);
+            playbackTimelineResyncResumeReleaseTimer = null;
+        }
+        isPlaybackTimelineResyncAwaitingResume = false;
+        DOM.container?.classList.remove("playback-timeline-resyncing");
+    }
+
+    function shouldSuppressPlaybackTimelineResyncEvent(evt?: any) {
+        if (isPlaybackTimelineResyncing) return true;
+        if (!isPlaybackTimelineResyncAwaitingResume) return false;
+        const isPaused = evt?.data?.is_paused ?? evt?.data?.isPaused;
+        if (isPaused === false) finishPlaybackTimelineResyncVisualState();
+        return true;
+    }
+
+    function cancelPlaybackTimelineResync(resumePlayback = true) {
+        if (playbackTimelineResyncTimer !== null) {
+            clearTimeout(playbackTimelineResyncTimer);
+            playbackTimelineResyncTimer = null;
+        }
+        if (playbackTimelineResyncCheckTimer !== null) {
+            clearTimeout(playbackTimelineResyncCheckTimer);
+            playbackTimelineResyncCheckTimer = null;
+        }
+        finishPlaybackTimelineResyncVisualState();
+        playbackTimelineResyncSequence += 1;
+        const shouldResume =
+            resumePlayback &&
+            isPlaybackTimelineResyncing &&
+            playbackTimelineResyncTrackUri === Spicetify.Player.data?.item?.uri &&
+            !Spicetify.Player.isPlaying();
+        isPlaybackTimelineResyncing = false;
+        playbackTimelineResyncPending = false;
+        playbackTimelineResyncTrackUri = null;
+        if (shouldResume) {
+            DOM.container?.classList.remove("playback-paused");
+            Spicetify.Player.play();
+        }
+    }
+
+    function schedulePlaybackTimelineResyncCheck(delay: number) {
+        if (playbackTimelineResyncCheckTimer !== null) {
+            clearTimeout(playbackTimelineResyncCheckTimer);
+        }
+        playbackTimelineResyncCheckTimer = setTimeout(() => {
+            playbackTimelineResyncCheckTimer = null;
+            tryPlaybackTimelineResync();
+        }, delay);
+    }
+
+    function getPlaybackDevice(source: any) {
+        return (
+            source?.device ??
+            source?.playbackDevice ??
+            source?.playback_device ??
+            source?.device_info ??
+            source?.deviceInfo ??
+            source?.active_device ??
+            source?.activeDevice ??
+            source?.player_state?.device ??
+            source?.playerState?.device ??
+            source?.state?.device ??
+            null
+        );
+    }
+
+    function getPlaybackDeviceIdentifier(source: any) {
+        return (
+            source?.device_identifier ??
+            source?.deviceIdentifier ??
+            source?.device_id ??
+            source?.deviceId ??
+            source?.play_origin?.device_identifier ??
+            source?.play_origin?.deviceIdentifier ??
+            source?.play_origin?.device_id ??
+            source?.play_origin?.deviceId ??
+            source?.playOrigin?.device_identifier ??
+            source?.playOrigin?.deviceIdentifier ??
+            source?.playOrigin?.device_id ??
+            source?.playOrigin?.deviceId ??
+            source?.player_state?.device_identifier ??
+            source?.player_state?.play_origin?.device_identifier ??
+            source?.playerState?.device_identifier ??
+            source?.playerState?.play_origin?.device_identifier ??
+            source?.state?.device_identifier ??
+            source?.state?.play_origin?.device_identifier ??
+            source?.track?.device_identifier ??
+            source?.track?.play_origin?.device_identifier ??
+            source?.track?.playOrigin?.device_identifier ??
+            source?.track?.play_origin?.device_id ??
+            source?.track?.playOrigin?.deviceId ??
+            source?.track?.track?.device_identifier ??
+            source?.track?.track?.play_origin?.device_identifier ??
+            source?.id ??
+            null
+        );
+    }
+
+    function parsePlaybackResponse(response: any) {
+        const body = response?.body ?? response;
+        if (typeof body !== "string") return body;
+        try {
+            return JSON.parse(body);
+        } catch {
+            return null;
+        }
+    }
+
+    function hasPlaybackDeviceType(device: any) {
+        return Boolean(
+            device?.type ??
+                device?.deviceType ??
+                device?.device_type ??
+                device?.device_info?.type ??
+                device?.deviceInfo?.type,
+        );
+    }
+
+    function getConnectPlaybackDevice() {
+        const connectApi = (Spicetify.Platform as any)?.ConnectAPI;
+        if (!connectApi) return null;
+
+        const state =
+            connectApi.getConnectState?.() ??
+            connectApi.getState?.() ??
+            connectApi.state ??
+            null;
+        const devices =
+            connectApi.getDevices?.() ??
+            (Array.isArray(state?.devices) ? state.devices : []);
+        return (
+            connectApi.getActiveDevice?.() ??
+            state?.activeDevice ??
+            devices.find((device: any) => device?.isActive || device?.is_active) ??
+            devices.find((device: any) => device?.isLocal || device?.is_local) ??
+            null
+        );
+    }
+
+    function getLocalDeviceId() {
+        const playerApi = Spicetify.Platform?.PlayerAPI as any;
+        return (
+            playerApi?._device?.id ??
+            playerApi?._session?.deviceId ??
+            playerApi?._state?.localDeviceId ??
+            playerApi?._state?.local_device_id ??
+            null
+        );
+    }
+
+    function isLocalPlaybackDevice(device: any, source?: any): boolean | null {
+        if (!device && !source) return null;
+        const localFlags = [
+            device?.isLocal,
+            device?.is_local,
+            source?.isLocal,
+            source?.is_local,
+        ];
+        const localFlag = localFlags.find((value) => typeof value === "boolean");
+        if (typeof localFlag === "boolean") return localFlag;
+
+        const remoteFlags = [
+            device?.isRemote,
+            device?.is_remote,
+            source?.isRemote,
+            source?.is_remote,
+        ];
+        const remoteFlag = remoteFlags.find((value) => typeof value === "boolean");
+        if (typeof remoteFlag === "boolean") return !remoteFlag;
+
+        const localDeviceId = getLocalDeviceId();
+        const deviceId = getPlaybackDeviceIdentifier(device);
+        if (localDeviceId && deviceId) return localDeviceId === deviceId;
+
+        const deviceType = String(
+            device?.type ??
+                device?.deviceType ??
+                device?.device_type ??
+                device?.device_info?.type ??
+                device?.deviceInfo?.type ??
+                "",
+        ).toLowerCase();
+        if (deviceType) return deviceType === "computer" || deviceType === "desktop";
+        return null;
+    }
+
+    async function getCurrentPlaybackDevice() {
+        playbackDeviceDebugSource = "CHECKING";
+        const player = Spicetify.Player as any;
+        const playerApi = Spicetify.Platform?.PlayerAPI as any;
+        const playerState = player?.data;
+        const playerStateSources = [
+            playbackStateEventData,
+            playerState,
+            playerApi?._state,
+            playerApi?._session,
+        ];
+        const directDevice = playerStateSources
+            .map((source) => getPlaybackDevice(source))
+            .find((device) => hasPlaybackDeviceType(device));
+        let currentDeviceIdentifier = playerStateSources
+            .map((source) => getPlaybackDeviceIdentifier(source))
+            .find(Boolean);
+        if (hasPlaybackDeviceType(directDevice)) {
+            playbackDeviceDebugSource = "PLAYER";
+            return directDevice;
+        }
+
+        const connectDevice = getConnectPlaybackDevice();
+        if (connectDevice) {
+            playbackDeviceDebugSource = "CONNECT_API";
+            return connectDevice;
+        }
+
+        let apiState: any = null;
+        try {
+            const internalPlaybackState = await Spicetify.CosmosAsync.get(
+                "sp://player/v2/main",
+            );
+            const internalState = parsePlaybackResponse(internalPlaybackState);
+            const internalDevice = getPlaybackDevice(internalState);
+            if (hasPlaybackDeviceType(internalDevice)) {
+                playbackDeviceDebugSource = "INTERNAL";
+                return internalDevice;
+            }
+            currentDeviceIdentifier =
+                currentDeviceIdentifier ?? getPlaybackDeviceIdentifier(internalState);
+        } catch {
+            playbackDeviceDebugSource = "INTERNAL_ERROR";
+        }
+
+        try {
+            const playbackState = await Spicetify.CosmosAsync.get(
+                "https://api.spotify.com/v1/me/player",
+            );
+            apiState = parsePlaybackResponse(playbackState);
+            const apiDevice = getPlaybackDevice(apiState);
+            if (hasPlaybackDeviceType(apiDevice)) {
+                playbackDeviceDebugSource = "PLAYER_API";
+                return apiDevice;
+            }
+            currentDeviceIdentifier =
+                currentDeviceIdentifier ?? getPlaybackDeviceIdentifier(apiState);
+        } catch {
+            apiState = null;
+            playbackDeviceDebugSource = "PLAYER_API_ERROR";
+        }
+
+        try {
+            const devicesResponse = await Spicetify.CosmosAsync.get(
+                "https://api.spotify.com/v1/me/player/devices",
+            );
+            const devicesState = parsePlaybackResponse(devicesResponse);
+            const devices = Array.isArray(devicesState?.devices) ? devicesState.devices : [];
+            const matchingDevice = devices.find(
+                (device: any) =>
+                    currentDeviceIdentifier &&
+                    getPlaybackDeviceIdentifier(device) === currentDeviceIdentifier,
+            );
+            if (matchingDevice) {
+                playbackDeviceDebugSource = "DEVICES_MATCH";
+                return matchingDevice;
+            }
+            const activeDevice = devices.find(
+                (device: any) => device?.is_active || device?.isActive,
+            );
+            if (activeDevice) {
+                playbackDeviceDebugSource = "DEVICES_ACTIVE";
+                return activeDevice;
+            }
+            if (devices[0]) {
+                playbackDeviceDebugSource = "DEVICES_FIRST";
+                return devices[0];
+            }
+            playbackDeviceDebugSource = currentDeviceIdentifier ? "ID_ONLY" : "NO_DEVICE";
+            return currentDeviceIdentifier ? { id: currentDeviceIdentifier } : null;
+        } catch {
+            playbackDeviceDebugSource = "DEVICES_ERROR";
+            return currentDeviceIdentifier ? { id: currentDeviceIdentifier } : null;
+        }
+    }
+
+    async function isPlaybackOnLocalDevice() {
+        const device = await getCurrentPlaybackDevice();
+        // Do not pause when the active device cannot be identified safely.
+        return isLocalPlaybackDevice(device) === true;
+    }
+
+    function getPlaybackDeviceType(device: any) {
+        const type =
+            device?.type ??
+            device?.deviceType ??
+            device?.device_type ??
+            device?.device_info?.type ??
+            device?.deviceInfo?.type;
+        if (typeof type === "number") {
+            return (
+                {
+                    0: "UNKNOWN",
+                    1: "COMPUTER",
+                    2: "TABLET",
+                    3: "SMARTPHONE",
+                    4: "SPEAKER",
+                    5: "TV",
+                    6: "AVR",
+                    7: "STB",
+                    8: "AUDIO_DONGLE",
+                    9: "GAME_CONSOLE",
+                    10: "CAST_VIDEO",
+                    11: "CAST_AUDIO",
+                    12: "AUTOMOBILE",
+                    13: "SMARTWATCH",
+                    14: "CHROMEBOOK",
+                    100: "UNKNOWN_SPOTIFY",
+                    101: "CAR_THING",
+                    102: "OBSERVER",
+                    103: "HOME_THING",
+                } as Record<number, string>
+            )[type] ?? `TYPE_${type}`;
+        }
+        return type ? String(type).toUpperCase() : "UNKNOWN";
+    }
+
+    async function updatePlaybackDeviceDebug(force = false) {
+        if (!CFM.get("debugMode")) return;
+        const target = DOM.container.querySelector<HTMLElement>("[data-debug-device]");
+        const idTarget = DOM.container.querySelector<HTMLElement>("[data-debug-device-id]");
+        const sourceTarget = DOM.container.querySelector<HTMLElement>(
+            "[data-debug-device-source]",
+        );
+        if (!target) return;
+        const now = Date.now();
+        if (!force && now - playbackDeviceDebugUpdatedAt < 2000) return;
+        if (playbackDeviceDebugRequest) return;
+        playbackDeviceDebugUpdatedAt = now;
+        const request = (async () => {
+            const device = await getCurrentPlaybackDevice();
+            if (!CFM.get("debugMode") || !DOM.container.contains(target)) return;
+            target.textContent = getPlaybackDeviceType(device);
+            if (idTarget && DOM.container.contains(idTarget)) {
+                idTarget.textContent = getPlaybackDeviceIdentifier(device) ?? "--";
+            }
+            if (sourceTarget && DOM.container.contains(sourceTarget)) {
+                sourceTarget.textContent = playbackDeviceDebugSource;
+            }
+        })();
+        playbackDeviceDebugRequest = request;
+        try {
+            await request;
+        } finally {
+            if (playbackDeviceDebugRequest === request) playbackDeviceDebugRequest = null;
+        }
+    }
+
+    async function tryPlaybackTimelineResync() {
+        if (!playbackTimelineResyncPending) return;
+        if (
+            !CFM.get("playbackTimelineResync") ||
+            playbackTimelineResyncTrackUri !== Spicetify.Player.data?.item?.uri ||
+            !Utils.isModeActivated()
+        ) {
+            cancelPlaybackTimelineResync(false);
+            return;
+        }
+
+        if (playbackTimelineResyncCheckingDevice) return;
+        playbackTimelineResyncCheckingDevice = true;
+        const deviceCheckSequence = playbackTimelineResyncSequence;
+        const isLocalDevice = await isPlaybackOnLocalDevice();
+        playbackTimelineResyncCheckingDevice = false;
+        if (
+            deviceCheckSequence !== playbackTimelineResyncSequence &&
+            playbackTimelineResyncPending
+        ) {
+            schedulePlaybackTimelineResyncCheck(0);
+            return;
+        }
+        if (!playbackTimelineResyncPending) return;
+        if (!isLocalDevice) {
+            cancelPlaybackTimelineResync(false);
+            return;
+        }
+
+        const progress = Number(Spicetify.Player.getProgress());
+        if (
+            !Number.isFinite(progress) ||
+            progress < PLAYBACK_TIMELINE_RESYNC_TARGET_MS ||
+            !Spicetify.Player.isPlaying()
+        ) {
+            const delay =
+                Number.isFinite(progress) && progress < PLAYBACK_TIMELINE_RESYNC_TARGET_MS
+                    ? Math.min(
+                          PLAYBACK_TIMELINE_RESYNC_CHECK_INTERVAL_MS,
+                          Math.max(1, PLAYBACK_TIMELINE_RESYNC_TARGET_MS - progress),
+                      )
+                    : PLAYBACK_TIMELINE_RESYNC_CHECK_INTERVAL_MS;
+            schedulePlaybackTimelineResyncCheck(delay);
+            return;
+        }
+
+        playbackTimelineResyncPending = false;
+        const sequence = playbackTimelineResyncSequence;
+        isPlaybackTimelineResyncing = true;
+        DOM.container?.classList.add("playback-timeline-resyncing");
+        Spicetify.Player.pause();
+        playbackTimelineResyncTimer = setTimeout(() => {
+            playbackTimelineResyncTimer = null;
+            const shouldResume =
+                sequence === playbackTimelineResyncSequence &&
+                isPlaybackTimelineResyncing &&
+                playbackTimelineResyncTrackUri === Spicetify.Player.data?.item?.uri &&
+                Utils.isModeActivated();
+            isPlaybackTimelineResyncing = false;
+            if (shouldResume) {
+                DOM.container?.classList.remove("playback-paused");
+                isPlaybackTimelineResyncAwaitingResume = true;
+                playbackTimelineResyncResumeReleaseTimer = setTimeout(
+                    finishPlaybackTimelineResyncVisualState,
+                    50,
+                );
+                Spicetify.Player.play();
+            } else {
+                finishPlaybackTimelineResyncVisualState();
+            }
+            playbackTimelineResyncTrackUri = null;
+        }, PLAYBACK_TIMELINE_RESYNC_DELAY_MS);
+    }
+
+    function schedulePlaybackTimelineResync(evt?: any) {
+        cancelPlaybackTimelineResync(false);
+        if (!CFM.get("playbackTimelineResync")) return;
+
+        const isPaused = evt?.data?.is_paused ?? evt?.data?.isPaused;
+        const wasPlaying =
+            typeof isPaused === "boolean" ? !isPaused : Spicetify.Player.isPlaying();
+        if (!wasPlaying) return;
+
+        const trackUri = Spicetify.Player.data?.item?.uri ?? null;
+        if (!trackUri) return;
+        playbackTimelineResyncPending = true;
+        playbackTimelineResyncTrackUri = trackUri;
+        schedulePlaybackTimelineResyncCheck(PLAYBACK_TIMELINE_RESYNC_TARGET_MS);
+    }
+
+    const updatePlayerControlsWithoutResyncEffect = (evt: any) => {
+        if (shouldSuppressPlaybackTimelineResyncEvent(evt)) return;
+        updatePlayerControls(evt);
+    };
     let metadataFrameId: number | null = null;
     let metadataAnimations: Animation[] = [];
 
@@ -157,12 +624,17 @@ async function startFullscape() {
     }
 
     function updatePlaybackLayout(evt?: any) {
+        if (evt?.data && typeof evt.data === "object") playbackStateEventData = evt.data;
+        if (shouldSuppressPlaybackTimelineResyncEvent(evt)) return;
         const isPaused =
             evt?.data?.is_paused ?? evt?.data?.isPaused ?? !Spicetify.Player.isPlaying();
         DOM.container.classList.toggle("playback-paused", Boolean(isPaused));
     }
 
     function render() {
+        cancelPlaybackTimelineResync();
+        playbackDeviceDebugUpdatedAt = 0;
+        playbackDeviceDebugRequest = null;
         DOM.container.classList.toggle("lyrics-active", Boolean(CFM.get("lyricsDisplay")));
         Utils.toggleQueuePanel(null, false);
         DOM.container.classList.toggle(
@@ -180,14 +652,15 @@ async function startFullscape() {
 
         applyLyricsScale();
 
-        Spicetify.Player.removeEventListener("songchange", updateInfo);
-        Spicetify.Player.removeEventListener("onplaypause", updatePlayerControls);
+        Spicetify.Player.removeEventListener("songchange", handleSongChange);
+        Spicetify.Player.removeEventListener("onplaypause", updatePlayerControlsWithoutResyncEffect);
         Spicetify.Player.removeEventListener("onplaypause", updatePlayingIcon);
         Spicetify.Player.removeEventListener("onplaypause", updatePlaybackLayout);
         document.removeEventListener("fullscreenchange", fullscreenChangeListener);
 
         Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", updateUpNext);
         Spicetify.Platform.PlayerAPI._events.removeListener("update", updateUpNextShow);
+        Spicetify.Player.removeEventListener("onprogress", handlePlaybackTimelineProgress);
         Spicetify.Player.removeEventListener("onprogress", handleLyricsProgress);
         Spicetify.Platform.PlayerAPI._events.removeListener(
             "queue_update",
@@ -399,6 +872,7 @@ async function startFullscape() {
     }
 
     function updatePlayingIcon(evt: any) {
+        if (shouldSuppressPlaybackTimelineResyncEvent(evt)) return;
         if (evt.data.is_paused || evt.data.isPaused) {
             DOM.pausedIcon.classList.remove("hidden");
             DOM.playingIcon.classList.add("hidden");
@@ -414,10 +888,14 @@ async function startFullscape() {
         if (curTimer) {
             clearTimeout(curTimer);
         }
+        DOM.container.classList.remove("fullscape-cursor-hidden");
         DOM.container.style.cursor = "default";
         const isInsideLyrics = Boolean(event?.target && DOM.lyrics?.contains(event.target as Node));
         const delay = isInsideLyrics ? 10_000 : 3_000;
-        curTimer = setTimeout(() => (DOM.container.style.cursor = "none"), delay);
+        curTimer = setTimeout(() => {
+            DOM.container.style.cursor = "none";
+            DOM.container.classList.add("fullscape-cursor-hidden");
+        }, delay);
     }
 
     function handleMouseMoveActivation() {
@@ -459,6 +937,17 @@ async function startFullscape() {
         Lyrics.prefetchNextLyrics();
     };
     const handleLyricsQueueUpdate = () => Lyrics.prefetchNextLyrics();
+    function handlePlaybackTimelineProgress() {
+        void updatePlaybackDeviceDebug();
+        void tryPlaybackTimelineResync();
+    }
+
+    function handleSongChange(evt?: any) {
+        if (evt?.data && typeof evt.data === "object") playbackStateEventData = evt.data;
+        schedulePlaybackTimelineResync(evt);
+        void updatePlaybackDeviceDebug(true);
+        void updateInfo();
+    }
 
     let activationSequence = 0;
 
@@ -479,7 +968,9 @@ async function startFullscape() {
                 };
             });
         }, 200);
-        Spicetify.Player.addEventListener("songchange", updateInfo);
+        Spicetify.Player.addEventListener("songchange", handleSongChange);
+        Spicetify.Player.addEventListener("onprogress", handlePlaybackTimelineProgress);
+        void updatePlaybackDeviceDebug(true);
         handleMouseMoveActivation();
         DOM.container.oncontextmenu = ConfigManager.openConfig.bind(ConfigManager);
         DOM.container.querySelector<HTMLElement>("#fullscape-foreground")!.ondblclick = deactivate;
@@ -505,7 +996,10 @@ async function startFullscape() {
             PlayerControls.updatePlayerControls({
                 data: { is_paused: !Spicetify.Player.isPlaying() },
             });
-            Spicetify.Player.addEventListener("onplaypause", updatePlayerControls);
+            Spicetify.Player.addEventListener(
+                "onplaypause",
+                updatePlayerControlsWithoutResyncEffect,
+            );
         }
         document.querySelector(".Root__top-container")?.append(DOM.style, DOM.container);
         updatePlaybackLayout({
@@ -543,9 +1037,10 @@ async function startFullscape() {
     async function deactivate() {
         activationSequence += 1;
         infoSequence += 1;
+        cancelPlaybackTimelineResync();
         Utils.toggleQueuePanel(null, false);
         Background.stop();
-        Spicetify.Player.removeEventListener("songchange", updateInfo);
+        Spicetify.Player.removeEventListener("songchange", handleSongChange);
         Spicetify.Player.removeEventListener("onplaypause", updatePlaybackLayout);
         handleMouseMoveDeactivation();
         window.removeEventListener("resize", resizeEvents);
@@ -566,8 +1061,12 @@ async function startFullscape() {
             Spicetify.Player.removeEventListener("onplaypause", updatePlayingIcon);
         }
         if (CFM.get("playerControls") !== "never") {
-            Spicetify.Player.removeEventListener("onplaypause", updatePlayerControls);
+            Spicetify.Player.removeEventListener(
+                "onplaypause",
+                updatePlayerControlsWithoutResyncEffect,
+            );
         }
+        Spicetify.Player.removeEventListener("onprogress", handlePlaybackTimelineProgress);
         if (CFM.get("lyricsDisplay")) {
             Spicetify.Player.removeEventListener("onprogress", handleLyricsProgress);
             Spicetify.Platform.PlayerAPI._events.removeListener(

@@ -1269,6 +1269,12 @@ export class ConfigManager {
                             (value: string) => this.saveOption("playerControls", value),
                             layout.descriptions.playerControls,
                         ),
+                        this.createToggle(
+                            strings.playbackTimelineResync,
+                            "playbackTimelineResync",
+                            undefined,
+                            layout.descriptions.playbackTimelineResync,
+                        ),
                     ),
                     this.createSettingsGroup(
                         layout.groups.trackInfo.title,

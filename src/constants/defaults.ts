@@ -16,6 +16,7 @@ export const DEFAULTS: Config = {
         debugMode: false,
         progressBarDisplay: "always",
         playerControls: "always",
+        playbackTimelineResync: true,
         trimTitle: true,
         trimTitleUpNext: true,
         trimAlbum: false,

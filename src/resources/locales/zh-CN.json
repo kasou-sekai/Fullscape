@@ -118,6 +118,7 @@
         "generalHeader": "通用设置",
         "progressBar": "播放进度条",
         "playerControls": "播放控制",
+        "playbackTimelineResync": "校准播放时间轴",
         "trimTitle": "缩短标题",
         "trimTitleUpNext": "缩短标题 (下一首提示)",
         "showAlbum": {
@@ -341,6 +342,7 @@
                 "fullscreen": "打开播放界面时使用系统原生全屏。",
                 "progressBar": "选择进度条始终显示、随鼠标移动显示或完全隐藏。",
                 "playerControls": "选择播放、暂停、上一首和下一首按钮的显示时机。",
+                "playbackTimelineResync": "每首歌曲播放约 1 秒后短暂暂停并恢复，帮助 Spotify 重新校准播放时间轴。",
                 "showAlbum": "显示专辑名称，也可以同时显示发行日期。",
                 "icons": "在播放信息旁显示小图标。",
                 "trimTitle": "移除当前歌曲标题中的括号版本信息和末尾版本文字。",
