@@ -415,6 +415,10 @@ async function startFullscape() {
         return type ? String(type).toUpperCase() : "UNKNOWN";
     }
 
+    function isSpotifyInForeground() {
+        return document.visibilityState === "visible" && document.hasFocus();
+    }
+
     async function updatePlaybackDeviceDebug(force = false) {
         if (!CFM.get("debugMode")) return;
         const target = DOM.container.querySelector<HTMLElement>("[data-debug-device]");
@@ -454,6 +458,10 @@ async function startFullscape() {
             !Utils.isModeActivated()
         ) {
             cancelPlaybackTimelineResync(false);
+            return;
+        }
+
+        if (!isSpotifyInForeground()) {
             return;
         }
 
@@ -534,6 +542,11 @@ async function startFullscape() {
         playbackTimelineResyncPending = true;
         playbackTimelineResyncTrackUri = trackUri;
         schedulePlaybackTimelineResyncCheck(PLAYBACK_TIMELINE_RESYNC_TARGET_MS);
+    }
+
+    function handleSpotifyForegroundChange() {
+        if (!isSpotifyInForeground() || !playbackTimelineResyncPending) return;
+        schedulePlaybackTimelineResyncCheck(0);
     }
 
     const updatePlayerControlsWithoutResyncEffect = (evt: any) => {
@@ -657,6 +670,8 @@ async function startFullscape() {
         Spicetify.Player.removeEventListener("onplaypause", updatePlayingIcon);
         Spicetify.Player.removeEventListener("onplaypause", updatePlaybackLayout);
         document.removeEventListener("fullscreenchange", fullscreenChangeListener);
+        window.removeEventListener("focus", handleSpotifyForegroundChange);
+        document.removeEventListener("visibilitychange", handleSpotifyForegroundChange);
 
         Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", updateUpNext);
         Spicetify.Platform.PlayerAPI._events.removeListener("update", updateUpNextShow);
@@ -970,6 +985,8 @@ async function startFullscape() {
         }, 200);
         Spicetify.Player.addEventListener("songchange", handleSongChange);
         Spicetify.Player.addEventListener("onprogress", handlePlaybackTimelineProgress);
+        window.addEventListener("focus", handleSpotifyForegroundChange);
+        document.addEventListener("visibilitychange", handleSpotifyForegroundChange);
         void updatePlaybackDeviceDebug(true);
         handleMouseMoveActivation();
         DOM.container.oncontextmenu = ConfigManager.openConfig.bind(ConfigManager);
@@ -1042,6 +1059,8 @@ async function startFullscape() {
         Background.stop();
         Spicetify.Player.removeEventListener("songchange", handleSongChange);
         Spicetify.Player.removeEventListener("onplaypause", updatePlaybackLayout);
+        window.removeEventListener("focus", handleSpotifyForegroundChange);
+        document.removeEventListener("visibilitychange", handleSpotifyForegroundChange);
         handleMouseMoveDeactivation();
         window.removeEventListener("resize", resizeEvents);
         cancelResize();
