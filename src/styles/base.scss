@@ -99,7 +99,7 @@
             transform: translateY(-10px);
         }
         to {
-            opacity: 1;
+            opacity: 0.8;
             transform: translateY(0);
         }
     }
@@ -109,7 +109,7 @@
             transform: translateY(10px);
         }
         to {
-            opacity: 1;
+            opacity: 0.8;
             transform: translateY(0);
         }
     }
@@ -119,7 +119,7 @@
             transform: translateX(10px);
         }
         to {
-            opacity: 1;
+            opacity: 0.8;
             transform: translateX(0);
         }
     }
@@ -129,7 +129,7 @@
             transform: translateX(-10px);
         }
         to {
-            opacity: 1;
+            opacity: 0.8;
             transform: translateX(0);
         }
     }
@@ -807,6 +807,7 @@
         border: 0;
         border-radius: 8px;
         color: var(--primary-color);
+        opacity: 0.8;
         padding: 0;
         line-height: 0;
         cursor: pointer;
