@@ -24,6 +24,7 @@ import {
 import type { LyricsCacheEntry, LyricsCacheKind } from "../../../services/lyrics-cache";
 import { mergeFuriganaAnnotations, parseFuriganaMarkup } from "../../../utils/furigana";
 import { fetchDictionaryFurigana } from "../../../services/dictionary-furigana";
+import { preloadOfflineFuriganaDictionary } from "../../../services/offline-furigana-dictionary";
 import type { FuriganaAnnotation, FuriganaRenderData } from "../../../utils/furigana";
 import {
     convertChineseText,
@@ -49,6 +50,13 @@ type KaraokeWordRenderState = {
     releaseDuration: number;
     animation: Animation | null;
     visualState: number;
+};
+type KaraokeFuriganaRenderState = {
+    node: HTMLElement;
+    time: number;
+    duration: number;
+    releaseDuration: number;
+    animation: Animation | null;
 };
 type TimedKaraokeSegment = {
     text: string;
@@ -91,6 +99,7 @@ export class Lyrics {
     private static lineNodes: HTMLElement[] = [];
     private static timedLines: TimedLyricLine[] = [];
     private static karaokeWordsByLine: KaraokeWordRenderState[][] = [];
+    private static karaokeFuriganaByLine: KaraokeFuriganaRenderState[][] = [];
     private static lineHeights: number[] = [];
     private static containerHeight = 0;
     private static lines: LyricLine[] = [];
@@ -147,6 +156,7 @@ export class Lyrics {
 
     static attach(container: HTMLElement) {
         this.container = container;
+        void preloadOfflineFuriganaDictionary();
     }
 
     static teardown() {
@@ -159,6 +169,7 @@ export class Lyrics {
         this.lineContentNodes = [];
         this.timedLines = [];
         this.karaokeWordsByLine = [];
+        this.karaokeFuriganaByLine = [];
         this.lineHeights = [];
         this.lineRightSpaces = [];
         this.containerHeight = 0;
@@ -1051,6 +1062,7 @@ export class Lyrics {
         this.lineContentNodes = [];
         this.timedLines = [];
         this.karaokeWordsByLine = [];
+        this.karaokeFuriganaByLine = [];
         this.lineHeights = [];
         this.lineRightSpaces = [];
         this.containerHeight = 0;
@@ -1306,10 +1318,32 @@ export class Lyrics {
             .map((line) => line.text)
             .join("\u001e")}`;
         let request = this.dictionaryFuriganaRequests.get(requestKey);
+        const applyResults = (results: FuriganaRenderData[]) => {
+            if (
+                signature !== this.renderedLyricsSignature ||
+                this.linesSignature(this.lines) !== signature ||
+                !this.lyricsRoot?.isConnected
+            ) {
+                return;
+            }
+            const nextFurigana = this.lines.map<FuriganaRenderData | null>(() => null);
+            missingLines.forEach((line, index) => {
+                nextFurigana[line.index] = results[index] ?? null;
+            });
+            const changed = nextFurigana.some(
+                (line, index) =>
+                    !this.sameFuriganaRenderData(line, this.dictionaryFurigana[index] ?? null),
+            );
+            if (!changed) return;
+            this.dictionaryFurigana = nextFurigana;
+            if (this.dictionaryFurigana.some((line) => line?.annotations.length)) {
+                this.renderLines();
+            }
+        };
         if (!request) {
             request = fetchDictionaryFurigana(
                 missingLines.map((line) => line.text),
-                { allowOnline },
+                { allowOnline, onOfflineResults: applyResults },
             );
             this.dictionaryFuriganaRequests.set(requestKey, request);
             void request.then(
@@ -1325,24 +1359,27 @@ export class Lyrics {
                 },
             );
         }
-        void request
-            .then((results) => {
-                if (
-                    signature !== this.renderedLyricsSignature ||
-                    this.linesSignature(this.lines) !== signature ||
-                    !this.lyricsRoot?.isConnected
-                ) {
-                    return;
-                }
-                this.dictionaryFurigana = this.lines.map(() => null);
-                missingLines.forEach((line, index) => {
-                    this.dictionaryFurigana[line.index] = results[index] ?? null;
-                });
-                if (this.dictionaryFurigana.some((line) => line?.annotations.length)) {
-                    this.renderLines();
-                }
+        void request.then(applyResults).catch(() => undefined);
+    }
+
+    private static sameFuriganaRenderData(
+        first: FuriganaRenderData | null,
+        second: FuriganaRenderData | null,
+    ) {
+        if (first === second) return true;
+        if (!first || !second || first.text !== second.text) return false;
+        return (
+            first.annotations.length === second.annotations.length &&
+            first.annotations.every((annotation, index) => {
+                const candidate = second.annotations[index];
+                if (!candidate) return false;
+                return (
+                    annotation.start === candidate.start &&
+                    annotation.end === candidate.end &&
+                    annotation.reading === candidate.reading
+                );
             })
-            .catch(() => undefined);
+        );
     }
 
     private static hasUnannotatedKanji(text: string, annotations: FuriganaAnnotation[]) {
@@ -1390,6 +1427,8 @@ export class Lyrics {
         let phrase = "";
         let semanticWord = "";
         let activeAnnotation: FuriganaAnnotation | null = null;
+        let annotationStartTime = 0;
+        let annotationEndTime = 0;
 
         const flushSemanticWord = () => {
             if (!semanticWord) return;
@@ -1406,7 +1445,13 @@ export class Lyrics {
             const annotation = annotations.find((item) => item.start === segment.start);
             if (annotation) {
                 activeAnnotation = annotation;
-                semanticWord += '<ruby class="rnp-karaoke-ruby">';
+                annotationStartTime = segment.time;
+                annotationEndTime = segment.time + segment.duration;
+                semanticWord +=
+                    '<ruby class="rnp-furigana-ruby rnp-karaoke-ruby"><span class="rnp-furigana-base">';
+            }
+            if (activeAnnotation) {
+                annotationEndTime = Math.max(annotationEndTime, segment.time + segment.duration);
             }
             semanticWord += this.renderKaraokeWordSegment(
                 segment.text,
@@ -1415,7 +1460,10 @@ export class Lyrics {
             );
             const segmentEnd = segment.start + segment.text.length;
             if (activeAnnotation && segmentEnd >= activeAnnotation.end) {
-                semanticWord += `<rt>${this.escapeHtml(activeAnnotation.reading)}</rt></ruby>`;
+                semanticWord += `</span><rt data-time="${annotationStartTime}" data-duration="${Math.max(
+                    80,
+                    annotationEndTime - annotationStartTime,
+                )}">${this.escapeHtml(activeAnnotation.reading)}</rt></ruby>`;
                 activeAnnotation = null;
             }
             if (!this.hasPreferredBreakAtEnd(segment.text)) return;
@@ -1611,7 +1659,7 @@ export class Lyrics {
                             (item) => item.start === absoluteStart && item.end === absoluteEnd,
                         );
                         const content = annotation
-                            ? `<ruby>${this.escapeHtml(word)}<rt>${this.escapeHtml(annotation.reading)}</rt></ruby>`
+                            ? `<ruby class="rnp-furigana-ruby"><span class="rnp-furigana-base">${this.escapeHtml(word)}</span><rt>${this.escapeHtml(annotation.reading)}</rt></ruby>`
                             : this.escapeHtml(word);
                         return `<span class="rnp-lyrics-semantic-word">${content}</span>`;
                     })
@@ -1767,6 +1815,25 @@ export class Lyrics {
                 ];
             });
         });
+        this.karaokeFuriganaByLine = this.lineNodes.map((lineNode) =>
+            Array.from(
+                lineNode.querySelectorAll<HTMLElement>(".rnp-karaoke-ruby > rt[data-time]"),
+            ).flatMap((node) => {
+                const time = Number(node.dataset.time);
+                const duration = Number(node.dataset.duration);
+                if (!Number.isFinite(time) || !Number.isFinite(duration) || duration <= 0)
+                    return [];
+                return [
+                    {
+                        node,
+                        time,
+                        duration,
+                        releaseDuration: 420,
+                        animation: null,
+                    },
+                ];
+            }),
+        );
     }
 
     private static resetKaraokeLine(lineIndex: number) {
@@ -1780,6 +1847,13 @@ export class Lyrics {
             word.node.style.removeProperty("--karaoke-scale");
             word.node.style.removeProperty("--karaoke-glow");
             word.visualState = 0;
+        });
+        this.karaokeFuriganaByLine[lineIndex]?.forEach((furigana) => {
+            furigana.animation?.cancel();
+            furigana.animation = null;
+            furigana.node.style.removeProperty("--furigana-lift");
+            furigana.node.style.removeProperty("--furigana-scale");
+            furigana.node.style.removeProperty("--furigana-opacity");
         });
         if (this.karaokeAnimationLine === lineIndex) {
             this.karaokeAnimationLine = -1;
@@ -1810,6 +1884,19 @@ export class Lyrics {
             animation.currentTime = lineProgress;
             if (isPlaying) animation.play();
         });
+        this.karaokeFuriganaByLine[this.activeIndex]?.forEach((furigana) => {
+            const delay = Math.max(0, furigana.time - lineTime);
+            const animation = furigana.node.animate(this.buildFuriganaKeyframes(furigana), {
+                delay,
+                duration: furigana.duration + furigana.releaseDuration,
+                fill: "both",
+                easing: "linear",
+            });
+            furigana.animation = animation;
+            animation.pause();
+            animation.currentTime = lineProgress;
+            if (isPlaying) animation.play();
+        });
         this.karaokeAnimationLine = this.activeIndex;
         this.karaokeAnimationsPlaying = isPlaying;
     }
@@ -1828,6 +1915,13 @@ export class Lyrics {
 
         words.forEach((word) => {
             const animation = word.animation;
+            if (!animation) return;
+            animation.pause();
+            animation.currentTime = expectedTime;
+            if (isPlaying) animation.play();
+        });
+        this.karaokeFuriganaByLine[this.activeIndex]?.forEach((furigana) => {
+            const animation = furigana.animation;
             if (!animation) return;
             animation.pause();
             animation.currentTime = expectedTime;
@@ -1882,6 +1976,28 @@ export class Lyrics {
         return keyframes;
     }
 
+    private static buildFuriganaKeyframes(furigana: KaraokeFuriganaRenderState) {
+        const totalDuration = furigana.duration + furigana.releaseDuration;
+        const activeOffset = furigana.duration / totalDuration;
+        const keyframes = Array.from({ length: 13 }, (_, index) => {
+            const progress = index / 12;
+            const eased = progress * progress * (3 - 2 * progress);
+            return {
+                offset: progress * activeOffset,
+                "--furigana-lift": `${0.08 + (-0.2 - 0.08) * eased}em`,
+                "--furigana-scale": `${0.98 + 0.04 * eased}`,
+                "--furigana-opacity": `${0.72 + 0.28 * progress}`,
+            } as Keyframe;
+        });
+        keyframes.push({
+            offset: 1,
+            "--furigana-lift": "-0.12em",
+            "--furigana-scale": "1",
+            "--furigana-opacity": "0.88",
+        } as Keyframe);
+        return keyframes;
+    }
+
     private static ensureKaraokePropertiesRegistered() {
         if (this.karaokePropertiesRegistered) return;
         const registerProperty = (
@@ -1895,6 +2011,14 @@ export class Lyrics {
             { name: "--karaoke-lift", syntax: "<length>", inherits: true, initialValue: "0em" },
             { name: "--karaoke-scale", syntax: "<number>", inherits: true, initialValue: "1" },
             { name: "--karaoke-glow", syntax: "<number>", inherits: true, initialValue: "0" },
+            { name: "--furigana-lift", syntax: "<length>", inherits: false, initialValue: "0em" },
+            { name: "--furigana-scale", syntax: "<number>", inherits: false, initialValue: "1" },
+            {
+                name: "--furigana-opacity",
+                syntax: "<number>",
+                inherits: false,
+                initialValue: "0.8",
+            },
         ];
         definitions.forEach((definition) => {
             try {
@@ -1911,6 +2035,10 @@ export class Lyrics {
         activeWords?.forEach((word) => {
             word.animation?.cancel();
             word.animation = null;
+        });
+        this.karaokeFuriganaByLine[this.karaokeAnimationLine]?.forEach((furigana) => {
+            furigana.animation?.cancel();
+            furigana.animation = null;
         });
         this.karaokeAnimationLine = -1;
         this.karaokeAnimationsPlaying = false;

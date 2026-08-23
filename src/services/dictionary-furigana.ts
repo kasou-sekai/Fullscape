@@ -25,6 +25,7 @@ const onlineFuriganaCache = new Map<string, FuriganaRenderData>();
 
 export type DictionaryFuriganaOptions = {
     allowOnline?: boolean;
+    onOfflineResults?: (results: FuriganaRenderData[]) => void;
 };
 
 /**
@@ -42,6 +43,9 @@ export async function fetchDictionaryFurigana(
     }));
     const offlineResults = await getOfflineFurigana(lines);
     const baseResults = offlineResults ?? emptyResults;
+    if (offlineResults) {
+        options.onOfflineResults?.(offlineResults.map(cloneRenderData));
+    }
     if (options.allowOnline === false) return baseResults;
 
     const unresolvedTexts = Array.from(

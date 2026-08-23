@@ -269,8 +269,7 @@
             max-width: calc(100% - 60px - var(--lyrics-left-bleed));
             box-sizing: border-box;
             transition:
-                transform var(--lyrics-line-transform-duration, 0.5s)
-                    var(--lyric-timing-function)
+                transform var(--lyrics-line-transform-duration, 0.5s) var(--lyric-timing-function)
                     var(--lyrics-line-transform-delay, 0ms),
                 filter 0.5s ease,
                 opacity 0.5s ease;
@@ -326,20 +325,30 @@
             overflow-wrap: normal;
         }
         .rnp-lyrics-has-furigana {
-            line-height: 1.55 !important;
-            padding-top: 0.12em;
+            line-height: inherit !important;
         }
-        .rnp-lyrics-has-furigana ruby {
+        .rnp-furigana-ruby {
             ruby-align: center;
             ruby-position: over;
         }
-        .rnp-lyrics-has-furigana rt {
+        .rnp-furigana-base {
+            vertical-align: baseline;
+        }
+        .rnp-furigana-ruby > rt {
             color: var(--secondary-color);
             font-size: 0.42em;
             font-weight: 500;
             line-height: 1;
-            opacity: 0.86;
+            opacity: var(--furigana-opacity, 0.86);
+            pointer-events: none;
+            position: relative;
+            top: 0.12em;
+            transform: translateY(var(--furigana-lift, 0em)) scale(var(--furigana-scale, 1));
+            transform-origin: center bottom;
             text-shadow: none;
+            user-select: none;
+            white-space: nowrap;
+            z-index: 1;
         }
         .rnp-lyrics-break-segment {
             display: inline-block;
@@ -439,6 +448,7 @@
             color: var(--secondary-color);
             background: none;
             -webkit-text-fill-color: var(--secondary-color);
+            will-change: transform, opacity;
         }
         .rnp-karaoke-word.active {
             color: var(--primary-color);
@@ -862,6 +872,11 @@
     @media (prefers-reduced-motion: reduce) {
         #fullscape-title-text-track,
         #fullscape-secondary-meta-track {
+            will-change: auto;
+        }
+        .rnp-karaoke-ruby > rt {
+            --furigana-lift: 0em !important;
+            --furigana-scale: 1 !important;
             will-change: auto;
         }
     }

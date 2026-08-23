@@ -168,6 +168,10 @@ export async function getOfflineFurigana(lines: string[]): Promise<FuriganaRende
     return index ? renderOfflineFurigana(lines, index) : null;
 }
 
+export async function preloadOfflineFuriganaDictionary(): Promise<void> {
+    await loadDictionaryIndex();
+}
+
 function parseFuriganaSpecification(surface: string, specification: string) {
     const characters = Array.from(surface);
     const offsets = [0];
