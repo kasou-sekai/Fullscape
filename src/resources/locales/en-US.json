@@ -42,6 +42,19 @@
         "showLyricsTranslation": "Show Lyric Translation",
         "showLyricsRomanization": "Show Pronunciation",
         "showLyricsFurigana": "Show Japanese Furigana",
+        "offlineFuriganaDictionary": {
+            "setting": "Offline Furigana Dictionary",
+            "description": "Optional JmdictFurigana package (~{size}). It is stored separately from lyric data, used during rendering, and can be deleted at any time. Online lookup remains available when the package is not installed.",
+            "download": "Download",
+            "delete": "Delete",
+            "notDownloaded": "Not downloaded",
+            "downloading": "Downloading…",
+            "deleting": "Deleting…",
+            "ready": "Installed ({size})",
+            "downloaded": "Download complete",
+            "deleted": "Package deleted",
+            "error": "Operation failed"
+        },
         "lyricsChineseConversion": {
             "setting": "Chinese Character Form",
             "description": "Convert displayed lyrics and translations to simplified or traditional Chinese.",

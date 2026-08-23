@@ -9,8 +9,22 @@ export type FuriganaRenderData = {
     annotations: FuriganaAnnotation[];
 };
 
+export function mergeFuriganaAnnotations(
+    preferred: FuriganaAnnotation[],
+    supplemental: FuriganaAnnotation[],
+): FuriganaAnnotation[] {
+    const merged = preferred.map((annotation) => ({ ...annotation }));
+    supplemental.forEach((annotation) => {
+        const overlaps = merged.some(
+            (existing) => annotation.start < existing.end && existing.start < annotation.end,
+        );
+        if (!overlaps) merged.push({ ...annotation });
+    });
+    return merged.sort((first, second) => first.start - second.start || first.end - second.end);
+}
+
 const FURIGANA_PATTERN =
-    /｜([^《》]+?)《([ぁ-ゖァ-ヺーゝゞヽヾ]+?)》|([一-龯々〆ヶ]+)《([ぁ-ゖァ-ヺーゝゞヽヾ]+?)》|([一-龯々〆ヶ]+)[（(]([ぁ-ゖァ-ヺーゝゞヽヾ]+?)[）)]/gu;
+    /｜([^《》]+?)《([ぁ-ゖァ-ヺーゝゞヽヾ]+?)》|([\p{Script=Han}々〆ヶ]+)《([ぁ-ゖァ-ヺーゝゞヽヾ]+?)》|([\p{Script=Han}々〆ヶ]+)[（(]([ぁ-ゖァ-ヺーゝゞヽヾ]+?)[）)]/gu;
 
 export function parseFuriganaMarkup(text: string, furigana?: string): FuriganaRenderData {
     const source = furigana || text;

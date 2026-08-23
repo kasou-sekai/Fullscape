@@ -40,6 +40,19 @@
         },
         "showLyricsRomanization": "顯示讀音",
         "showLyricsFurigana": "顯示日文假名注音",
+        "offlineFuriganaDictionary": {
+            "setting": "離線注音詞典",
+            "description": "可選下載 JmdictFurigana 詞典包（約 {size}）。它與歌詞資料分開儲存，只在渲染階段使用，隨時可以刪除；未安裝時仍可使用線上注音。",
+            "download": "下載詞典",
+            "delete": "刪除詞典",
+            "notDownloaded": "尚未下載",
+            "downloading": "正在下載…",
+            "deleting": "正在刪除…",
+            "ready": "已安裝（{size}）",
+            "downloaded": "下載完成",
+            "deleted": "詞典已刪除",
+            "error": "操作失敗"
+        },
         "lyricsChineseConversion": {
             "setting": "歌詞繁簡字形",
             "description": "將顯示的原文和翻譯轉換為簡體或繁體中文。",

@@ -39,6 +39,19 @@
         },
         "showLyricsRomanization": "読みを表示",
         "showLyricsFurigana": "日本語のふりがなを表示",
+        "offlineFuriganaDictionary": {
+            "setting": "オフラインふりがな辞書",
+            "description": "JmdictFurigana 辞書（約 {size}）を任意でダウンロードできます。歌詞データとは別に保存され、描画時だけ使用されます。いつでも削除できます。",
+            "download": "ダウンロード",
+            "delete": "削除",
+            "notDownloaded": "未ダウンロード",
+            "downloading": "ダウンロード中…",
+            "deleting": "削除中…",
+            "ready": "インストール済み（{size}）",
+            "downloaded": "ダウンロード完了",
+            "deleted": "辞書を削除しました",
+            "error": "操作に失敗しました"
+        },
         "lyricsSize": {
             "setting": "歌詞の文字サイズ"
         },

@@ -22,8 +22,9 @@ import {
     syncCachedLyricsToShared,
 } from "../../../services/lyrics-cache";
 import type { LyricsCacheEntry, LyricsCacheKind } from "../../../services/lyrics-cache";
-import { parseFuriganaMarkup } from "../../../utils/furigana";
-import type { FuriganaAnnotation } from "../../../utils/furigana";
+import { mergeFuriganaAnnotations, parseFuriganaMarkup } from "../../../utils/furigana";
+import { fetchDictionaryFurigana } from "../../../services/dictionary-furigana";
+import type { FuriganaAnnotation, FuriganaRenderData } from "../../../utils/furigana";
 import {
     convertChineseText,
     convertFuriganaRenderData,
@@ -93,6 +94,7 @@ export class Lyrics {
     private static lineHeights: number[] = [];
     private static containerHeight = 0;
     private static lines: LyricLine[] = [];
+    private static dictionaryFurigana: Array<FuriganaRenderData | null> = [];
     private static activeIndex = -1;
     private static lineContentNodes: (HTMLElement | null)[] = [];
     private static updateTimer: ReturnType<typeof setTimeout> | null = null;
@@ -125,6 +127,11 @@ export class Lyrics {
     private static sharedSyncMissCount = 0;
     private static lastSharedSyncSignature: string | null = null;
     private static renderedLyricsSignature: string | null = null;
+    private static dictionaryFuriganaRequestSignature: string | null = null;
+    private static readonly dictionaryFuriganaRequests = new Map<
+        string,
+        Promise<FuriganaRenderData[]>
+    >();
     private static authoritativeRevision = 0;
     private static bridgeLeaseGeneration = 0;
     private static lyricsInteractionTimer: ReturnType<typeof setTimeout> | null = null;
@@ -147,6 +154,7 @@ export class Lyrics {
         this.cancelKaraokeAnimations();
         this.resetLyricsInteraction(false);
         this.lines = [];
+        this.dictionaryFurigana = [];
         this.lineNodes = [];
         this.lineContentNodes = [];
         this.timedLines = [];
@@ -167,9 +175,11 @@ export class Lyrics {
         this.stopSharedCacheSync();
         this.stopAllBridgeLeases();
         this.renderedLyricsSignature = null;
+        this.dictionaryFuriganaRequestSignature = null;
         this.prefetchedTrackUris.clear();
         this.spotifyRequests.clear();
         this.enhancedRequests.clear();
+        this.dictionaryFuriganaRequests.clear();
         this.authoritativeRevision += 1;
         this.loadSequence += 1;
     }
@@ -184,6 +194,13 @@ export class Lyrics {
         if (this.getRefreshBlockedReason()) return false;
         await this.loadLyrics(trackUri, "all");
         return this.lastStatus === "synced" || this.lastStatus === "unsynced";
+    }
+
+    static refreshRenderedFurigana() {
+        if (!this.container || !this.lines.length) return;
+        this.dictionaryFurigana = [];
+        this.dictionaryFuriganaRequestSignature = null;
+        this.renderLines();
     }
 
     static getRefreshBlockedReason() {
@@ -553,9 +570,7 @@ export class Lyrics {
     private static linesForEntry(entry: LyricsCacheEntry): LyricLine[] {
         const configuredOffset = Number(entry.offsetMilliseconds ?? 0);
         const manualOffset =
-            !entry.timingOffsetApplied && Number.isFinite(configuredOffset)
-                ? configuredOffset
-                : 0;
+            !entry.timingOffsetApplied && Number.isFinite(configuredOffset) ? configuredOffset : 0;
         const providerOffset = this.sourceTimingCorrection(entry.sourceName);
         return this.applyTimingOffset(entry.lines, manualOffset + providerOffset);
     }
@@ -565,9 +580,7 @@ export class Lyrics {
     }
 
     private static sourceTimingCorrection(sourceName?: string) {
-        return sourceName?.trim().toLowerCase() === "qqmusic"
-            ? this.QQ_MUSIC_RENDER_ADVANCE_MS
-            : 0;
+        return sourceName?.trim().toLowerCase() === "qqmusic" ? this.QQ_MUSIC_RENDER_ADVANCE_MS : 0;
     }
 
     private static applyTimingOffset(lines: LyricLine[], offset: number) {
@@ -1033,6 +1046,7 @@ export class Lyrics {
         this.cancelKaraokeAnimations();
         this.resetLyricsInteraction(false);
         this.lines = [];
+        this.dictionaryFurigana = [];
         this.lineNodes = [];
         this.lineContentNodes = [];
         this.timedLines = [];
@@ -1044,6 +1058,7 @@ export class Lyrics {
         this.lastMeasuredFontSize = 0;
         this.lyricsRoot = null;
         this.renderedLyricsSignature = null;
+        this.dictionaryFuriganaRequestSignature = null;
         this.isSynced = false;
         this.lastStatus = unavailable ? "unavailable" : "loading";
         this.resetDiagnostics();
@@ -1073,7 +1088,9 @@ export class Lyrics {
         this.stopLoop();
         this.isSynced = nextIsSynced;
         this.lines = lines;
+        this.dictionaryFurigana = [];
         this.renderedLyricsSignature = signature;
+        this.dictionaryFuriganaRequestSignature = null;
         this.timedLines = lines.flatMap((line, index) =>
             line.time === null ? [] : [{ index, time: line.time }],
         );
@@ -1184,7 +1201,7 @@ export class Lyrics {
                 (line, idx) =>
                     `<div class="rnp-lyrics-line${line.time !== null ? " rnp-lyrics-line-seekable" : ""}" data-index="${idx}" data-time="${line.time ?? ""}">
                         <div class="rnp-lyrics-line-content">
-                            ${this.renderLineContent(line, chinesePresentation.conversion)}
+                            ${this.renderLineContent(line, idx, chinesePresentation.conversion)}
                         </div>
                     </div>`,
             )
@@ -1202,6 +1219,7 @@ export class Lyrics {
         this.lineContentNodes = this.lineNodes.map((node) =>
             node.querySelector<HTMLElement>(".rnp-lyrics-line-content"),
         );
+        this.requestDictionaryFurigana(originalLyricsText);
         this.buildKaraokeWordCache();
         this.setupLyricsInteraction();
         if (!this.isSynced) {
@@ -1217,6 +1235,7 @@ export class Lyrics {
 
     private static renderLineContent(
         line: LyricLine,
+        lineIndex: number,
         chineseConversion: LyricsChineseConversion,
     ) {
         const showKaraoke = Boolean(CFM.get("karaokeLyrics")) && this.hasKaraokeText(line);
@@ -1224,10 +1243,18 @@ export class Lyrics {
             ...word,
             text: convertChineseText(word.text, chineseConversion),
         }));
-        const furigana = convertFuriganaRenderData(
-            parseFuriganaMarkup(line.text, line.furigana),
-            chineseConversion,
-        );
+        const providedFurigana = parseFuriganaMarkup(line.text, line.furigana);
+        const dictionaryFurigana = this.dictionaryFurigana[lineIndex];
+        const renderFurigana = dictionaryFurigana
+            ? {
+                  text: providedFurigana.text,
+                  annotations: mergeFuriganaAnnotations(
+                      providedFurigana.annotations,
+                      dictionaryFurigana.annotations,
+                  ),
+              }
+            : providedFurigana;
+        const furigana = convertFuriganaRenderData(renderFurigana, chineseConversion);
         const visibleAnnotations = CFM.get("showLyricsFurigana") ? furigana.annotations : [];
         const karaokeText = words.map((word) => word.text).join("");
         const annotations = karaokeText === furigana.text ? visibleAnnotations : [];
@@ -1246,6 +1273,92 @@ export class Lyrics {
                 : "";
 
         return `${original}${romanization}${translation}`;
+    }
+
+    private static requestDictionaryFurigana(originalLyricsText: string) {
+        if (!CFM.get("showLyricsFurigana")) return;
+
+        const allowOnline = /[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(originalLyricsText);
+        const hasProvidedFurigana = this.lines.some(
+            (line) => parseFuriganaMarkup(line.text, line.furigana).annotations.length,
+        );
+        // Pure Han text cannot be distinguished reliably from Chinese here. If another
+        // provider already supplied a reading, it is safe to fill its gaps offline only.
+        if (!allowOnline && !hasProvidedFurigana) return;
+
+        const missingLines = this.lines
+            .map((line, index) => ({
+                index,
+                text: line.text,
+                parsed: parseFuriganaMarkup(line.text, line.furigana),
+            }))
+            .filter((line) => this.hasUnannotatedKanji(line.text, line.parsed.annotations));
+        if (
+            !missingLines.length ||
+            this.dictionaryFuriganaRequestSignature === this.renderedLyricsSignature
+        ) {
+            return;
+        }
+
+        const signature = this.renderedLyricsSignature;
+        this.dictionaryFuriganaRequestSignature = signature;
+        const requestKey = `${Number(allowOnline)}\u001f${missingLines
+            .map((line) => line.text)
+            .join("\u001e")}`;
+        let request = this.dictionaryFuriganaRequests.get(requestKey);
+        if (!request) {
+            request = fetchDictionaryFurigana(
+                missingLines.map((line) => line.text),
+                { allowOnline },
+            );
+            this.dictionaryFuriganaRequests.set(requestKey, request);
+            void request.then(
+                () => {
+                    if (this.dictionaryFuriganaRequests.get(requestKey) === request) {
+                        this.dictionaryFuriganaRequests.delete(requestKey);
+                    }
+                },
+                () => {
+                    if (this.dictionaryFuriganaRequests.get(requestKey) === request) {
+                        this.dictionaryFuriganaRequests.delete(requestKey);
+                    }
+                },
+            );
+        }
+        void request
+            .then((results) => {
+                if (
+                    signature !== this.renderedLyricsSignature ||
+                    this.linesSignature(this.lines) !== signature ||
+                    !this.lyricsRoot?.isConnected
+                ) {
+                    return;
+                }
+                this.dictionaryFurigana = this.lines.map(() => null);
+                missingLines.forEach((line, index) => {
+                    this.dictionaryFurigana[line.index] = results[index] ?? null;
+                });
+                if (this.dictionaryFurigana.some((line) => line?.annotations.length)) {
+                    this.renderLines();
+                }
+            })
+            .catch(() => undefined);
+    }
+
+    private static hasUnannotatedKanji(text: string, annotations: FuriganaAnnotation[]) {
+        let offset = 0;
+        for (const character of Array.from(text)) {
+            if (
+                /[\p{Script=Han}々〆ヶ]/u.test(character) &&
+                !annotations.some(
+                    (annotation) => annotation.start <= offset && offset < annotation.end,
+                )
+            ) {
+                return true;
+            }
+            offset += character.length;
+        }
+        return false;
     }
 
     private static getChineseConversion(): LyricsChineseConversion {
@@ -1971,14 +2084,14 @@ export class Lyrics {
                 0,
                 Math.min(hasActive ? layoutActiveIndex : 0, this.lineNodes.length - 1),
             );
-            const transforms: LyricTransform[] = new Array(this.lineNodes.length).fill(null as never);
+            const transforms: LyricTransform[] = new Array(this.lineNodes.length).fill(
+                null as never,
+            );
             const scaleByOffset = (offset: number) => Math.max(0.72, 1 - 0.12 * offset);
             const blurByOffset = (offset: number) =>
                 this.manualScrollActive ? 0 : Math.min(4.5, offset * 0.9);
             const opacityByOffset = (offset: number) =>
-                this.manualScrollActive
-                    ? 1
-                    : Math.max(0.32, 1 - Math.max(0, offset - 1) * 0.22);
+                this.manualScrollActive ? 1 : Math.max(0.32, 1 - Math.max(0, offset - 1) * 0.22);
             const translateByOffset = (offset: number) => Math.max(0, baseIndent - offset * 6);
             const translateForLine = (index: number, offset: number) => {
                 const rightSpace =

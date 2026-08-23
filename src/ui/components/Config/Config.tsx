@@ -17,6 +17,12 @@ import {
     ReleaseUpdater,
     UpdateCheckResult,
 } from "../../../services/release-updater";
+import {
+    deleteOfflineFuriganaDictionary,
+    downloadOfflineFuriganaDictionary,
+    getOfflineFuriganaDictionaryStatus,
+    OFFLINE_FURIGANA_DICTIONARY_SIZE,
+} from "../../../services/offline-furigana-dictionary";
 
 export class ConfigManager {
     static configContainer: HTMLDivElement;
@@ -526,6 +532,72 @@ export class ConfigManager {
         return card;
     }
 
+    private static createOfflineFuriganaDictionaryCard(LOCALE: string) {
+        const strings = translations[LOCALE].settings.offlineFuriganaDictionary;
+        const card = getSettingCard(
+            `<div class="offline-furigana-actions">
+                <span class="offline-furigana-status">${strings.notDownloaded}</span>
+                <button type="button" class="main-buttons-button main-button-secondary offline-furigana-download">${strings.download}</button>
+                <button type="button" class="main-buttons-button main-button-secondary offline-furigana-delete">${strings.delete}</button>
+            </div>`,
+            strings.setting,
+            "showLyricsFurigana",
+            strings.description,
+        );
+        const status = card.querySelector<HTMLElement>(".offline-furigana-status");
+        const download = card.querySelector<HTMLButtonElement>(".offline-furigana-download");
+        const deleteButton = card.querySelector<HTMLButtonElement>(".offline-furigana-delete");
+        if (!status || !download || !deleteButton) return card;
+
+        const setBusy = (busy: boolean) => {
+            download.disabled = busy;
+            deleteButton.disabled = busy;
+        };
+        const refreshStatus = async () => {
+            const dictionary = await getOfflineFuriganaDictionaryStatus();
+            status.textContent = dictionary.available
+                ? strings.ready.replace("{size}", OFFLINE_FURIGANA_DICTIONARY_SIZE)
+                : strings.notDownloaded;
+            download.hidden = dictionary.available;
+            deleteButton.hidden = !dictionary.available;
+        };
+
+        download.onclick = async () => {
+            setBusy(true);
+            status.textContent = strings.downloading;
+            let completed = false;
+            try {
+                await downloadOfflineFuriganaDictionary();
+                completed = true;
+                status.textContent = strings.downloaded;
+                Lyrics.refreshRenderedFurigana();
+            } catch {
+                status.textContent = strings.error;
+            } finally {
+                setBusy(false);
+                if (completed) await refreshStatus();
+            }
+        };
+        deleteButton.onclick = async () => {
+            setBusy(true);
+            status.textContent = strings.deleting;
+            let completed = false;
+            try {
+                await deleteOfflineFuriganaDictionary();
+                completed = true;
+                status.textContent = strings.deleted;
+                Lyrics.refreshRenderedFurigana();
+            } catch {
+                status.textContent = strings.error;
+            } finally {
+                setBusy(false);
+                if (completed) await refreshStatus();
+            }
+        };
+        void refreshStatus();
+        return card;
+    }
+
     private static createDebugSettings(LOCALE: string) {
         const section = document.createElement("section");
         section.classList.add("fullscape-debug-settings", "settings-nested-section");
@@ -629,8 +701,9 @@ export class ConfigManager {
             CFM.get("beatResponsePreset") as Settings["beatResponsePreset"],
             "beatResponsePreset",
             (value) => {
-                const section =
-                    this.configContainer.querySelector<HTMLElement>(".fullscape-beat-settings");
+                const section = this.configContainer.querySelector<HTMLElement>(
+                    ".fullscape-beat-settings",
+                );
                 if (section) section.hidden = value !== "custom";
                 CFM.set("beatResponsePreset", value as Settings["beatResponsePreset"]);
                 CFM.set("beatBounce", value !== "off");
@@ -1209,10 +1282,9 @@ export class ConfigManager {
                             strings.debugMode.setting,
                             "debugMode",
                             (value) => {
-                                const section =
-                                    this.configContainer.querySelector<HTMLElement>(
-                                        ".fullscape-debug-settings",
-                                    );
+                                const section = this.configContainer.querySelector<HTMLElement>(
+                                    ".fullscape-debug-settings",
+                                );
                                 if (section) section.hidden = !value;
                                 this.saveOption("debugMode", value);
                             },
@@ -1250,8 +1322,9 @@ export class ConfigManager {
                                         DOM.container.querySelector("#fullscape-progress-parent"),
                                     );
                                 } else {
-                                    const root =
-                                        DOM.container.querySelector("#fullscape-progress-parent");
+                                    const root = DOM.container.querySelector(
+                                        "#fullscape-progress-parent",
+                                    );
                                     if (root) ReactDOM.unmountComponentAtNode(root);
                                 }
                             },
@@ -1416,6 +1489,7 @@ export class ConfigManager {
                         this.createToggle(strings.showLyricsTranslation, "showLyricsTranslation"),
                         this.createToggle(strings.showLyricsRomanization, "showLyricsRomanization"),
                         this.createToggle(strings.showLyricsFurigana, "showLyricsFurigana"),
+                        this.createOfflineFuriganaDictionaryCard(LOCALE),
                         this.createOptions(
                             strings.lyricsChineseConversion.setting,
                             {

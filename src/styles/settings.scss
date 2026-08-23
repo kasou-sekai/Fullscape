@@ -583,6 +583,20 @@ generic-modal:has(
         text-align: right;
     }
 
+    .offline-furigana-actions {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: flex-end;
+    }
+
+    .offline-furigana-status {
+        color: var(--secondary-text-color);
+        font-size: 12px;
+        margin-right: 2px;
+    }
+
     .setting-description {
         color: var(--secondary-text-color);
         font-size: 12px;

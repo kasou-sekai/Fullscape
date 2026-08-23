@@ -39,6 +39,19 @@
         },
         "showLyricsRomanization": "발음 표시",
         "showLyricsFurigana": "일본어 후리가나 표시",
+        "offlineFuriganaDictionary": {
+            "setting": "오프라인 후리가나 사전",
+            "description": "JmdictFurigana 사전(약 {size})을 선택적으로 다운로드할 수 있습니다. 가사 데이터와 별도로 저장되며 렌더링할 때만 사용되고 언제든지 삭제할 수 있습니다.",
+            "download": "다운로드",
+            "delete": "삭제",
+            "notDownloaded": "다운로드되지 않음",
+            "downloading": "다운로드 중…",
+            "deleting": "삭제 중…",
+            "ready": "설치됨({size})",
+            "downloaded": "다운로드 완료",
+            "deleted": "사전 삭제됨",
+            "error": "작업 실패"
+        },
         "lyricsSize": {
             "setting": "가사 글자 크기"
         },
