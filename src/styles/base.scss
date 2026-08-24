@@ -275,6 +275,32 @@
                 opacity 0.5s ease;
             opacity: 0.55;
         }
+        .rnp-lyrics-interlude {
+            position: absolute;
+            top: 0;
+            left: calc(var(--lyrics-left-bleed) + 0.25em);
+            z-index: 1;
+            display: flex;
+            // Keep the compact spacing of an ellipsis while scaling with the lyric size.
+            gap: 0.28em;
+            align-items: center;
+            height: var(--interlude-height, 1em);
+            padding: 0;
+            pointer-events: none;
+            opacity: 0;
+            transform-origin: center center;
+            transition: opacity 0.25s ease;
+            will-change: transform, opacity;
+
+            > span {
+                display: block;
+                width: max(0.42em, 8px);
+                height: max(0.42em, 8px);
+                border-radius: 50%;
+                background: var(--primary-color);
+                flex: 0 0 auto;
+            }
+        }
         .rnp-lyrics-line-seekable {
             cursor: pointer;
         }
@@ -547,6 +573,11 @@
             font-size: 18px;
             color: var(--tertiary-color);
             text-align: center;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .rnp-lyrics-interlude {
+                transition-duration: 120ms;
+            }
         }
     }
     #fad-lyrics-container.lyrics-unsynced {

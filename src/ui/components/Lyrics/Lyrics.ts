@@ -25,6 +25,7 @@ import type { LyricsCacheEntry, LyricsCacheKind } from "../../../services/lyrics
 import { mergeFuriganaAnnotations, parseFuriganaMarkup } from "../../../utils/furigana";
 import { fetchDictionaryFurigana } from "../../../services/dictionary-furigana";
 import { preloadOfflineFuriganaDictionary } from "../../../services/offline-furigana-dictionary";
+import { getAudioAnalysis } from "../../../services/audio-analysis";
 import type { FuriganaAnnotation, FuriganaRenderData } from "../../../utils/furigana";
 import {
     convertChineseText,
@@ -40,6 +41,12 @@ type LyricsTrack = TrackInfo & {
 type TimedLyricLine = {
     index: number;
     time: number;
+};
+type LyricInterlude = {
+    start: number;
+    end: number;
+    anchorIndex: number;
+    nextIndex: number;
 };
 type KaraokeWordRenderState = {
     node: HTMLElement;
@@ -86,6 +93,10 @@ export class Lyrics {
     private static readonly SHARED_SYNC_MAX_POLL_MS = 5000;
     private static readonly LINE_RENDER_OVERSCAN = 0.5;
     private static readonly QQ_MUSIC_RENDER_ADVANCE_MS = 200;
+    private static readonly INTERLUDE_MIN_GAP_MS = 4000;
+    private static readonly INTERLUDE_FALLBACK_LINE_DURATION_MS = 2000;
+    private static readonly INTERLUDE_BREATH_BEATS = 8;
+    private static readonly INTERLUDE_DEFAULT_BPM = 120;
     private static readonly CACHE_KINDS: LyricsCacheKind[] = [
         "enhanced",
         "enhanced-relaxed",
@@ -98,6 +109,10 @@ export class Lyrics {
     private static lyricsRoot: HTMLElement | null = null;
     private static lineNodes: HTMLElement[] = [];
     private static timedLines: TimedLyricLine[] = [];
+    private static interludes: LyricInterlude[] = [];
+    private static activeInterlude: LyricInterlude | null = null;
+    private static interludeNode: HTMLElement | null = null;
+    private static interludeDotNodes: HTMLElement[] = [];
     private static karaokeWordsByLine: KaraokeWordRenderState[][] = [];
     private static karaokeFuriganaByLine: KaraokeFuriganaRenderState[][] = [];
     private static lineHeights: number[] = [];
@@ -129,6 +144,8 @@ export class Lyrics {
     };
     private static loadSequence = 0;
     private static currentTrackUri: string | null = null;
+    private static interludeBpm: number | null = null;
+    private static interludeBpmTrackUri: string | null = null;
     private static refetchAttempt = 0;
     private static refetchTimer: ReturnType<typeof setTimeout> | null = null;
     private static sharedSyncTimer: ReturnType<typeof setTimeout> | null = null;
@@ -168,6 +185,10 @@ export class Lyrics {
         this.lineNodes = [];
         this.lineContentNodes = [];
         this.timedLines = [];
+        this.interludes = [];
+        this.activeInterlude = null;
+        this.interludeNode = null;
+        this.interludeDotNodes = [];
         this.karaokeWordsByLine = [];
         this.karaokeFuriganaByLine = [];
         this.lineHeights = [];
@@ -182,6 +203,8 @@ export class Lyrics {
         this.lastStatus = "unavailable";
         this.resetDiagnostics();
         this.currentTrackUri = null;
+        this.interludeBpm = null;
+        this.interludeBpmTrackUri = null;
         this.clearRefetch();
         this.stopSharedCacheSync();
         this.stopAllBridgeLeases();
@@ -239,6 +262,7 @@ export class Lyrics {
             this.renderStatus("Lyrics unavailable", true);
             return;
         }
+        this.loadInterludeTempo(trackUri);
         const bypassAutomaticSharedCache = force !== "none";
         if (bypassAutomaticSharedCache) this.stopSharedCacheSync();
         else this.startSharedCacheSync();
@@ -1061,6 +1085,10 @@ export class Lyrics {
         this.lineNodes = [];
         this.lineContentNodes = [];
         this.timedLines = [];
+        this.interludes = [];
+        this.activeInterlude = null;
+        this.interludeNode = null;
+        this.interludeDotNodes = [];
         this.karaokeWordsByLine = [];
         this.karaokeFuriganaByLine = [];
         this.lineHeights = [];
@@ -1106,6 +1134,8 @@ export class Lyrics {
         this.timedLines = lines.flatMap((line, index) =>
             line.time === null ? [] : [{ index, time: line.time }],
         );
+        this.interludes = this.buildInterludes(lines);
+        this.activeInterlude = null;
         this.lastStatus = this.isSynced ? "synced" : "unsynced";
         this.diagnostics = {
             total: lines.length,
@@ -1221,6 +1251,9 @@ export class Lyrics {
         this.container.innerHTML = `
             <div class="lyrics-wrapper">
                 <div class="rnp-lyrics${scriptClass}"${language}>
+                    <div class="rnp-lyrics-interlude" aria-hidden="true">
+                        <span></span><span></span><span></span>
+                    </div>
                     ${body}
                 </div>
             </div>`;
@@ -1231,6 +1264,12 @@ export class Lyrics {
         this.lineContentNodes = this.lineNodes.map((node) =>
             node.querySelector<HTMLElement>(".rnp-lyrics-line-content"),
         );
+        this.interludeNode = this.container.querySelector<HTMLElement>(".rnp-lyrics-interlude");
+        this.interludeDotNodes = this.interludeNode
+            ? Array.from(this.interludeNode.children).filter(
+                  (node): node is HTMLElement => node instanceof HTMLElement,
+              )
+            : [];
         this.requestDictionaryFurigana(originalLyricsText);
         this.buildKaraokeWordCache();
         this.setupLyricsInteraction();
@@ -1242,6 +1281,7 @@ export class Lyrics {
         this.stabilizeLineWrapping();
         this.measureHeights();
         this.applyTransforms(true);
+        this.updateInterludeDots(this.getSynchronizedPlaybackProgress());
         this.setupResizeObserver();
     }
 
@@ -1711,15 +1751,18 @@ export class Lyrics {
     private static updateActive(progress: number) {
         if (!this.isSynced) return;
         if (!this.container || !this.lines.length) return;
-        const nextIndex = this.findActiveLineIndex(progress);
+        const nextInterlude = this.findActiveInterlude(progress);
+        const nextIndex = nextInterlude ? -1 : this.findActiveLineIndex(progress);
 
-        if (nextIndex === this.activeIndex) {
+        if (nextIndex === this.activeIndex && nextInterlude === this.activeInterlude) {
+            this.updateInterludeDots(progress);
             this.updateKaraokeProgress(progress);
             return;
         }
 
         const previousIndex = this.activeIndex;
         this.activeIndex = nextIndex;
+        this.activeInterlude = nextInterlude;
         if (previousIndex !== nextIndex) this.resetKaraokeLine(previousIndex);
         if (this.manualScrollActive) {
             this.lineNodes.forEach((node, index) =>
@@ -1728,6 +1771,7 @@ export class Lyrics {
         } else {
             this.applyTransforms();
         }
+        this.updateInterludeDots(progress);
         this.updateKaraokeProgress(progress);
     }
 
@@ -1768,6 +1812,155 @@ export class Lyrics {
             }
         }
         return activeIndex;
+    }
+
+    private static findActiveInterlude(progress: number) {
+        let low = 0;
+        let high = this.interludes.length - 1;
+        while (low <= high) {
+            const middle = (low + high) >> 1;
+            const interlude = this.interludes[middle];
+            if (progress < interlude.start) {
+                high = middle - 1;
+            } else if (progress >= interlude.end) {
+                low = middle + 1;
+            } else {
+                return interlude;
+            }
+        }
+        return null;
+    }
+
+    private static loadInterludeTempo(trackUri: string) {
+        if (this.interludeBpmTrackUri === trackUri) return;
+        this.interludeBpmTrackUri = trackUri;
+        this.interludeBpm = null;
+        void getAudioAnalysis(trackUri).then((analysis) => {
+            if (this.interludeBpmTrackUri !== trackUri || this.currentTrackUri !== trackUri) return;
+            const tempo = analysis?.track.tempo ?? analysis?.sections[0]?.tempo;
+            this.interludeBpm = typeof tempo === "number" && Number.isFinite(tempo) ? tempo : null;
+        });
+    }
+
+    private static getInterludeBreatheDuration() {
+        const bpm = this.interludeBpm;
+        const normalizedBpm =
+            typeof bpm === "number" && Number.isFinite(bpm)
+                ? Math.min(220, Math.max(48, bpm))
+                : this.INTERLUDE_DEFAULT_BPM;
+        return (60000 / normalizedBpm) * this.INTERLUDE_BREATH_BEATS;
+    }
+
+    private static buildInterludes(lines: LyricLine[]) {
+        const timedLines = lines.flatMap((line, index) =>
+            line.time === null ? [] : [{ index, time: line.time }],
+        );
+        const interludes: LyricInterlude[] = [];
+
+        for (let index = 0; index < timedLines.length; index += 1) {
+            const next = timedLines[index];
+            const previous = timedLines[index - 1];
+            if (!previous && next.index !== 0) continue;
+            if (previous && next.index !== previous.index + 1) continue;
+
+            const gapStart = previous ? this.getLyricLineEnd(lines[previous.index], next.time) : 0;
+            const gapEnd = Math.max(gapStart, next.time);
+            if (gapEnd - gapStart < this.INTERLUDE_MIN_GAP_MS) continue;
+
+            interludes.push({
+                start: gapStart,
+                end: gapEnd,
+                anchorIndex: previous?.index ?? -1,
+                nextIndex: next.index,
+            });
+        }
+        return interludes;
+    }
+
+    private static getLyricLineEnd(line: LyricLine, nextTime: number) {
+        if (line.time === null) return nextTime;
+        const timedWordEnd = (line.words ?? []).reduce((end, word) => {
+            const wordEnd = word.time + Math.max(0, word.duration);
+            return Number.isFinite(wordEnd) ? Math.max(end, wordEnd) : end;
+        }, line.time);
+        const explicitEnd =
+            typeof line.duration === "number" && line.duration > 0
+                ? line.time + line.duration
+                : line.time;
+        const measuredEnd = Math.max(timedWordEnd, explicitEnd);
+        if (measuredEnd > line.time) return Math.min(nextTime, measuredEnd);
+
+        // Plain LRC/Spotify lines do not carry an end timestamp. Keep the line
+        // readable for a short moment, then use the remainder as the interlude.
+        const fallbackDuration = Math.min(
+            this.INTERLUDE_FALLBACK_LINE_DURATION_MS,
+            Math.max(0, (nextTime - line.time) / 2),
+        );
+        return Math.min(nextTime, line.time + fallbackDuration);
+    }
+
+    private static updateInterludeDots(progress: number) {
+        if (!this.interludeNode) return;
+        const interlude = this.activeInterlude;
+        if (!interlude || this.manualScrollActive) {
+            this.interludeNode.style.opacity = "0";
+            this.interludeNode.style.setProperty("--interlude-scale", "0");
+            this.interludeDotNodes.forEach((node) => node.style.setProperty("opacity", "0"));
+            return;
+        }
+
+        const duration = Math.max(1, interlude.end - interlude.start);
+        const elapsed = Math.min(duration, Math.max(0, progress - interlude.start));
+        const remaining = duration - elapsed;
+        const reducedMotion =
+            typeof window !== "undefined" &&
+            typeof window.matchMedia === "function" &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        let scale = 0.85;
+        let globalOpacity = 1;
+
+        if (elapsed < 500) {
+            globalOpacity = 0;
+        } else if (elapsed < 1000) {
+            globalOpacity = (elapsed - 500) / 500;
+        }
+        if (remaining < 375) globalOpacity *= Math.max(0, remaining / 375);
+
+        if (!reducedMotion) {
+            const breatheDuration = this.getInterludeBreatheDuration();
+            scale *= Math.sin(1.5 * Math.PI - (elapsed / breatheDuration) * 2 * Math.PI) / 20 + 1;
+            if (elapsed < 2000) scale *= 1 - 2 ** (-10 * (elapsed / 2000));
+            if (remaining < 750) {
+                const endProgress = (750 - remaining) / 750 / 2;
+                const c1 = 1.70158;
+                const c2 = c1 * 1.525;
+                const eased =
+                    endProgress < 0.5
+                        ? ((2 * endProgress) ** 2 * ((c2 + 1) * 2 * endProgress - c2)) / 2
+                        : ((2 * endProgress - 2) ** 2 * ((c2 + 1) * (endProgress * 2 - 2) + c2) +
+                              2) /
+                          2;
+                scale *= Math.max(0, 1 - eased);
+            }
+        }
+
+        const dotsDuration = Math.max(1, duration - 750);
+        const dotOpacity = (offset: number) =>
+            Math.max(0.25, Math.min(1, (((elapsed - offset) * 3) / dotsDuration) * 0.75));
+        const opacities = [
+            dotOpacity(0),
+            dotOpacity(dotsDuration / 3),
+            dotOpacity((dotsDuration / 3) * 2),
+        ];
+
+        this.interludeNode.style.opacity = "1";
+        this.interludeNode.style.setProperty("--interlude-scale", `${Math.max(0, scale)}`);
+        this.interludeDotNodes.forEach((node, index) => {
+            node.style.setProperty(
+                "opacity",
+                `${Math.max(0, Math.min(1, globalOpacity * (opacities[index] ?? 0.25)))}`,
+            );
+        });
     }
 
     private static buildKaraokeWordCache() {
@@ -2174,7 +2367,10 @@ export class Lyrics {
         this.manualScrollTargetPosition = -1;
         this.manualScrollRenderPosition = -1;
         this.lyricsRoot?.classList.remove("rnp-lyrics-interacting");
-        if (apply && this.isSynced) this.applyTransforms(!wasManualScrollActive);
+        if (apply && this.isSynced) {
+            this.applyTransforms(!wasManualScrollActive);
+            this.updateInterludeDots(this.getSynchronizedPlaybackProgress());
+        }
     }
 
     private static applyTransforms(skipAnimation = false) {
@@ -2197,6 +2393,8 @@ export class Lyrics {
         const containerHeight = this.containerHeight || lyricsRoot.clientHeight || 1;
         const centerY = containerHeight * 0.38;
         const baseIndent = Math.max(12, Math.min(36, fontSize * 0.8));
+        const interludeHeight = Math.max(16, fontSize);
+        const interludeLineGap = baseGap * 1.5;
 
         type LyricTransform = {
             top: number;
@@ -2234,6 +2432,79 @@ export class Lyrics {
             };
             const delayByOffset = (offset: number) =>
                 this.manualScrollActive ? 0 : Math.min(6, offset) * 45;
+
+            if (this.activeInterlude && !this.manualScrollActive) {
+                const { anchorIndex, nextIndex } = this.activeInterlude;
+                const interludeTop = centerY - interludeHeight / 2;
+                if (this.interludeNode) {
+                    this.interludeNode.style.setProperty(
+                        "--interlude-height",
+                        `${interludeHeight}px`,
+                    );
+                    this.interludeNode.style.top = "0";
+                    this.interludeNode.style.transform = `translate3d(0, ${interludeTop}px, 0) scale(var(--interlude-scale, 0))`;
+                }
+
+                const getVisualHeight = (index: number, scale: number) =>
+                    (this.lineHeights[index] || fontSize) * scale;
+                const getVisualCenter = (index: number, transform: LyricTransform) =>
+                    transform.top + (this.lineHeights[index] || fontSize) / 2;
+                const placeLine = (index: number, center: number, offset: number) => {
+                    const height = this.lineHeights[index] || fontSize;
+                    transforms[index] = {
+                        top: center - height / 2,
+                        scale: scaleByOffset(offset),
+                        blur: blurByOffset(offset),
+                        opacity: opacityByOffset(offset),
+                        delay: delayByOffset(offset),
+                        translate: translateForLine(index, offset),
+                    };
+                };
+
+                if (anchorIndex >= 0) {
+                    const anchorScale = scaleByOffset(1);
+                    const anchorHeight = getVisualHeight(anchorIndex, anchorScale);
+                    placeLine(
+                        anchorIndex,
+                        centerY - interludeHeight / 2 - interludeLineGap - anchorHeight / 2,
+                        1,
+                    );
+                    for (let i = anchorIndex - 1; i >= 0; i -= 1) {
+                        const previous = transforms[i + 1];
+                        const offset = anchorIndex - i + 1;
+                        const scale = scaleByOffset(offset);
+                        const previousCenter = getVisualCenter(i + 1, previous);
+                        const previousHeight = getVisualHeight(i + 1, previous.scale);
+                        const height = getVisualHeight(i, scale);
+                        placeLine(
+                            i,
+                            previousCenter - previousHeight / 2 - interludeLineGap - height / 2,
+                            offset,
+                        );
+                    }
+                }
+
+                const nextScale = scaleByOffset(1);
+                const nextHeight = getVisualHeight(nextIndex, nextScale);
+                placeLine(
+                    nextIndex,
+                    centerY + interludeHeight / 2 + interludeLineGap + nextHeight / 2,
+                    1,
+                );
+                for (let i = nextIndex + 1; i < this.lineNodes.length; i += 1) {
+                    const previous = transforms[i - 1];
+                    const offset = i - nextIndex + 1;
+                    const previousCenter = getVisualCenter(i - 1, previous);
+                    const previousHeight = getVisualHeight(i - 1, previous.scale);
+                    const height = getVisualHeight(i, scaleByOffset(offset));
+                    placeLine(
+                        i,
+                        previousCenter + previousHeight / 2 + interludeLineGap + height / 2,
+                        offset,
+                    );
+                }
+                return transforms;
+            }
 
             if (!hasActive) {
                 const firstHeight = this.lineHeights[0] || fontSize * 1.1;
@@ -2322,6 +2593,11 @@ export class Lyrics {
                 translate:
                     transform.translate + (to[index].translate - transform.translate) * fraction,
             }));
+        }
+
+        if (!this.activeInterlude || this.manualScrollActive) {
+            this.interludeNode?.style.setProperty("opacity", "0");
+            this.interludeNode?.style.setProperty("--interlude-scale", "0");
         }
 
         this.lineNodes.forEach((node, idx) => {
