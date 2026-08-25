@@ -99,8 +99,10 @@ export class Lyrics {
     private static readonly INTERLUDE_NORMAL_EXTENSION_MS = 4000;
     private static readonly INTERLUDE_MAX_MAD_RATIO = 0.35;
     private static readonly INTERLUDE_MIN_INLIER_RATIO = 0.65;
-    private static readonly INTERLUDE_METADATA_PATTERN =
-        /(?:作词|作曲|词曲|编曲|制作人|制作发行|音乐制作|音乐总监|发行|录音|混音|母带|监制|和声|配唱|人声编辑|录音助理|键盘|吉他|贝斯|贝司|鼓手|鼓|长笛|提琴|录音棚|录音室|版权|著作权|原唱|翻唱|lyrics\s+by|written\s+by|composed\s+by|arranged\s+by|produced\s+by|recorded\s+by|mixed\s+by|mastered\s+by|vocals?|guitars?|bass|drums?|keyboards?|label|copyright|all\s+rights\s+reserved)/iu;
+    private static readonly INTERLUDE_CREDIT_ROLE_PATTERN =
+        /^(?:作词|作曲|词曲|编曲|制作人|制作发行|音乐制作|音乐总监|发行|录音|人声录音|混音|母带|监制|和声|配唱|人声编辑|录音助理|键盘|吉他|贝斯|贝司|鼓手|鼓|长笛|提琴|录音棚|录音室|原唱|翻唱|作詞|編曲|演奏|録音|混音)\s*[:：]\s*\S/iu;
+    private static readonly INTERLUDE_CREDIT_PHRASE_PATTERN =
+        /^(?:lyrics?|written|composed|arranged|produced|recorded|mixed|mastered|performed|vocals?)\s+by\s+\S/iu;
     private static readonly INTERLUDE_COPYRIGHT_PATTERN =
         /(?:未经著作权人许可|不得翻唱翻录重制|all\s+rights\s+reserved|[©℗®])/iu;
     private static readonly INTERLUDE_BREATH_BEATS = 8;
@@ -1866,12 +1868,49 @@ export class Lyrics {
         return hasTimedWords || (typeof line.duration === "number" && line.duration > 0);
     }
 
-    private static isLikelyLyricsMetadata(line: LyricLine) {
-        const text = line.text.replace(/\s+/g, " ").trim();
+    private static normalizeMetadataText(text: string) {
+        return text.replace(/\s+/g, " ").trim();
+    }
+
+    private static isCreditLikeLyrics(line: LyricLine) {
+        const text = this.normalizeMetadataText(line.text);
         return (
-            this.INTERLUDE_METADATA_PATTERN.test(text) ||
-            this.INTERLUDE_COPYRIGHT_PATTERN.test(text)
+            this.INTERLUDE_CREDIT_ROLE_PATTERN.test(text) ||
+            this.INTERLUDE_CREDIT_PHRASE_PATTERN.test(text)
         );
+    }
+
+    private static getLyricsMetadataIndexes(lines: LyricLine[]) {
+        const metadataIndexes = new Set<number>();
+        const creditLike = lines.map((line) => this.isCreditLikeLyrics(line));
+        const boundaryWindow = Math.max(2, Math.ceil(lines.length * 0.1));
+
+        for (let start = 0; start < creditLike.length; ) {
+            if (!creditLike[start]) {
+                start += 1;
+                continue;
+            }
+
+            let end = start;
+            while (end + 1 < creditLike.length && creditLike[end + 1]) end += 1;
+            const isBoundaryBlock = start <= boundaryWindow || end >= lines.length - boundaryWindow - 1;
+            if (isBoundaryBlock) {
+                for (let index = start; index <= end; index += 1) metadataIndexes.add(index);
+            }
+            start = end + 1;
+        }
+
+        lines.forEach((line, index) => {
+            const isTailLine = index >= Math.max(0, lines.length - boundaryWindow);
+            if (
+                isTailLine &&
+                this.INTERLUDE_COPYRIGHT_PATTERN.test(this.normalizeMetadataText(line.text))
+            ) {
+                metadataIndexes.add(index);
+            }
+        });
+
+        return metadataIndexes;
     }
 
     private static getMedian(values: number[]) {
@@ -1883,7 +1922,11 @@ export class Lyrics {
             : ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
     }
 
-    private static getPlainLyricsNormalGap(lines: LyricLine[], timedLines: TimedLyricLine[]) {
+    private static getPlainLyricsNormalGap(
+        lines: LyricLine[],
+        timedLines: TimedLyricLine[],
+        metadataIndexes: ReadonlySet<number>,
+    ) {
         if (lines.some((line) => this.hasExplicitLyricEnd(line))) return null;
 
         const intervals = timedLines.flatMap((current, index) => {
@@ -1891,8 +1934,8 @@ export class Lyrics {
             if (
                 !previous ||
                 current.index !== previous.index + 1 ||
-                this.isLikelyLyricsMetadata(lines[previous.index]) ||
-                this.isLikelyLyricsMetadata(lines[current.index])
+                metadataIndexes.has(previous.index) ||
+                metadataIndexes.has(current.index)
             ) {
                 return [];
             }
@@ -1923,7 +1966,12 @@ export class Lyrics {
         const timedLines = lines.flatMap((line, index) =>
             line.time === null ? [] : [{ index, time: line.time }],
         );
-        const plainLyricsNormalGap = this.getPlainLyricsNormalGap(lines, timedLines);
+        const metadataIndexes = this.getLyricsMetadataIndexes(lines);
+        const plainLyricsNormalGap = this.getPlainLyricsNormalGap(
+            lines,
+            timedLines,
+            metadataIndexes,
+        );
         const interludes: LyricInterlude[] = [];
 
         for (let index = 0; index < timedLines.length; index += 1) {
@@ -1933,8 +1981,7 @@ export class Lyrics {
             if (previous && next.index !== previous.index + 1) continue;
             if (
                 previous &&
-                (this.isLikelyLyricsMetadata(lines[previous.index]) ||
-                    this.isLikelyLyricsMetadata(lines[next.index]))
+                (metadataIndexes.has(previous.index) || metadataIndexes.has(next.index))
             ) {
                 continue;
             }
