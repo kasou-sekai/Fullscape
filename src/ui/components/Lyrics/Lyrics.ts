@@ -95,6 +95,14 @@ export class Lyrics {
     private static readonly QQ_MUSIC_RENDER_ADVANCE_MS = 200;
     private static readonly INTERLUDE_MIN_GAP_MS = 4000;
     private static readonly INTERLUDE_FALLBACK_LINE_DURATION_MS = 2000;
+    private static readonly INTERLUDE_MIN_RELIABLE_INTERVALS = 5;
+    private static readonly INTERLUDE_NORMAL_EXTENSION_MS = 4000;
+    private static readonly INTERLUDE_MAX_MAD_RATIO = 0.35;
+    private static readonly INTERLUDE_MIN_INLIER_RATIO = 0.65;
+    private static readonly INTERLUDE_METADATA_PATTERN =
+        /(?:作词|作曲|词曲|编曲|制作人|制作发行|音乐制作|音乐总监|发行|录音|混音|母带|监制|和声|配唱|人声编辑|录音助理|键盘|吉他|贝斯|贝司|鼓手|鼓|长笛|提琴|录音棚|录音室|版权|著作权|原唱|翻唱|lyrics\s+by|written\s+by|composed\s+by|arranged\s+by|produced\s+by|recorded\s+by|mixed\s+by|mastered\s+by|vocals?|guitars?|bass|drums?|keyboards?|label|copyright|all\s+rights\s+reserved)/iu;
+    private static readonly INTERLUDE_COPYRIGHT_PATTERN =
+        /(?:未经著作权人许可|不得翻唱翻录重制|all\s+rights\s+reserved|[©℗®])/iu;
     private static readonly INTERLUDE_BREATH_BEATS = 8;
     private static readonly INTERLUDE_DEFAULT_BPM = 120;
     private static readonly CACHE_KINDS: LyricsCacheKind[] = [
@@ -1851,10 +1859,71 @@ export class Lyrics {
         return (60000 / normalizedBpm) * this.INTERLUDE_BREATH_BEATS;
     }
 
+    private static hasExplicitLyricEnd(line: LyricLine) {
+        const hasTimedWords = (line.words ?? []).some(
+            (word) => Number.isFinite(word.time) && word.duration > 0,
+        );
+        return hasTimedWords || (typeof line.duration === "number" && line.duration > 0);
+    }
+
+    private static isLikelyLyricsMetadata(line: LyricLine) {
+        const text = line.text.replace(/\s+/g, " ").trim();
+        return (
+            this.INTERLUDE_METADATA_PATTERN.test(text) ||
+            this.INTERLUDE_COPYRIGHT_PATTERN.test(text)
+        );
+    }
+
+    private static getMedian(values: number[]) {
+        if (!values.length) return null;
+        const sorted = [...values].sort((first, second) => first - second);
+        const middle = Math.floor(sorted.length / 2);
+        return sorted.length % 2
+            ? sorted[middle]
+            : ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
+    }
+
+    private static getPlainLyricsNormalGap(lines: LyricLine[], timedLines: TimedLyricLine[]) {
+        if (lines.some((line) => this.hasExplicitLyricEnd(line))) return null;
+
+        const intervals = timedLines.flatMap((current, index) => {
+            const previous = timedLines[index - 1];
+            if (
+                !previous ||
+                current.index !== previous.index + 1 ||
+                this.isLikelyLyricsMetadata(lines[previous.index]) ||
+                this.isLikelyLyricsMetadata(lines[current.index])
+            ) {
+                return [];
+            }
+            const interval = current.time - previous.time;
+            return interval > 0 ? [interval] : [];
+        });
+        if (intervals.length < this.INTERLUDE_MIN_RELIABLE_INTERVALS) return null;
+
+        const median = this.getMedian(intervals);
+        if (!median || median <= 0) return null;
+        const deviations = intervals.map((interval) => Math.abs(interval - median));
+        const mad = this.getMedian(deviations) ?? Number.POSITIVE_INFINITY;
+        const normalBand = Math.max(1500, median * this.INTERLUDE_MAX_MAD_RATIO);
+        const inlierRatio =
+            intervals.filter((interval) => Math.abs(interval - median) <= normalBand).length /
+            intervals.length;
+        if (
+            mad > median * this.INTERLUDE_MAX_MAD_RATIO ||
+            inlierRatio < this.INTERLUDE_MIN_INLIER_RATIO
+        ) {
+            return null;
+        }
+
+        return median + this.INTERLUDE_NORMAL_EXTENSION_MS;
+    }
+
     private static buildInterludes(lines: LyricLine[]) {
         const timedLines = lines.flatMap((line, index) =>
             line.time === null ? [] : [{ index, time: line.time }],
         );
+        const plainLyricsNormalGap = this.getPlainLyricsNormalGap(lines, timedLines);
         const interludes: LyricInterlude[] = [];
 
         for (let index = 0; index < timedLines.length; index += 1) {
@@ -1862,8 +1931,40 @@ export class Lyrics {
             const previous = timedLines[index - 1];
             if (!previous && next.index !== 0) continue;
             if (previous && next.index !== previous.index + 1) continue;
+            if (
+                previous &&
+                (this.isLikelyLyricsMetadata(lines[previous.index]) ||
+                    this.isLikelyLyricsMetadata(lines[next.index]))
+            ) {
+                continue;
+            }
 
-            const gapStart = previous ? this.getLyricLineEnd(lines[previous.index], next.time) : 0;
+            if (
+                previous &&
+                plainLyricsNormalGap !== null &&
+                next.time - previous.time <= plainLyricsNormalGap
+            ) {
+                continue;
+            }
+            if (
+                previous &&
+                plainLyricsNormalGap === null &&
+                !this.hasExplicitLyricEnd(lines[previous.index])
+            ) {
+                continue;
+            }
+
+            const plainLyricsMinimumDuration =
+                plainLyricsNormalGap === null
+                    ? null
+                    : Math.max(0, plainLyricsNormalGap - this.INTERLUDE_NORMAL_EXTENSION_MS);
+            const gapStart = previous
+                ? this.getLyricLineEnd(
+                      lines[previous.index],
+                      next.time,
+                      plainLyricsMinimumDuration,
+                  )
+                : 0;
             const gapEnd = Math.max(gapStart, next.time);
             if (gapEnd - gapStart < this.INTERLUDE_MIN_GAP_MS) continue;
 
@@ -1877,7 +1978,11 @@ export class Lyrics {
         return interludes;
     }
 
-    private static getLyricLineEnd(line: LyricLine, nextTime: number) {
+    private static getLyricLineEnd(
+        line: LyricLine,
+        nextTime: number,
+        plainLyricsMinimumDuration: number | null = null,
+    ) {
         if (line.time === null) return nextTime;
         const timedWordEnd = (line.words ?? []).reduce((end, word) => {
             const wordEnd = word.time + Math.max(0, word.duration);
@@ -1891,10 +1996,14 @@ export class Lyrics {
         if (measuredEnd > line.time) return Math.min(nextTime, measuredEnd);
 
         // Plain LRC/Spotify lines do not carry an end timestamp. Keep the line
-        // readable for a short moment, then use the remainder as the interlude.
+        // readable for the normal cadence when it is reliable, then use the
+        // remainder as the interlude.
         const fallbackDuration = Math.min(
-            this.INTERLUDE_FALLBACK_LINE_DURATION_MS,
-            Math.max(0, (nextTime - line.time) / 2),
+            Math.max(0, nextTime - line.time),
+            Math.max(
+                this.INTERLUDE_FALLBACK_LINE_DURATION_MS,
+                plainLyricsMinimumDuration ?? 0,
+            ),
         );
         return Math.min(nextTime, line.time + fallbackDuration);
     }
