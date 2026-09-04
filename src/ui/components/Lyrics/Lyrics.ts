@@ -2058,7 +2058,7 @@ export class Lyrics {
     private static updateInterludeDots(progress: number) {
         if (!this.interludeNode) return;
         const interlude = this.activeInterlude;
-        if (!interlude || this.manualScrollActive) {
+        if (!interlude) {
             this.interludeNode.style.opacity = "0";
             this.interludeNode.style.setProperty("--interlude-scale", "0");
             this.interludeDotNodes.forEach((node) => node.style.setProperty("opacity", "0"));
@@ -2436,7 +2436,10 @@ export class Lyrics {
                 if (!this.isSynced || !this.lineNodes.length) return;
                 event.preventDefault();
                 if (!this.manualScrollActive) {
-                    const startPosition = Math.max(this.activeIndex, 0);
+                    const startPosition = Math.max(
+                        this.activeInterlude?.anchorIndex ?? this.activeIndex,
+                        0,
+                    );
                     this.manualScrollTargetPosition = startPosition;
                     this.manualScrollRenderPosition = startPosition;
                 }
@@ -2634,7 +2637,7 @@ export class Lyrics {
                         const height = getVisualHeight(i, scale);
                         placeLine(
                             i,
-                            previousCenter - previousHeight / 2 - interludeLineGap - height / 2,
+                            previousCenter - previousHeight / 2 - baseGap - height / 2,
                             offset,
                         );
                     }
@@ -2655,7 +2658,7 @@ export class Lyrics {
                     const height = getVisualHeight(i, scaleByOffset(offset));
                     placeLine(
                         i,
-                        previousCenter + previousHeight / 2 + interludeLineGap + height / 2,
+                        previousCenter + previousHeight / 2 + baseGap + height / 2,
                         offset,
                     );
                 }
@@ -2751,7 +2754,46 @@ export class Lyrics {
             }));
         }
 
-        if (!this.activeInterlude || this.manualScrollActive) {
+        if (this.activeInterlude && this.manualScrollActive) {
+            const { anchorIndex, nextIndex } = this.activeInterlude;
+            const anchorTransform = transforms[anchorIndex];
+            const nextTransform = transforms[nextIndex];
+            if (anchorTransform && nextTransform) {
+                const anchorHeight =
+                    (this.lineHeights[anchorIndex] || fontSize) * anchorTransform.scale;
+                const currentGap = nextTransform.top - (anchorTransform.top + anchorHeight);
+                const desiredGap = interludeHeight + interludeLineGap * 2;
+                const extraGap = Math.max(0, desiredGap - currentGap);
+                if (extraGap > 0) {
+                    for (let index = nextIndex; index < transforms.length; index += 1) {
+                        transforms[index].top += extraGap;
+                    }
+                }
+                const interludeTop =
+                    transforms[anchorIndex].top +
+                    (this.lineHeights[anchorIndex] || fontSize) *
+                        transforms[anchorIndex].scale +
+                    interludeLineGap;
+                if (this.interludeNode) {
+                    this.interludeNode.style.setProperty(
+                        "--interlude-height",
+                        `${interludeHeight}px`,
+                    );
+                    this.interludeNode.style.top = "0";
+                    this.interludeNode.style.transform = `translate3d(0, ${interludeTop}px, 0) scale(var(--interlude-scale, 0))`;
+                }
+            } else if (anchorIndex < 0 && nextTransform && this.interludeNode) {
+                const interludeTop = nextTransform.top - interludeLineGap - interludeHeight;
+                this.interludeNode.style.setProperty(
+                    "--interlude-height",
+                    `${interludeHeight}px`,
+                );
+                this.interludeNode.style.top = "0";
+                this.interludeNode.style.transform = `translate3d(0, ${interludeTop}px, 0) scale(var(--interlude-scale, 0))`;
+            }
+        }
+
+        if (!this.activeInterlude) {
             this.interludeNode?.style.setProperty("opacity", "0");
             this.interludeNode?.style.setProperty("--interlude-scale", "0");
         }
