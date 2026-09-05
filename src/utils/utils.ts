@@ -1,10 +1,10 @@
 import HtmlSelectors from "./selectors";
 import WebAPI from "../services/web-api";
 
-let wasQueuePanelEnabled: boolean | null = null;
-let queuePanelSequence = 0;
-
 class Utils {
+    private static iconTransitionTokens = new WeakMap<HTMLElement, number>();
+    private static iconTransitionTargets = new WeakMap<HTMLElement, string>();
+
     static allNotExist() {
         const extraBar = HtmlSelectors.getExtraBarSelector();
 
@@ -40,17 +40,57 @@ class Utils {
         if (document.fullscreenElement) return document.exitFullscreen();
     }
 
-    /**
-     * Add fade animation on button click
-     * @param element The element to add fade animation
-     * @param animClass Fade animation type class
-     */
-    static fadeAnimation(element: HTMLElement, animClass = "fade-do") {
-        element.classList.remove(animClass);
-        element.classList.add(animClass);
-        setTimeout(() => {
-            element.classList.remove(animClass);
-        }, 800);
+    /** Fade the current control icon out before replacing it and fading the new icon in. */
+    static transitionIcon(element: HTMLElement, nextIcon: string, duration = 220) {
+        const pendingTarget = this.iconTransitionTargets.get(element);
+        if (pendingTarget === nextIcon) return Promise.resolve();
+        if (element.innerHTML === nextIcon && pendingTarget === undefined) {
+            return Promise.resolve();
+        }
+
+        if (element.innerHTML === nextIcon) {
+            this.iconTransitionTokens.set(
+                element,
+                (this.iconTransitionTokens.get(element) ?? 0) + 1,
+            );
+            this.iconTransitionTargets.delete(element);
+            element.classList.remove("fullscape-icon-transition-out", "fullscape-icon-transition-in");
+            return Promise.resolve();
+        }
+
+        const token = (this.iconTransitionTokens.get(element) ?? 0) + 1;
+        this.iconTransitionTokens.set(element, token);
+        this.iconTransitionTargets.set(element, nextIcon);
+        element.classList.remove("fullscape-icon-transition-in");
+        element.classList.add("fullscape-icon-transition-out");
+        // Force the browser to observe the outgoing state before the delayed swap.
+        void element.offsetWidth;
+
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            element.innerHTML = nextIcon;
+            element.classList.remove("fullscape-icon-transition-out");
+            this.iconTransitionTargets.delete(element);
+            return Promise.resolve();
+        }
+
+        return new Promise<void>((resolve) => {
+            window.setTimeout(() => {
+                if (this.iconTransitionTokens.get(element) !== token) {
+                    resolve();
+                    return;
+                }
+                element.innerHTML = nextIcon;
+                element.classList.remove("fullscape-icon-transition-out");
+                element.classList.add("fullscape-icon-transition-in");
+                window.setTimeout(() => {
+                    if (this.iconTransitionTokens.get(element) === token) {
+                        element.classList.remove("fullscape-icon-transition-in");
+                        this.iconTransitionTargets.delete(element);
+                    }
+                    resolve();
+                }, duration);
+            }, duration);
+        });
     }
 
     // Utility function to add a observer with wait for element support
@@ -169,54 +209,6 @@ class Utils {
             languages[lang] = translations[lang].langName;
         }
         return languages;
-    }
-
-    static toggleQueuePanel(myQueueButton: HTMLElement | null, enabled: boolean) {
-        const sequence = ++queuePanelSequence;
-        const originalQueueButton = HtmlSelectors.getOriginalQueueButton();
-        const rightPanel = HtmlSelectors.getRightPanel();
-        if (enabled) {
-            setTimeout(() => {
-                if (sequence !== queuePanelSequence || !Utils.isModeActivated()) return;
-                if (!originalQueueButton?.classList.contains("main-genericButton-buttonActive")) {
-                    originalQueueButton?.click();
-                    wasQueuePanelEnabled = false;
-                } else {
-                    wasQueuePanelEnabled = true;
-                }
-                setTimeout(() => {
-                    if (sequence !== queuePanelSequence || !Utils.isModeActivated()) return;
-                    rightPanel?.classList.add("fullscape-queue-panel");
-                    setTimeout(() => {
-                        if (sequence !== queuePanelSequence || !Utils.isModeActivated()) return;
-                        rightPanel?.classList.add("fullscape-transform-animation");
-                    }, 100);
-                }, 300);
-            }, 600);
-        } else {
-            if (wasQueuePanelEnabled != null && !wasQueuePanelEnabled) {
-                originalQueueButton?.click();
-            }
-            rightPanel?.style.setProperty("--queue-panel-x", "1000px");
-            wasQueuePanelEnabled = null;
-            myQueueButton?.classList.remove("button-active", "dot-after");
-            rightPanel?.classList.remove("fullscape-queue-panel", "fullscape-transform-animation");
-            document.body.classList.remove("fullscape-queue-panel-active");
-        }
-    }
-
-    static toggleQueue(queueButton: HTMLElement | null) {
-        const rightPanel = HtmlSelectors.getRightPanel();
-
-        if (document.body.classList.contains("fullscape-queue-panel-active")) {
-            rightPanel?.style.setProperty("--queue-panel-x", "1000px");
-            queueButton?.classList.remove("button-active", "dot-after");
-            document.body.classList.remove("fullscape-queue-panel-active");
-        } else {
-            rightPanel?.style.setProperty("--queue-panel-x", "0px");
-            queueButton?.classList.add("button-active", "dot-after");
-            document.body.classList.add("fullscape-queue-panel-active");
-        }
     }
 
     static getTimeFormatted() {

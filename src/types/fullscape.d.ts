@@ -9,6 +9,8 @@ export type Config = {
 
 export type BeatResponsePreset = "off" | "low" | "medium" | "high" | "custom";
 
+export type SideView = "lyrics" | "queue";
+
 export type Settings = {
     lyricsDisplay: boolean;
     thirdPartyLyrics: boolean;
@@ -24,6 +26,7 @@ export type Settings = {
     debugMode: boolean;
     progressBarDisplay: "never" | "mousemove" | "always";
     playerControls: "never" | "mousemove" | "always";
+    playModeControl: "mousemove" | "always";
     playbackTimelineResync: boolean;
     trimTitle: boolean;
     trimTitleUpNext: boolean;

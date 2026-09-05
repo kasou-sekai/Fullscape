@@ -2,6 +2,11 @@
     "langName": "日本語",
     "upnext": "次は",
     "unknownArtist": "不明なアーティスト",
+    "sideView": { "showQueue": "キューを表示", "showLyrics": "歌詞を表示", "unavailable": "この曲の歌詞は利用できません。" },
+    "playModes": { "list": "リストループ", "shuffle": "シャッフル", "single": "1曲リピート" },
+    "queue": {
+        "title": "キュー", "lyrics": "歌詞を表示", "current": "再生中", "upNext": "次に再生", "later": "後で再生", "empty": "キューは空です", "clear": "ユーザーキューを消去", "clearConfirm": "手動で追加した曲をすべて消去しますか？", "playNow": "今すぐ再生", "moveNext": "次に移動", "remove": "キューから削除", "openTrack": "曲を開く", "openArtist": "アーティストを開く", "openAlbum": "アルバムを開く", "playing": "再生中", "paused": "一時停止中", "manual": "手動追加", "context": "再生コンテキスト", "recommendation": "Spotify のおすすめ", "unknown": "Spotify キュー", "reorderUnavailable": "キューの順序は Spotify の現在の再生コンテキストに従います。", "actionUnavailable": "この Spotify クライアントではキュー操作を利用できません。"
+    },
     "settings": {
         "fullscapeConfig": "プラグイン設定",
         "exit": "終了",
@@ -59,6 +64,7 @@
         "generalHeader": "一般設定",
         "progressBar": "プログレスバー",
         "playerControls": "プレーヤーコントロール",
+        "playModeControl": "再生モードとキューのボタン",
         "trimTitle": "タイトルをトリミング",
         "trimTitleUpNext": "タイトルをトリミング (次は)",
         "trimAlbum": "アルバム名をトリミング",
@@ -255,6 +261,7 @@
                 "fullscreen": "再生画面を開くときにシステムの全画面表示を使います。",
                 "progressBar": "シークバーを常時表示、マウス移動時のみ表示、非表示から選びます。",
                 "playerControls": "再生・一時停止・前後の曲ボタンの表示タイミングを選びます。",
+                "playModeControl": "再生モードとキュー/歌詞ボタンを常に表示するか、マウス移動時に表示します。",
                 "showAlbum": "アルバム名を表示し、必要なら発売日も併記します。",
                 "icons": "再生情報の横に小さなアイコンを表示します。",
                 "trimTitle": "曲名から括弧内や末尾のバージョン表記を除きます。",

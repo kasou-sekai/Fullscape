@@ -1,0 +1,493 @@
+#fullscape-display {
+    #fullscape-queue-container {
+        position: absolute;
+        right: 0;
+        top: clamp(24px, 8vh, 96px);
+        bottom: clamp(24px, 8vh, 96px);
+        width: 50%;
+        height: auto;
+        min-width: 0;
+        min-height: 0;
+        box-sizing: border-box;
+        padding: 0 clamp(20px, 4vw, 72px) 0 24px;
+        color: var(--primary-color);
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+        transform: none;
+        z-index: 3;
+        transition:
+            opacity 220ms ease,
+            visibility 0s linear 220ms;
+    }
+
+    &.side-view-queue #fullscape-queue-container {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+        transition-delay: 0s;
+    }
+
+    &.side-view-queue #fad-lyrics-container {
+        visibility: hidden;
+        opacity: 0;
+        pointer-events: none;
+        transform: none;
+        transition:
+            opacity 160ms ease,
+            visibility 0s linear 160ms;
+    }
+
+    &.side-view-lyrics #fad-lyrics-container {
+        visibility: visible;
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    @keyframes fullscapeSideViewFadeIn {
+        from {
+            opacity: 0;
+        }
+        to {
+            opacity: 1;
+        }
+    }
+
+    &.side-view-transition-out #fad-lyrics-container,
+    &.side-view-transition-out #fullscape-queue-container {
+        visibility: visible;
+        opacity: 0 !important;
+        pointer-events: none;
+        transition: opacity 220ms ease;
+    }
+
+    &.side-view-transition-in.side-view-lyrics #fad-lyrics-container,
+    &.side-view-transition-in.side-view-queue #fullscape-queue-container {
+        visibility: visible;
+        animation: fullscapeSideViewFadeIn 220ms ease both;
+    }
+
+    .queue-shell {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
+        min-width: 0;
+        min-height: 0;
+        box-sizing: border-box;
+        padding: clamp(10px, 1.5vh, 20px) 0;
+        border-radius: 24px;
+        background:
+            linear-gradient(135deg, rgba(255, 255, 255, 0.075), transparent 32%),
+            rgba(12, 14, 18, 0.2);
+        backdrop-filter: blur(22px) saturate(125%);
+        box-shadow:
+            0 20px 70px rgba(0, 0, 0, 0.14),
+            0 1px 0 rgba(255, 255, 255, 0.11) inset;
+        overflow: hidden;
+    }
+
+    .queue-header,
+    .queue-footer {
+        display: flex;
+        flex: 0 0 auto;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding-inline: clamp(18px, 2vw, 30px);
+    }
+
+    .queue-header {
+        padding-bottom: 14px;
+    }
+
+    .queue-heading {
+        min-width: 0;
+
+        h2 {
+            margin: 2px 0 0;
+            color: var(--primary-color);
+            font-size: clamp(24px, 2.4vw, 38px);
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            line-height: 1.05;
+        }
+    }
+
+    .queue-eyebrow {
+        display: block;
+        color: var(--tertiary-color);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.14em;
+    }
+
+    .queue-icon-button,
+    .queue-more-button,
+    .queue-clear-button,
+    .queue-menu-item,
+    .queue-entry-main {
+        border: 0;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+    }
+
+    .queue-icon-button,
+    .queue-more-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 50%;
+        color: var(--primary-color);
+        transition:
+            background 160ms ease,
+            transform 160ms ease;
+
+        &:hover,
+        &:focus-visible {
+            background: rgba(255, 255, 255, 0.16);
+            transform: scale(1.05);
+        }
+
+        &:focus-visible,
+        &:focus {
+            outline: 2px solid var(--theme-main-color);
+            outline-offset: 3px;
+        }
+    }
+
+    .queue-icon-button {
+        width: 42px;
+        height: 42px;
+    }
+
+    .queue-icon-button svg {
+        width: 22px;
+        height: 22px;
+    }
+
+    .queue-scroll {
+        position: relative;
+        min-height: 0;
+        flex: 1 1 auto;
+        padding: 0 clamp(10px, 1vw, 18px) 12px;
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+
+        &::before,
+        &::after {
+            position: sticky;
+            z-index: 2;
+            display: block;
+            height: 18px;
+            margin-inline: -1px;
+            content: "";
+            pointer-events: none;
+        }
+
+        &::before {
+            top: 0;
+            margin-bottom: -18px;
+            background: linear-gradient(rgba(18, 20, 25, 0.25), transparent);
+            filter: blur(3px);
+        }
+
+        &::after {
+            bottom: 0;
+            margin-top: -18px;
+            background: linear-gradient(transparent, rgba(18, 20, 25, 0.35));
+            filter: blur(3px);
+        }
+    }
+
+    .queue-section {
+        margin: 0 0 22px;
+
+        h3 {
+            margin: 0 10px 8px;
+            color: var(--secondary-color);
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+    }
+
+    .queue-section-current {
+        margin-bottom: 18px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .queue-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .queue-empty {
+        margin: 6px 10px;
+        color: var(--tertiary-color);
+        font-size: 14px;
+    }
+
+    .queue-entry {
+        position: relative;
+        display: grid;
+        grid-template-columns: 48px minmax(0, 1fr) auto 34px;
+        gap: 11px;
+        align-items: center;
+        min-width: 0;
+        padding: 8px 8px 8px 10px;
+        border-radius: 13px;
+        transition:
+            background 150ms ease,
+            transform 150ms ease,
+            opacity 150ms ease;
+
+        &:hover,
+        &:focus-within {
+            background: rgba(255, 255, 255, 0.08);
+        }
+    }
+
+    .queue-entry-current {
+        background: rgba(var(--theme-color), 0.14);
+        box-shadow: 0 0 0 1px rgba(var(--theme-color), 0.16) inset;
+    }
+
+    .queue-entry-dragging {
+        opacity: 0.4;
+    }
+
+    .queue-entry-drag-target {
+        transform: translateY(-3px);
+        background: rgba(var(--theme-color), 0.22);
+    }
+
+    .queue-entry-cover {
+        display: block;
+        width: 48px;
+        height: 48px;
+        border-radius: 8px;
+        object-fit: cover;
+        box-shadow: 0 5px 18px rgba(0, 0, 0, 0.2);
+    }
+
+    .queue-entry-main {
+        display: block;
+        min-width: 0;
+        padding: 0;
+        background: transparent;
+        text-align: left;
+
+        &:focus-visible {
+            outline: 2px solid var(--theme-main-color);
+            outline-offset: 3px;
+            border-radius: 4px;
+        }
+    }
+
+    .queue-entry-details {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .queue-entry-title,
+    .queue-entry-artist,
+    .queue-entry-source {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .queue-entry-title {
+        color: var(--primary-color);
+        font-size: 15px;
+        font-weight: 650;
+    }
+
+    .queue-entry-current .queue-entry-title {
+        color: var(--theme-main-color);
+    }
+
+    .queue-entry-artist {
+        color: var(--secondary-color);
+        font-size: 13px;
+    }
+
+    .queue-entry-source {
+        color: var(--tertiary-color);
+        font-size: 11px;
+    }
+
+    .queue-entry-state {
+        display: inline-block;
+        min-width: 1em;
+        color: var(--theme-main-color);
+        font-size: 10px;
+    }
+
+    .queue-entry-duration {
+        color: var(--tertiary-color);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .queue-entry-actions {
+        position: relative;
+        display: flex;
+        justify-content: flex-end;
+    }
+
+    .queue-more-button {
+        width: 30px;
+        height: 30px;
+        background: transparent;
+        color: var(--secondary-color);
+        font-size: 14px;
+        letter-spacing: 0.08em;
+    }
+
+    .queue-entry-menu {
+        position: absolute;
+        z-index: 5;
+        top: calc(100% + 4px);
+        right: 0;
+        display: flex;
+        min-width: 160px;
+        flex-direction: column;
+        padding: 5px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 12px;
+        background: rgba(25, 27, 33, 0.94);
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(18px);
+    }
+
+    .queue-entry-menu[hidden] {
+        display: none;
+    }
+
+    .queue-menu-item {
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--primary-color);
+        text-align: left;
+        font-size: 13px;
+
+        &:hover,
+        &:focus-visible {
+            background: rgba(255, 255, 255, 0.1);
+            outline: none;
+        }
+
+        &:disabled {
+            color: var(--tertiary-color);
+            cursor: not-allowed;
+        }
+    }
+
+    .queue-drag-handle {
+        position: absolute;
+        left: -1px;
+        color: var(--tertiary-color);
+        font-size: 12px;
+        letter-spacing: -0.35em;
+        opacity: 0.8;
+        transform: rotate(90deg);
+    }
+
+    .queue-footer {
+        min-height: 34px;
+        color: var(--tertiary-color);
+        font-size: 11px;
+
+        > span {
+            max-width: 70%;
+        }
+    }
+
+    .queue-clear-button {
+        flex: 0 0 auto;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--secondary-color);
+        font-size: 12px;
+
+        &:hover,
+        &:focus-visible {
+            background: rgba(255, 255, 255, 0.15);
+            color: var(--primary-color);
+            outline: none;
+        }
+
+        &:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+        }
+    }
+
+    @media (max-width: 768px) {
+        #fullscape-queue-container {
+            width: 50%;
+            padding-inline: 10px 16px;
+        }
+
+        .queue-shell {
+            border-radius: 18px;
+        }
+
+        .queue-entry {
+            grid-template-columns: 40px minmax(0, 1fr) auto 30px;
+            gap: 8px;
+            padding-inline: 6px;
+        }
+
+        .queue-entry-cover {
+            width: 40px;
+            height: 40px;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        #fullscape-queue-container,
+        .queue-entry,
+        .queue-icon-button,
+        .queue-more-button {
+            transition: opacity 120ms ease, background 120ms ease;
+        }
+
+        #fullscape-queue-container {
+            transform: none;
+        }
+
+        &.side-view-queue #fullscape-queue-container {
+            transform: none;
+        }
+    }
+
+    @media (prefers-reduced-transparency: reduce) {
+        .queue-shell,
+        .queue-entry-menu {
+            background: rgba(25, 27, 33, 0.96);
+            backdrop-filter: none;
+        }
+    }
+
+    @media (prefers-contrast: more) {
+        .queue-shell,
+        .queue-entry {
+            border: 1px solid rgba(255, 255, 255, 0.28);
+        }
+    }
+}

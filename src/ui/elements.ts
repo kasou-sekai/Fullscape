@@ -17,9 +17,11 @@ export class DOM {
     static upNextSecondaryText: HTMLElement;
     static playingIcon: HTMLElement;
     static pausedIcon: HTMLElement;
+    static playMode: HTMLButtonElement;
+    static sideView: HTMLButtonElement;
     static nextControl: HTMLElement;
     static backControl: HTMLElement;
-    static queue: HTMLElement | null;
+    static queue: HTMLElement;
     static lyrics: HTMLElement;
     static coverImg = new Image();
     static backgroundImg = new Image();

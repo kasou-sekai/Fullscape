@@ -2,6 +2,11 @@
     "langName": "한국어",
     "upnext": "다음 곡",
     "unknownArtist": "알 수 없는 아티스트",
+    "sideView": { "showQueue": "대기열 표시", "showLyrics": "가사 표시", "unavailable": "이 트랙의 가사를 사용할 수 없습니다." },
+    "playModes": { "list": "목록 반복", "shuffle": "셔플", "single": "한 곡 반복" },
+    "queue": {
+        "title": "대기열", "lyrics": "가사 표시", "current": "재생 중", "upNext": "다음 재생", "later": "나중에 재생", "empty": "대기열이 비어 있습니다", "clear": "사용자 대기열 지우기", "clearConfirm": "수동으로 추가한 모든 곡을 지울까요?", "playNow": "지금 재생", "moveNext": "다음 곡으로 이동", "remove": "대기열에서 제거", "openTrack": "곡 열기", "openArtist": "아티스트 열기", "openAlbum": "앨범 열기", "playing": "재생 중", "paused": "일시정지됨", "manual": "수동 추가", "context": "재생 컨텍스트", "recommendation": "Spotify 추천", "unknown": "Spotify 대기열", "reorderUnavailable": "대기열 순서는 Spotify의 현재 재생 컨텍스트를 따릅니다.", "actionUnavailable": "현재 Spotify 클라이언트에서는 이 대기열 작업을 지원하지 않습니다."
+    },
     "settings": {
         "fullscapeConfig": "플러그인 설정",
         "exit": "종료",
@@ -59,6 +64,7 @@
         "generalHeader": "일반 설정",
         "progressBar": "진행 표시줄",
         "playerControls": "플레이어 제어",
+        "playModeControl": "재생 모드 및 대기열 버튼",
         "trimTitle": "제목 자르기",
         "trimTitleUpNext": "제목 자르기 (다음 곡)",
         "trimAlbum": "앨범 자르기",
@@ -255,6 +261,7 @@
                 "fullscreen": "재생 화면을 열 때 시스템 전체 화면을 사용합니다.",
                 "progressBar": "진행률 표시줄을 항상 표시하거나 마우스 이동 시 표시하거나 숨깁니다.",
                 "playerControls": "재생, 일시정지, 이전 및 다음 버튼의 표시 시점을 선택합니다.",
+                "playModeControl": "재생 모드 및 대기열/가사 버튼을 항상 표시하거나 마우스 이동 시 표시합니다.",
                 "showAlbum": "앨범 이름과 선택적으로 발매일을 표시합니다.",
                 "icons": "재생 정보 옆에 작은 아이콘을 표시합니다.",
                 "trimTitle": "현재 곡 제목에서 괄호 및 버전 문구를 제거합니다.",

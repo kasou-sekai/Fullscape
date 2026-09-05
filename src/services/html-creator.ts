@@ -2,6 +2,7 @@ import ICONS from "../constants";
 import CFM from "../utils/config";
 
 export const getHtmlContent = () => {
+    const controlsEnabled = true;
     return `
         <canvas id="fullscape-background"></canvas>
         <canvas id="fullscape-fluid-background" aria-hidden="true"></canvas>
@@ -48,7 +49,8 @@ export const getHtmlContent = () => {
 </div>`
          : ""
  }
-${CFM.get("lyricsDisplay") ? `<div id="fad-lyrics-container"></div>` : ""}
+<div id="fad-lyrics-container" aria-label="Lyrics"></div>
+<div id="fullscape-queue-container" aria-label="Queue" tabindex="-1"></div>
 <div id="fullscape-foreground">
     <div id="fullscape-art">
         <div id="fullscape-art-image" class="fullscape-background-fade">
@@ -81,11 +83,14 @@ ${CFM.get("lyricsDisplay") ? `<div id="fad-lyrics-container"></div>` : ""}
                 </div>
             </div>
             <div id="fullscape-progress-parent"></div>
-            <div id="fullscape-status" class="${CFM.get("playerControls") !== "never" ? "active" : ""}">
+            <div id="fullscape-status" class="${controlsEnabled ? "active" : ""}">
                 ${
-                    CFM.get("playerControls") !== "never"
+                    controlsEnabled
                         ? `
                     <div class="fullscape-controls-center fullscape-controls">
+                        <button class="fullscape-button" id="fullscape-play-mode" type="button">
+                            ${ICONS.APPLE_MUSIC_LIST_LOOP}
+                        </button>
                         <button class="fullscape-button" id="fullscape-back">
                             ${ICONS.APPLE_MUSIC_BACK}
                         </button>
@@ -94,6 +99,9 @@ ${CFM.get("lyricsDisplay") ? `<div id="fad-lyrics-container"></div>` : ""}
                         </button>
                         <button class="fullscape-button" id="fullscape-next">
                             ${ICONS.APPLE_MUSIC_NEXT}
+                        </button>
+                        <button class="fullscape-button" id="fullscape-side-view" type="button">
+                            ${ICONS.APPLE_MUSIC_LIST}
                         </button>
                     </div>`
                         : ""
