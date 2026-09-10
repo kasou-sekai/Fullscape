@@ -3,7 +3,12 @@ import translations from "../../../resources/strings";
 import ICONS from "../../../constants";
 import { DOM } from "../../elements";
 import { QueueAdapter, QueueEntry } from "../../../services/queue-adapter";
+import {
+    createOverflowScrollAnimation,
+    getOverflowScrollTiming,
+} from "../../../utils/overflow-scroll";
 import "./styles.scss";
+import { layoutQueue } from "./layout";
 
 type ArtworkOrigin = { uri: string; src: string; rect: DOMRect };
 
@@ -11,6 +16,159 @@ type ArtworkOrigin = { uri: string; src: string; rect: DOMRect };
 export class Queue {
     private static container: HTMLElement | null = null;
     private static revision = "";
+    private static layoutObserver: ResizeObserver | null = null;
+    private static deferredUpdate = false;
+    private static tileOverflowAnimations = new WeakMap<HTMLElement, Animation[]>();
+    private static scrollObserver: IntersectionObserver | null = null;
+    private static scrollGallery: HTMLElement | null = null;
+    private static scrollPosition = 0;
+    private static scrollDirection = 1;
+    private static tileVisibility = new WeakMap<HTMLElement, boolean>();
+    private static scrollAnimations = new WeakMap<HTMLElement, Animation[]>();
+
+    private static layoutGallery() {
+        const gallery = this.container?.querySelector<HTMLElement>(".queue-gallery");
+        const wall = gallery?.querySelector<HTMLElement>(".queue-wall");
+        if (!gallery || !wall) return;
+        const tiles = Array.from(wall.querySelectorAll<HTMLElement>(".queue-tile"));
+        const width = gallery.clientWidth - 16;
+        if (!Number.isFinite(width) || width <= 0) return;
+        const layout = layoutQueue(width, tiles.length);
+        const labels = [
+            [".queue-up-next-label", layout.labels.upNext],
+            [".queue-heading", layout.labels.queue],
+        ] as const;
+        labels.forEach(([selector, position]) => {
+            const label = wall.querySelector<HTMLElement>(selector);
+            if (!label) return;
+            Object.assign(label.style, {
+                left: `${position.x}px`,
+                top: `${position.y}px`,
+                width: "width" in position && position.width ? `${position.width}px` : "",
+            });
+        });
+        tiles.forEach((tile, index) => {
+            const position = layout.tiles[index];
+            Object.assign(tile.style, {
+                left: `${position.x}px`,
+                top: `${position.y}px`,
+                width: `${position.width}px`,
+            });
+        });
+        wall.style.height = `${layout.height}px`;
+    }
+
+    private static teardownScrollAnimations() {
+        this.scrollObserver?.disconnect();
+        this.scrollObserver = null;
+        if (this.scrollGallery) this.scrollGallery.onscroll = null;
+        this.scrollGallery = null;
+        this.tileVisibility = new WeakMap();
+        this.scrollAnimations = new WeakMap();
+    }
+
+    /** Animate only when a cover crosses the queue viewport while scrolling. */
+    private static setupScrollAnimations(gallery: HTMLElement) {
+        this.teardownScrollAnimations();
+        if (typeof IntersectionObserver === "undefined") return;
+        this.scrollGallery = gallery;
+        this.scrollPosition = gallery.scrollTop;
+        gallery.onscroll = () => {
+            const nextPosition = gallery.scrollTop;
+            if (Math.abs(nextPosition - this.scrollPosition) > 1) {
+                this.scrollDirection = nextPosition > this.scrollPosition ? 1 : -1;
+                this.scrollPosition = nextPosition;
+            }
+        };
+        this.scrollObserver = new IntersectionObserver(
+            (entries) => {
+                const ordered = entries
+                    .filter((entry): entry is IntersectionObserverEntry & { target: HTMLElement } =>
+                        entry.target instanceof HTMLElement,
+                    )
+                    .sort((a, b) => {
+                        const aIndex = Number(a.target.dataset.queueIndex);
+                        const bIndex = Number(b.target.dataset.queueIndex);
+                        return this.scrollDirection > 0 ? aIndex - bIndex : bIndex - aIndex;
+                    });
+                ordered.forEach((entry, index) => {
+                    const tile = entry.target;
+                    const visible = entry.isIntersecting;
+                    const previous = this.tileVisibility.get(tile);
+                    this.tileVisibility.set(tile, visible);
+                    // The observer's first report establishes the initial state;
+                    // it must not replay entrance animation for every tile.
+                    if (previous === undefined || previous === visible) return;
+                    this.animateScrollTile(tile, visible, index * 18);
+                });
+            },
+            { root: gallery, threshold: 0.12 },
+        );
+        gallery.querySelectorAll<HTMLElement>(".queue-tile").forEach((tile) => {
+            this.scrollObserver?.observe(tile);
+        });
+    }
+
+    private static animateScrollTile(tile: HTMLElement, entering: boolean, delay: number) {
+        const gallery = this.scrollGallery;
+        if (!gallery || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        this.scrollAnimations.get(tile)?.forEach((animation) => animation.cancel());
+        const galleryBounds = gallery.getBoundingClientRect();
+        const bounds = tile.getBoundingClientRect();
+        if (!galleryBounds.width || !galleryBounds.height || !bounds.width || !bounds.height) return;
+        const edgeAtBottom = entering ? this.scrollDirection > 0 : this.scrollDirection < 0;
+        const edgeX = galleryBounds.left + galleryBounds.width / 2;
+        const edgeY = edgeAtBottom ? galleryBounds.bottom : galleryBounds.top;
+        const tileY = edgeAtBottom ? bounds.bottom : bounds.top;
+        const fromX = edgeX - (bounds.left + bounds.width / 2);
+        const fromY = edgeY - tileY;
+        const line = `translate3d(${fromX}px, ${fromY}px, 0) scaleX(.045) scaleY(.018)`;
+        const nearLine = `translate3d(${fromX * 0.16}px, ${fromY * 0.16}px, 0) scale(.72)`;
+        const motion = tile.querySelector<HTMLElement>(".queue-motion-layer");
+        const artwork = tile.querySelector<HTMLElement>(".queue-artwork");
+        if (!motion || !artwork) return;
+        const animation = motion.animate(
+            entering
+                ? [
+                      { opacity: 0, transform: line },
+                      { opacity: 0.72, transform: nearLine, offset: 0.7 },
+                      { opacity: 1, transform: "none" },
+                  ]
+                : [
+                      { opacity: 1, transform: "none" },
+                      { opacity: 0.62, transform: nearLine, offset: 0.36 },
+                      { opacity: 0, transform: line },
+                  ],
+            {
+                duration: entering ? 460 : 300,
+                delay,
+                easing: "cubic-bezier(.16,.82,.18,1)",
+            },
+        );
+        const blur = artwork.animate(
+            entering
+                ? [{ filter: "blur(20px)" }, { filter: "blur(6px)", offset: 0.7 }, { filter: "blur(0px)" }]
+                : [{ filter: "blur(0px)" }, { filter: "blur(6px)", offset: 0.36 }, { filter: "blur(20px)" }],
+            {
+                duration: entering ? 460 : 300,
+                delay,
+                easing: "cubic-bezier(.16,.82,.18,1)",
+            },
+        );
+        motion.style.willChange = "transform, opacity";
+        artwork.style.willChange = "filter";
+        const animations = [animation, blur];
+        this.scrollAnimations.set(tile, animations);
+        void Promise.all(animations.map((item) => item.finished.catch(() => undefined)))
+            .catch(() => undefined)
+            .then(() => {
+                if (this.scrollAnimations.get(tile) === animations) {
+                    this.scrollAnimations.delete(tile);
+                    motion.style.removeProperty("will-change");
+                    artwork.style.removeProperty("will-change");
+                }
+            });
+    }
     private static refreshTimers: ReturnType<typeof setTimeout>[] = [];
     private static updateTimer: ReturnType<typeof setTimeout> | null = null;
     private static selectionTimer: ReturnType<typeof setTimeout> | null = null;
@@ -31,10 +189,17 @@ export class Queue {
         container.setAttribute("role", "region");
         container.setAttribute("aria-label", "Queue");
         this.update(true);
+        if (typeof ResizeObserver !== "undefined") {
+            this.layoutObserver = new ResizeObserver(() => this.layoutGallery());
+            this.layoutObserver.observe(container);
+        }
         this.refreshTimers = [250, 900].map((delay) => setTimeout(() => this.update(), delay));
     }
 
     static teardown() {
+        this.layoutObserver?.disconnect();
+        this.layoutObserver = null;
+        this.deferredUpdate = false;
         this.selection++;
         this.refreshTimers.forEach(clearTimeout);
         this.refreshTimers = [];
@@ -45,6 +210,8 @@ export class Queue {
         this.selected = null;
         this.incoming = null;
         this.cancelFlight();
+        this.tileOverflowAnimations = new WeakMap();
+        this.teardownScrollAnimations();
         this.container?.replaceChildren();
         this.container = null;
         this.revision = "";
@@ -62,6 +229,10 @@ export class Queue {
     static update(force = false) {
         const container = this.container;
         if (!container) return;
+        if (this.incoming || this.flight) {
+            this.deferredUpdate = true;
+            return;
+        }
         try {
             const snapshot = QueueAdapter.read();
             const entries = [...snapshot.next, ...snapshot.later].filter(
@@ -83,20 +254,61 @@ export class Queue {
             const activeUid = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>(
                 ".queue-tile",
             )?.dataset.uid;
-            const heading = document.createElement("h2");
-            heading.textContent = "Queue";
-            heading.className = "queue-heading";
+            const previous = new Map(
+                Array.from(container.querySelectorAll<HTMLElement>(".queue-tile")).map((tile) => [
+                    tile.dataset.uid,
+                    tile.getBoundingClientRect(),
+                ]),
+            );
             const gallery = document.createElement("div");
             gallery.className = "queue-gallery";
-            for (const entry of entries) gallery.append(this.createTile(entry));
+            const wall = document.createElement("div");
+            wall.className = "queue-wall";
+            const upNextLabel = document.createElement("h2");
+            upNextLabel.className = "queue-wall-label queue-up-next-label";
+            upNextLabel.textContent = "Up Next";
+            const heading = document.createElement("h2");
+            heading.className = "queue-wall-label queue-heading";
+            heading.textContent = "Queue";
+            wall.append(upNextLabel, heading);
+            for (const [index, entry] of entries.entries()) {
+                wall.append(this.createTile(entry, index, index === 0));
+            }
+            gallery.append(wall);
             if (!entries.length) {
                 const empty = document.createElement("p");
                 empty.className = "queue-empty";
                 empty.textContent = this.strings.empty;
                 gallery.append(empty);
             }
-            container.replaceChildren(heading, gallery);
+            container.replaceChildren(gallery);
+            this.layoutGallery();
             gallery.scrollTop = oldScroll;
+            this.setupScrollAnimations(gallery);
+            if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+                const bounds = container.getBoundingClientRect();
+                wall.querySelectorAll<HTMLElement>(".queue-tile").forEach((tile) => {
+                    const before = previous.get(tile.dataset.uid);
+                    const after = tile.getBoundingClientRect();
+                    if (
+                        !before?.width ||
+                        !after.width ||
+                        after.top > bounds.bottom ||
+                        after.bottom < bounds.top
+                    )
+                        return;
+                    tile.animate(
+                        [
+                            {
+                                transform: `translate(${before.left - after.left}px, ${before.top - after.top}px) scale(${before.width / after.width})`,
+                                transformOrigin: "top left",
+                            },
+                            { transform: "none", transformOrigin: "top left" },
+                        ],
+                        { duration: 320, easing: "cubic-bezier(.2,.75,.2,1)" },
+                    );
+                });
+            }
             if (activeUid) {
                 const replacement = Array.from(
                     gallery.querySelectorAll<HTMLElement>(".queue-tile"),
@@ -106,23 +318,21 @@ export class Queue {
         } catch (error) {
             console.warn("[Fullscape] Unable to read queue", error);
             if (!container.children.length) {
-                const heading = document.createElement("h2");
-                heading.className = "queue-heading";
-                heading.textContent = "Queue";
                 const message = document.createElement("p");
                 message.className = "queue-empty";
                 message.textContent = this.strings.actionUnavailable;
-                container.replaceChildren(heading, message);
+                container.replaceChildren(message);
             }
         }
     }
 
-    private static createTile(entry: QueueEntry) {
+    private static createTile(entry: QueueEntry, queueIndex: number, isUpNext: boolean) {
         const tile = document.createElement("button");
         tile.type = "button";
-        tile.className = "queue-tile";
+        tile.className = `queue-tile${isUpNext ? " queue-tile-lead" : ""}`;
         tile.dataset.uid = entry.uid;
         tile.dataset.uri = entry.uri;
+        tile.dataset.queueIndex = String(queueIndex);
         const artist = entry.artists.join(" · ") || this.strings.unknown;
         tile.setAttribute("aria-label", `${this.strings.playNow}: ${entry.title} — ${artist}`);
         tile.title = `${entry.title} — ${artist}`;
@@ -136,15 +346,77 @@ export class Queue {
             image.onerror = null;
             image.src = ICONS.OFFLINE_SVG;
         };
+        const artwork = document.createElement("span");
+        artwork.className = "queue-artwork-frame";
+        artwork.append(image);
         const title = document.createElement("span");
         title.className = "queue-track-title";
         title.textContent = entry.title;
         const subtitle = document.createElement("span");
         subtitle.className = "queue-track-artist";
         subtitle.textContent = artist;
-        tile.append(image, title, subtitle);
+        const titleViewport = document.createElement("span");
+        titleViewport.className = "queue-track-title-viewport";
+        titleViewport.append(title);
+        const artistViewport = document.createElement("span");
+        artistViewport.className = "queue-track-artist-viewport";
+        artistViewport.append(subtitle);
+        const copy = document.createElement("span");
+        copy.className = isUpNext ? "queue-lead-copy" : "queue-artwork-copy";
+        copy.append(titleViewport, artistViewport);
+        const motion = document.createElement("span");
+        motion.className = "queue-motion-layer";
+        if (isUpNext) motion.append(artwork, copy);
+        else {
+            artwork.append(copy);
+            motion.append(artwork);
+        }
+        tile.append(motion);
+        tile.onpointerenter = () => this.startTileOverflow(tile);
+        tile.onpointerleave = () => this.cancelTileOverflow(tile);
+        tile.onfocus = () => this.startTileOverflow(tile);
+        tile.onblur = () => this.cancelTileOverflow(tile);
         tile.onclick = () => void this.select(entry, image, tile);
         return tile;
+    }
+
+    private static startTileOverflow(tile: HTMLElement) {
+        this.cancelTileOverflow(tile);
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        requestAnimationFrame(() => {
+            if (!tile.matches(":hover, :focus-visible")) return;
+            const measurements = Array.from(
+                tile.querySelectorAll<HTMLElement>(
+                    ".queue-track-title-viewport, .queue-track-artist-viewport",
+                ),
+            )
+                .map((viewport) => {
+                    const track = viewport.firstElementChild as HTMLElement | null;
+                    return track
+                        ? { track, overflow: Math.ceil(track.scrollWidth - viewport.clientWidth) }
+                        : null;
+                })
+                .filter(
+                    (value): value is { track: HTMLElement; overflow: number } => Boolean(value),
+                );
+            const maxOverflow = Math.max(0, ...measurements.map(({ overflow }) => overflow));
+            if (maxOverflow <= 1) return;
+            const timing = getOverflowScrollTiming(maxOverflow);
+            const animations = measurements
+                .filter(({ overflow }) => overflow > 1)
+                .map(({ track, overflow }) =>
+                    createOverflowScrollAnimation(track, overflow, timing),
+                );
+            this.tileOverflowAnimations.set(tile, animations);
+        });
+    }
+
+    private static cancelTileOverflow(tile: HTMLElement) {
+        this.tileOverflowAnimations.get(tile)?.forEach((animation) => animation.cancel());
+        this.tileOverflowAnimations.delete(tile);
+        tile.querySelectorAll<HTMLElement>(".queue-track-title, .queue-track-artist").forEach(
+            (track) => track.style.removeProperty("transform"),
+        );
     }
 
     private static async select(
@@ -230,12 +502,6 @@ export class Queue {
     /** Called from master's image onload, after Cover has applied the new aspect ratio. */
     static async landIncoming() {
         const incoming = this.incoming;
-        // Master's paused artwork grows back on play. Land at its settled bounds.
-        const layoutAnimations = DOM.cover.parentElement?.parentElement?.getAnimations() || [];
-        if (incoming && layoutAnimations.length) {
-            await Promise.allSettled(layoutAnimations.map((animation) => animation.finished));
-            if (this.incoming !== incoming) return;
-        }
         this.incoming = null;
         if (
             !incoming ||
@@ -247,12 +513,31 @@ export class Queue {
             this.cancelFlight();
             return;
         }
-        const target = DOM.cover.getBoundingClientRect();
+        let target = DOM.cover.getBoundingClientRect();
+        // Resolve the destination of master's pause/play scale without waiting for it.
+        const artwork = DOM.cover.parentElement?.parentElement;
+        if (artwork?.offsetWidth) {
+            const bounds = artwork.getBoundingClientRect();
+            const currentScale = bounds.width / artwork.offsetWidth;
+            const finalScale = DOM.container.classList.contains("playback-paused") ? 0.86 : 1;
+            const ratio = currentScale > 0 ? finalScale / currentScale : 1;
+            const centerX = bounds.left + bounds.width / 2;
+            const centerY = bounds.top + bounds.height / 2;
+            target = {
+                ...target,
+                left: centerX + (target.left - centerX) * ratio,
+                top: centerY + (target.top - centerY) * ratio,
+                width: target.width * ratio,
+                height: target.height * ratio,
+            };
+        }
         if (!target.width || !incoming.rect.width) {
             this.cancelFlight();
             return;
         }
         const flight = document.createElement("img");
+        // The tile artwork has already decoded, so it gives the handoff a stable
+        // first frame while the main cover swaps to Spotify's full-size source.
         flight.src = incoming.src;
         flight.alt = "";
         flight.className = "queue-artwork-flight";
@@ -266,19 +551,22 @@ export class Queue {
         DOM.container.append(flight);
         this.flight = flight;
         DOM.cover.classList.add("queue-artwork-landing");
+        if (typeof requestAnimationFrame === "function") {
+            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+            if (this.flight !== flight) return;
+        }
         this.oldArtwork?.animate([{ opacity: 1 }, { opacity: 0 }], {
-            duration: 450,
+            duration: 380,
             fill: "forwards",
         });
         const animation = flight.animate(
             [
-                { transform: "translate3d(0,0,0) scale(1)", borderRadius: "8px" },
+                { transform: "translate3d(0,0,0) scale(1)" },
                 {
                     transform: `translate3d(${target.left - incoming.rect.left}px,${target.top - incoming.rect.top}px,0) scale(${target.width / incoming.rect.width},${target.height / incoming.rect.height})`,
-                    borderRadius: "6px",
                 },
             ],
-            { duration: 680, easing: "cubic-bezier(.22,.75,.18,1)", fill: "forwards" },
+            { duration: 520, easing: "cubic-bezier(.22,.75,.18,1)", fill: "forwards" },
         );
         this.animation = animation;
         void animation.finished
@@ -286,7 +574,7 @@ export class Queue {
                 if (this.flight !== flight) return;
                 DOM.cover.classList.remove("queue-artwork-landing");
                 await flight.animate([{ opacity: 1 }, { opacity: 0 }], {
-                    duration: 140,
+                    duration: 90,
                     fill: "forwards",
                 }).finished;
                 if (this.flight === flight) this.cancelFlight();
@@ -304,5 +592,9 @@ export class Queue {
         this.oldArtwork?.remove();
         this.oldArtwork = null;
         DOM.cover?.classList.remove("queue-artwork-landing");
+        if (this.deferredUpdate) {
+            this.deferredUpdate = false;
+            this.scheduleUpdate();
+        }
     }
 }

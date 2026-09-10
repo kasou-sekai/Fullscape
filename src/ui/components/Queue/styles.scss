@@ -1,7 +1,7 @@
 #fullscape-display {
     #fullscape-queue-container {
         position: absolute;
-        inset: clamp(32px, 8vh, 96px) clamp(24px, 4vw, 72px) clamp(92px, 12vh, 132px)
+        inset: clamp(156px, 17vh, 224px) clamp(24px, 4vw, 72px) clamp(92px, 12vh, 132px)
             calc(50% + 24px);
         display: flex;
         flex-direction: column;
@@ -31,26 +31,39 @@
             transform: translateX(0);
         }
     }
-    .queue-heading {
-        margin: 0 8px 24px;
-        font:
-            700 clamp(28px, 2.7vw, 40px) / 1.1 system-ui,
-            sans-serif;
-        letter-spacing: -0.035em;
-    }
     .queue-gallery {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        align-content: start;
-        gap: 24px 20px;
         min-height: 0;
+        flex: 1;
         padding: 8px 8px 24px;
         overflow-y: auto;
         overscroll-behavior: contain;
         scrollbar-width: thin;
         scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+        scrollbar-gutter: stable;
+    }
+    .queue-wall {
+        position: relative;
+        width: 100%;
+    }
+    .queue-wall-label {
+        position: absolute;
+        z-index: 1;
+        margin: 0;
+        color: var(--primary-color);
+        font:
+            700 clamp(21px, 2.15vw, 34px) / 1 system-ui,
+            sans-serif;
+        letter-spacing: -0.045em;
+        pointer-events: none;
+        text-transform: uppercase;
+    }
+    .queue-heading {
+        text-align: right;
     }
     .queue-tile {
+        position: absolute;
+        top: 0;
+        left: 0;
         min-width: 0;
         display: flex;
         flex-direction: column;
@@ -63,12 +76,12 @@
         font-family: inherit;
         cursor: pointer;
         border-radius: 8px;
-        &:hover .queue-artwork,
-        &:focus-visible .queue-artwork {
+        &:hover .queue-artwork-frame,
+        &:focus-visible .queue-artwork-frame {
             transform: scale(1.035);
-            filter: brightness(1.06);
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
         }
-        &:active .queue-artwork {
+        &:active .queue-artwork-frame {
             transform: scale(0.975);
             transition-duration: 100ms;
         }
@@ -76,62 +89,130 @@
             outline: 2px solid var(--primary-color);
             outline-offset: 5px;
         }
-        &.is-selected .queue-artwork {
+        &.is-selected .queue-artwork-frame {
             opacity: 0.65;
         }
     }
-    .queue-artwork {
+    .queue-motion-layer {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        align-items: stretch;
+        transform-origin: center;
+    }
+    .queue-artwork-frame {
+        position: relative;
+        display: block;
         width: 100%;
         aspect-ratio: 1;
-        object-fit: cover;
+        overflow: hidden;
         border-radius: 8px;
         box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
         transform-origin: center;
         transition:
             transform 350ms cubic-bezier(0.2, 0.75, 0.2, 1),
-            filter 250ms ease,
+            box-shadow 300ms ease,
             opacity 200ms ease;
+        &::after {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            height: 54%;
+            background: linear-gradient(transparent 16%, rgba(0, 0, 0, 0.7) 100%);
+            content: "";
+            pointer-events: none;
+        }
+    }
+    .queue-artwork {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .queue-artwork-copy,
+    .queue-lead-copy {
+        min-width: 0;
+        text-align: left;
+    }
+    .queue-artwork-copy {
+        position: absolute;
+        right: 11px;
+        bottom: 10px;
+        left: 11px;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+    }
+    .queue-track-title-viewport,
+    .queue-track-artist-viewport {
+        display: block;
+        min-width: 0;
+        overflow: hidden;
+    }
+    .queue-track-title,
+    .queue-track-artist {
+        display: block;
+        min-width: max-content;
+        white-space: nowrap;
     }
     .queue-track-title {
-        margin-top: 12px;
         color: var(--primary-color);
         font-size: clamp(13px, 1.15vw, 17px);
         line-height: 1.35;
         font-weight: 600;
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
+    }
+    .queue-track-artist-viewport {
+        max-height: 0;
+        margin-top: 0;
+        opacity: 0;
+        transition:
+            max-height 260ms cubic-bezier(0.2, 0.75, 0.2, 1),
+            margin 260ms cubic-bezier(0.2, 0.75, 0.2, 1),
+            opacity 160ms ease;
     }
     .queue-track-artist {
-        margin-top: 3px;
         color: var(--secondary-color);
         font-size: clamp(12px, 1vw, 14px);
         line-height: 1.4;
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
+    }
+    .queue-tile:hover .queue-artwork-copy .queue-track-artist-viewport,
+    .queue-tile:focus-visible .queue-artwork-copy .queue-track-artist-viewport {
+        max-height: 1.5em;
+        margin-top: 2px;
+        opacity: 1;
+    }
+    .queue-tile-lead .queue-lead-copy {
+        width: min(48%, 22rem);
+        margin-top: 10px;
+        margin-left: auto;
+        text-align: right;
+    }
+    .queue-tile-lead .queue-track-title {
+        color: var(--primary-color);
+        font-size: clamp(14px, 1.28vw, 18px);
+    }
+    .queue-tile-lead .queue-track-artist-viewport {
+        max-height: 1.5em;
+        margin-top: 2px;
+        opacity: 1;
     }
     .queue-empty {
-        grid-column: 1 / -1;
+        margin: 0;
         color: var(--secondary-color);
         font-size: 15px;
     }
     .queue-artwork-flight {
         position: fixed;
         z-index: 30;
+        border-radius: 8px;
+        will-change: transform, opacity;
         object-fit: cover;
         transform-origin: top left;
         pointer-events: none;
-        box-shadow: 0 16px 50px rgba(0, 0, 0, 0.18);
     }
     #fullscape-art-image.queue-artwork-landing {
         visibility: hidden;
-    }
-    @media (max-width: 1050px) {
-        .queue-gallery {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 22px 16px;
-        }
     }
     &.vertical-mode #fullscape-queue-container {
         left: 8%;
@@ -141,11 +222,11 @@
     }
     @media (prefers-reduced-motion: reduce) {
         #fullscape-queue-container,
-        .queue-artwork {
+        .queue-artwork-frame {
             transition: none;
         }
-        .queue-tile:hover .queue-artwork,
-        .queue-tile:active .queue-artwork {
+        .queue-tile:hover .queue-artwork-frame,
+        .queue-tile:active .queue-artwork-frame {
             transform: none;
         }
     }

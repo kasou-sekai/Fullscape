@@ -80,8 +80,20 @@ const getSource = (track: QueueObject, metadata: QueueObject): QueueSource => {
     if (
         source.includes("recommend") ||
         source.includes("smart") ||
-        getBoolean(track, "is_recommendation", "isRecommendation", "is_smart_shuffle", "isSmartShuffle") ||
-        getBoolean(metadata, "is_recommendation", "isRecommendation", "is_smart_shuffle", "isSmartShuffle")
+        getBoolean(
+            track,
+            "is_recommendation",
+            "isRecommendation",
+            "is_smart_shuffle",
+            "isSmartShuffle",
+        ) ||
+        getBoolean(
+            metadata,
+            "is_recommendation",
+            "isRecommendation",
+            "is_smart_shuffle",
+            "isSmartShuffle",
+        )
     ) {
         return "recommendation";
     }
@@ -101,9 +113,7 @@ const getSource = (track: QueueObject, metadata: QueueObject): QueueSource => {
         "context_uri_string",
         "contextUriString",
     );
-    return contextUri || getString(metadata, "context_uri", "contextUri")
-        ? "context"
-        : "unknown";
+    return contextUri || getString(metadata, "context_uri", "contextUri") ? "context" : "unknown";
 };
 
 const getArtists = (metadata: QueueObject) => {
@@ -125,18 +135,14 @@ const getArtistUris = (metadata: QueueObject) =>
         .filter(Boolean);
 
 const getImageUrl = (metadata: QueueObject, track: QueueObject) =>
-    getString(
-        metadata,
-        "image_xlarge_url",
-        "image_large_url",
-        "image_url",
-        "imageUrl",
-    ) || getString(track, "image_xlarge_url", "image_url", "imageUrl");
+    getString(metadata, "image_xlarge_url", "image_large_url", "image_url", "imageUrl") ||
+    getString(track, "image_xlarge_url", "image_url", "imageUrl");
 
 const createEntry = (value: unknown, index: number, isCurrent = false): QueueEntry | null => {
     const { track, metadata } = getTrackData(value);
     const uri = getString(track, "uri") || getString(metadata, "uri");
-    if (!uri) return null;
+    // Internal queue markers (including Spotify's misspelled delimeter) are not media.
+    if (!/^spotify:(track|episode|local):.+/.test(uri)) return null;
 
     const spotifyUid = getString(track, "uid") || getString(metadata, "uid");
     return {
@@ -147,12 +153,9 @@ const createEntry = (value: unknown, index: number, isCurrent = false): QueueEnt
         artistUris: getArtistUris(metadata),
         album: getString(metadata, "album_title", "album", "album_name"),
         albumUri: getString(metadata, "album_uri", "albumUri"),
-        durationMs: getNumber(
-            metadata,
-            "duration_ms",
-            "durationMs",
-            "duration_milliseconds",
-        ) || getNumber(asObject(track.duration), "milliseconds", "ms"),
+        durationMs:
+            getNumber(metadata, "duration_ms", "durationMs", "duration_milliseconds") ||
+            getNumber(asObject(track.duration), "milliseconds", "ms"),
         imageUrl: getImageUrl(metadata, track),
         source: isCurrent ? "context" : getSource(track, metadata),
         isCurrent,
@@ -193,13 +196,31 @@ export const QueueAdapter = {
     },
 
     canRemove(entry: QueueEntry) {
-        return Boolean(entry.hasSpotifyUid && (getMutation("removeFromQueue") || Spicetify.removeFromQueue));
+        return Boolean(
+            entry.hasSpotifyUid && (getMutation("removeFromQueue") || Spicetify.removeFromQueue),
+        );
     },
 
     async play(entry: QueueEntry): Promise<QueueMutationResult> {
-        if (!Spicetify.Player?.playUri) return { ok: false, reason: "unavailable" };
+        const api = getApi();
+        const skip = getMutation("skipToNext");
+        if (!skip) return { ok: false, reason: "unavailable" };
+        // Revalidate against the live queue so a stale tile never becomes an arbitrary skip.
+        const queue = this.read();
+        const matches = [...queue.next, ...queue.later].filter(
+            (candidate) =>
+                candidate.uri === entry.uri &&
+                (!entry.hasSpotifyUid || candidate.uid === entry.uid),
+        );
+        if (matches.length !== 1) return { ok: false, reason: "unsupported" };
+        const target = matches[0];
         try {
-            await Spicetify.Player.playUri(entry.uri);
+            // Same operation and identity used by Spotify's native queue. No playUri fallback:
+            // that starts a fresh single-track context and discards the rest of the queue.
+            await skip.call(api, {
+                uri: target.uri,
+                uid: target.hasSpotifyUid ? target.uid : null,
+            });
             return { ok: true };
         } catch (error) {
             console.warn("[Fullscape] Unable to play queue entry.", error);

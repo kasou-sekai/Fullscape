@@ -139,12 +139,15 @@ after(async () => {
     Queue.teardown();
     await rm(dir, { recursive: true, force: true });
 });
-test("gallery excludes the playing song and has just the Queue heading", () => {
+test("gallery excludes the playing song and keeps the Up Next and Queue anchors", () => {
+    assert.deepEqual(DOM.queue.children.map((n) => n.className), ["queue-gallery"]);
     assert.deepEqual(
-        DOM.queue.children.map((n) => n.className),
-        ["queue-heading", "queue-gallery"],
+        DOM.queue
+            .querySelector(".queue-wall")
+            .children.slice(0, 2)
+            .map((n) => n.textContent),
+        ["Up Next", "Queue"],
     );
-    assert.equal(DOM.queue.children[0].textContent, "Queue");
     assert.deepEqual(
         DOM.queue.querySelectorAll(".queue-tile").map((n) => n.dataset.uri),
         ["a", "b"],
