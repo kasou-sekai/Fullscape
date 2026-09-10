@@ -14,6 +14,7 @@ const RELEASE_SCRIPT_STORE = "scripts";
 const MAX_CACHED_RELEASES = 3;
 const UPDATE_MODEL_VERSION = "verified-release-cache-v1";
 const RELEASE_RUNTIME_HANDSHAKE = "fullscape-runtime-handshake-v1";
+const RELEASE_STYLE_ID = "fullscape";
 
 const STORAGE_KEYS = {
     selectedRelease: "fullscape:update:selected-release",
@@ -502,6 +503,16 @@ export class ReleaseUpdater {
         const runtimeWindow = window as UpdateRuntimeWindow;
         delete runtimeWindow.__fullscapeExecutedRelease;
         delete runtimeWindow.__fullscapeRuntimeReport;
+
+        // spicetify-creator injects the bundle CSS into a fixed #fullscape style
+        // element. The bundled runtime has already injected that element by the
+        // time a selected release is handed off. Hide it temporarily so the
+        // selected release can install its own CSS instead of silently reusing
+        // the installed bundle's layout and animation rules.
+        const bundledStyle = document.getElementById(RELEASE_STYLE_ID);
+        const handoffStyleId = `${RELEASE_STYLE_ID}-handoff-${selected.tag.replace(/[^a-z0-9-]/gi, "-")}`;
+        if (bundledStyle) bundledStyle.id = handoffStyleId;
+
         const script = document.createElement("script");
         script.dataset.fullscapeRelease = selected.tag;
         script.dataset.fullscapeReleaseSource = "indexeddb";
@@ -524,6 +535,15 @@ export class ReleaseUpdater {
         } catch (error) {
             console.warn(`[Fullscape] Unable to execute cached ${selected.tag}.`, error);
         } finally {
+            const releaseStyle = document.getElementById(RELEASE_STYLE_ID);
+            if (executed && (!bundledStyle || releaseStyle) && releaseStyle !== bundledStyle) {
+                // The release owns the active CSS after a successful handoff.
+                bundledStyle?.remove();
+            } else {
+                // Restore the installed CSS when loading or verification fails.
+                if (releaseStyle && releaseStyle !== bundledStyle) releaseStyle.remove();
+                if (bundledStyle) bundledStyle.id = RELEASE_STYLE_ID;
+            }
             script.remove();
             delete runtimeWindow.__fullscapeExecutedRelease;
             delete runtimeWindow.__fullscapeRuntimeReport;

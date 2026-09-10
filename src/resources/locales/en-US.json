@@ -2,40 +2,6 @@
     "langName": "English",
     "upnext": "UP NEXT",
     "unknownArtist": "Artist (Unavailable)",
-    "sideView": {
-        "showQueue": "Show queue",
-        "showLyrics": "Show lyrics",
-        "unavailable": "Lyrics are unavailable for this track."
-    },
-    "playModes": {
-        "list": "List loop",
-        "shuffle": "Shuffle",
-        "single": "Repeat song"
-    },
-    "queue": {
-        "title": "Queue",
-        "lyrics": "Show lyrics",
-        "current": "Now playing",
-        "upNext": "Up next",
-        "later": "Later",
-        "empty": "Nothing queued",
-        "clear": "Clear user queue",
-        "clearConfirm": "Clear all manually queued songs?",
-        "playNow": "Play now",
-        "moveNext": "Move to next",
-        "remove": "Remove from queue",
-        "openTrack": "Open song",
-        "openArtist": "Open artist",
-        "openAlbum": "Open album",
-        "playing": "Playing",
-        "paused": "Paused",
-        "manual": "Added manually",
-        "context": "From playback context",
-        "recommendation": "Spotify recommendation",
-        "unknown": "Spotify queue",
-        "reorderUnavailable": "Queue order follows Spotify's current playback context.",
-        "actionUnavailable": "This queue action is not supported by the current Spotify client."
-    },
     "settings": {
         "fullscapeConfig": "Plugin Settings",
         "exit": "Exit",
@@ -166,7 +132,6 @@
         "generalHeader": "General Settings",
         "progressBar": "Progress Bar",
         "playerControls": "Player Controls",
-        "playModeControl": "Play Mode & Queue Controls",
         "playbackTimelineResync": "Resync Playback Timeline",
         "trimTitle": "Trim Title",
         "trimTitleUpNext": "Trim Title(Up Next)",
@@ -404,7 +369,6 @@
                 "fullscreen": "Use native system fullscreen when opening the playback screen.",
                 "progressBar": "Choose whether the seek bar is always visible, appears on mouse movement, or stays hidden.",
                 "playerControls": "Choose when play, pause, previous, and next controls are visible.",
-                "playModeControl": "Choose whether the play mode and queue/lyrics buttons are always visible or appear after mouse movement.",
                 "playbackTimelineResync": "At about one second into each new track, briefly pause and resume playback to help Spotify re-align its timing.",
                 "showAlbum": "Show the album name, optionally together with its release date.",
                 "icons": "Show small visual icons beside playback information.",
@@ -426,5 +390,20 @@
         },
         "configReset": "Restore Defaults"
     },
-    "fullscapeButtonDescription": "Fullscape"
+    "fullscapeButtonDescription": "Fullscape",
+    "cover": {
+        "enlarge": "Enlarge cover",
+        "artwork": "Album artwork"
+    },
+    "queue": {
+        "empty": "Nothing queued",
+        "playNow": "Play now",
+        "unknown": "Spotify queue",
+        "actionUnavailable": "This queue action is not supported by the current Spotify client."
+    },
+    "sideView": {
+        "showQueue": "Show queue",
+        "showLyrics": "Show lyrics",
+        "unavailable": "Lyrics are unavailable for this track."
+    }
 }

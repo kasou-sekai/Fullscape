@@ -85,15 +85,6 @@ type BridgeLease = {
     ready: Promise<boolean>;
 };
 
-type LyricsSideViewSnapshot = {
-    trackUri: string | null;
-    activeIndex: number;
-    activeInterlude: LyricInterlude | null;
-    manualScrollActive: boolean;
-    manualScrollTargetPosition: number;
-    manualScrollRenderPosition: number;
-};
-
 export class Lyrics {
     private static readonly REQUEST_TIMEOUT_MS = 10000;
     private static readonly RETRY_DELAYS_MS = [0];
@@ -163,8 +154,6 @@ export class Lyrics {
     };
     private static loadSequence = 0;
     private static currentTrackUri: string | null = null;
-    private static sideViewPaused = false;
-    private static sideViewSnapshot: LyricsSideViewSnapshot | null = null;
     private static interludeBpm: number | null = null;
     private static interludeBpmTrackUri: string | null = null;
     private static refetchAttempt = 0;
@@ -198,8 +187,6 @@ export class Lyrics {
     }
 
     static teardown() {
-        this.sideViewPaused = false;
-        this.sideViewSnapshot = null;
         this.stopLoop();
         this.cancelKaraokeAnimations();
         this.resetLyricsInteraction(false);
@@ -243,63 +230,6 @@ export class Lyrics {
 
     static toggleLyrics() {
         DOM.container.classList.toggle("lyrics-hide-force");
-    }
-
-    static getStatus() {
-        return this.lastStatus;
-    }
-
-    static hasLyrics() {
-        return this.lastStatus === "synced" || this.lastStatus === "unsynced";
-    }
-
-    static pauseForSideView() {
-        if (this.sideViewPaused) return;
-        this.sideViewPaused = true;
-        this.sideViewSnapshot = {
-            trackUri: this.currentTrackUri,
-            activeIndex: this.activeIndex,
-            activeInterlude: this.activeInterlude,
-            manualScrollActive: this.manualScrollActive,
-            manualScrollTargetPosition: this.manualScrollTargetPosition,
-            manualScrollRenderPosition: this.manualScrollRenderPosition,
-        };
-        if (this.updateTimer) clearTimeout(this.updateTimer);
-        if (this.updateFrame !== null) cancelAnimationFrame(this.updateFrame);
-        this.updateTimer = null;
-        this.updateFrame = null;
-        const activeWords = this.karaokeWordsByLine[this.karaokeAnimationLine] ?? [];
-        activeWords.forEach((word) => word.animation?.pause());
-        this.karaokeFuriganaByLine[this.karaokeAnimationLine]?.forEach((furigana) =>
-            furigana.animation?.pause(),
-        );
-        this.karaokeAnimationsPlaying = false;
-    }
-
-    static resumeFromSideView() {
-        if (!this.sideViewPaused) return;
-        const snapshot = this.sideViewSnapshot;
-        this.sideViewPaused = false;
-        this.sideViewSnapshot = null;
-        if (!this.container || !this.isSynced) return;
-
-        const sameTrack = snapshot?.trackUri === this.currentTrackUri;
-        if (sameTrack && snapshot) {
-            this.activeIndex = snapshot.activeIndex;
-            this.activeInterlude = snapshot.activeInterlude;
-            this.manualScrollActive = snapshot.manualScrollActive;
-            this.manualScrollTargetPosition = snapshot.manualScrollTargetPosition;
-            this.manualScrollRenderPosition = snapshot.manualScrollRenderPosition;
-        } else {
-            this.activeIndex = -1;
-            this.activeInterlude = null;
-            this.manualScrollActive = false;
-            this.manualScrollTargetPosition = -1;
-            this.manualScrollRenderPosition = -1;
-        }
-        this.applyTransforms(true);
-        this.updateActive(this.getSynchronizedPlaybackProgress());
-        this.startLoop();
     }
 
     static async refreshCurrentLyrics() {
@@ -432,7 +362,7 @@ export class Lyrics {
     }
 
     static syncPlaybackProgress() {
-        if (this.sideViewPaused || !this.isSynced || !this.container) return;
+        if (!this.isSynced || !this.container) return;
         this.updateActive(this.getSynchronizedPlaybackProgress());
     }
 
@@ -1228,12 +1158,12 @@ export class Lyrics {
         this.container?.classList.toggle("lyrics-unsynced", !this.isSynced);
         if (canUpdateTimingInPlace) {
             this.updateTimingInPlace(lines, timingShift);
-            if (!this.sideViewPaused) this.startLoop();
+            this.startLoop();
             return;
         }
         this.activeIndex = this.isSynced ? -1 : 0;
         this.renderLines();
-        if (this.isSynced && !this.sideViewPaused) this.startLoop();
+        if (this.isSynced) this.startLoop();
     }
 
     private static uniformTimingShift(previous: LyricLine[], next: LyricLine[]) {
@@ -1295,6 +1225,11 @@ export class Lyrics {
             });
         });
         this.buildKaraokeWordCache();
+    }
+
+    static toggleTranslation() {
+        CFM.set("showLyricsTranslation", !CFM.get("showLyricsTranslation"));
+        this.renderLines();
     }
 
     private static renderLines() {

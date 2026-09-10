@@ -1,3 +1,5 @@
+import { APPLE_SYMBOLS } from "./constants/apple-system-symbols";
+import { Queue } from "./ui/components/Queue/Queue";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 import React from "react";
@@ -9,7 +11,7 @@ import CFM from "./utils/config";
 import translations from "./resources/strings";
 import ICONS, { CLASSES_TO_ADD } from "./constants";
 import HtmlSelectors from "./utils/selectors";
-import { Config, Settings, SideView } from "./types/fullscape";
+import { Config, Settings } from "./types/fullscape";
 import { createOverflowScrollAnimation, getOverflowScrollTiming } from "./utils/overflow-scroll";
 
 import { getHtmlContent } from "./services/html-creator";
@@ -23,13 +25,14 @@ import { DOM } from "./ui/elements";
 import { ConfigManager } from "./ui/components/Config/Config";
 import { UpNext } from "./ui/components/UpNext/UpNext";
 import { PlayerControls } from "./ui/components/PlayerControls/PlayerControls";
+import { Cover } from "./ui/components/Cover/Cover";
 import { Lyrics } from "./ui/components/Lyrics/Lyrics";
-import { Queue } from "./ui/components/Queue/Queue";
 import { Background } from "./utils/background";
 
 import "./styles/base.scss";
 import "./styles/defaultMode.scss";
 import "./styles/settings.scss";
+import "./ui/components/Cover/styles.scss";
 
 async function startFullscape() {
     let INIT_RETRIES = 0;
@@ -60,196 +63,32 @@ async function startFullscape() {
     }
 
     let LOCALE: string = CFM.getGlobal("locale") as Config["locale"];
-    type PlayMode = "list" | "shuffle" | "single";
-    const SIDE_VIEW_FADE_MS = 220;
-    let sideView: SideView = "lyrics";
-    let playMode: PlayMode = "list";
-    let sideViewTransitionToken = 0;
-
-    function getPlayModeLabels() {
-        return translations[LOCALE].playModes;
-    }
-
-    function readPlayMode(): PlayMode {
-        if (Spicetify.Player.getRepeat() === 2) return "single";
-        if (Spicetify.Player.getShuffle()) return "shuffle";
-        return "list";
-    }
-
-    function updatePlayModeButton() {
-        if (!DOM.playMode) return;
-        const labels = getPlayModeLabels();
-        const icons = {
-            list: ICONS.APPLE_MUSIC_LIST_LOOP,
-            shuffle: ICONS.APPLE_MUSIC_SHUFFLE,
-            single: ICONS.APPLE_MUSIC_REPEAT_ONE,
-        };
-        void Utils.transitionIcon(DOM.playMode, icons[playMode]);
-        DOM.playMode.setAttribute("aria-label", labels[playMode]);
-        DOM.playMode.title = labels[playMode];
-        DOM.playMode.setAttribute("aria-pressed", String(playMode !== "list"));
-        DOM.playMode.classList.remove("play-mode-list", "play-mode-shuffle", "play-mode-single");
-        DOM.playMode.classList.add(`play-mode-${playMode}`);
-    }
-
-    function syncPlayMode() {
-        playMode = readPlayMode();
-        updatePlayModeButton();
-    }
-
-    function applyPlayMode(nextMode: PlayMode) {
-        if (typeof Spicetify.Player.setShuffle !== "function") return;
-        if (nextMode === "list") {
-            Spicetify.Player.setShuffle(false);
-            Spicetify.Player.setRepeat(1);
-        } else if (nextMode === "shuffle") {
-            Spicetify.Player.setRepeat(0);
-            Spicetify.Player.setShuffle(true);
-        } else {
-            Spicetify.Player.setShuffle(false);
-            Spicetify.Player.setRepeat(2);
+    let showingQueue = false;
+    function updateLyricsTools() {
+        const translation = DOM.container.querySelector<HTMLButtonElement>("#fullscape-translation");
+        if (translation) {
+            translation.title = LOCALE.startsWith("zh") ? "歌词翻译" : "Lyrics translation";
+            translation.setAttribute("aria-label", translation.title);
+            translation.setAttribute("aria-pressed", String(Boolean(CFM.get("showLyricsTranslation"))));
+            translation.disabled = showingQueue || !CFM.get("lyricsDisplay");
         }
-        playMode = nextMode;
-        updatePlayModeButton();
-    }
-
-    function togglePlayMode() {
-        const modes: PlayMode[] = ["list", "shuffle", "single"];
-        const current = readPlayMode();
-        const next = modes[(modes.indexOf(current) + 1) % modes.length];
-        applyPlayMode(next);
-    }
-
-    function updateSideViewButton() {
-        if (!DOM.sideView) return;
-        const strings = translations[LOCALE].sideView;
-        const showingQueue = sideView === "queue";
-        void Utils.transitionIcon(
-            DOM.sideView,
-            showingQueue ? ICONS.APPLE_MUSIC_LYRICS : ICONS.APPLE_MUSIC_LIST,
-        );
-        DOM.sideView.setAttribute("aria-label", showingQueue ? strings.showLyrics : strings.showQueue);
-        DOM.sideView.title = showingQueue ? strings.showLyrics : strings.showQueue;
-        DOM.sideView.setAttribute("aria-pressed", String(showingQueue));
-    }
-
-    function applySideViewState(focus = false) {
-        const queueVisible = sideView === "queue";
-        DOM.container.classList.toggle("side-view-queue", queueVisible);
-        DOM.container.classList.toggle("side-view-lyrics", !queueVisible);
-        DOM.container.classList.toggle("lyrics-active", Boolean(CFM.get("lyricsDisplay") || queueVisible));
-        if (!queueVisible) DOM.container.classList.remove("lyrics-hide-force");
-        DOM.lyrics?.setAttribute("aria-hidden", String(queueVisible));
-        DOM.queue?.setAttribute("aria-hidden", String(!queueVisible));
-        if (DOM.lyrics) DOM.lyrics.inert = queueVisible;
-        if (DOM.queue) DOM.queue.inert = !queueVisible;
-        if (queueVisible) {
-            Lyrics.pauseForSideView();
-            Queue.update(true);
-            if (focus) Queue.focus();
-        } else {
-            Lyrics.resumeFromSideView();
-            if (focus) DOM.sideView?.focus({ preventScroll: true });
-        }
-        PlayerControls.updateControlVisibility();
-        updateSideViewButton();
-    }
-
-    function applySideView(focus = false, animate = false) {
-        const queueVisible = sideView === "queue";
-        const currentViewIsQueue = DOM.container.classList.contains("side-view-queue");
-        const shouldAnimate =
-            animate &&
-            DOM.container.isConnected &&
-            currentViewIsQueue !== queueVisible &&
-            !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-        if (!shouldAnimate) {
-            sideViewTransitionToken += 1;
-            applySideViewState(focus);
-            return;
-        }
-
-        const token = ++sideViewTransitionToken;
-        updateSideViewButton();
-        PlayerControls.updateControlVisibility(true);
-        DOM.container.classList.remove("side-view-transition-in");
-        DOM.container.classList.add("side-view-transition-out");
-
-        window.setTimeout(() => {
-            if (token !== sideViewTransitionToken) return;
-            applySideViewState(false);
-            window.requestAnimationFrame(() => {
-                if (token !== sideViewTransitionToken) return;
-                DOM.container.classList.remove("side-view-transition-out");
-                DOM.container.classList.add("side-view-transition-in");
-                if (focus) {
-                    if (sideView === "queue") Queue.focus();
-                    else DOM.sideView?.focus({ preventScroll: true });
-                }
-                window.setTimeout(() => {
-                    if (token === sideViewTransitionToken) {
-                        DOM.container.classList.remove("side-view-transition-in");
-                    }
-                }, SIDE_VIEW_FADE_MS);
-            });
-        }, SIDE_VIEW_FADE_MS);
-    }
-
-    function setSideView(nextView: SideView, focus = false, userInitiated = false) {
-        if (nextView === "lyrics" && !CFM.get("lyricsDisplay")) {
-            if (userInitiated) Spicetify.showNotification(translations[LOCALE].sideView.unavailable, true, 4500);
-            sideView = "queue";
-        } else if (
-            nextView === "lyrics" &&
-            userInitiated &&
-            !Lyrics.hasLyrics() &&
-            Lyrics.getStatus() !== "loading"
-        ) {
-            Spicetify.showNotification(translations[LOCALE].sideView.unavailable, true, 4500);
-            sideView = "queue";
-        } else {
-            sideView = nextView;
-        }
-        applySideView(focus, userInitiated);
-    }
-
-    function toggleSideView() {
-        setSideView(sideView === "queue" ? "lyrics" : "queue", true, true);
-    }
-
-    function showLyricsFromShortcut() {
-        setSideView("lyrics", true, true);
-    }
-
-    function handleSideViewShortcut(event: KeyboardEvent) {
-        if (
-            event.defaultPrevented ||
-            event.isComposing ||
-            event.metaKey ||
-            event.ctrlKey ||
-            event.altKey
-        ) {
-            return;
-        }
-        const target = event.target as HTMLElement | null;
-        if (
-            target?.isContentEditable ||
-            target instanceof HTMLInputElement ||
-            target instanceof HTMLTextAreaElement ||
-            target instanceof HTMLSelectElement
-        ) {
-            return;
-        }
-        const key = event.key.toLowerCase();
-        if (key === "q") {
-            event.preventDefault();
-            toggleSideView();
-        } else if (key === "l") {
-            event.preventDefault();
-            showLyricsFromShortcut();
+        if (DOM.sideView) {
+            DOM.sideView.innerHTML = showingQueue ? APPLE_SYMBOLS.lyrics : APPLE_SYMBOLS.list;
+            DOM.sideView.title = showingQueue ? translations[LOCALE].sideView.showLyrics : translations[LOCALE].sideView.showQueue;
+            DOM.sideView.setAttribute("aria-label", DOM.sideView.title);
+            DOM.sideView.setAttribute("aria-pressed", String(showingQueue));
         }
     }
+    function setQueueVisible(visible: boolean) {
+        if (!visible) Queue.cancelHandoff();
+        showingQueue = visible;
+        DOM.container.classList.toggle("side-view-queue", visible);
+        if (DOM.lyrics) { DOM.lyrics.inert = visible; DOM.lyrics.setAttribute("aria-hidden", String(visible)); }
+        if (DOM.queue) { DOM.queue.inert = !visible; DOM.queue.setAttribute("aria-hidden", String(!visible)); }
+        if (visible) Queue.update(true);
+        updateLyricsTools();
+    }
+    const showLyricsTools = PlayerControls.showLyricsTools.bind(PlayerControls);
 
     function applyLyricsScale() {
         if (!CFM.get("lyricsDisplay")) return;
@@ -744,7 +583,6 @@ async function startFullscape() {
     const updatePlayerControlsWithoutResyncEffect = (evt: any) => {
         if (shouldSuppressPlaybackTimelineResyncEvent(evt)) return;
         updatePlayerControls(evt);
-        Queue.scheduleUpdate();
     };
     let metadataFrameId: number | null = null;
     let metadataAnimations: Animation[] = [];
@@ -807,7 +645,7 @@ async function startFullscape() {
     }
 
     function updateLyricsBounds() {
-        if (!DOM.lyrics?.isConnected && !DOM.queue?.isConnected) return;
+        if (!CFM.get("lyricsDisplay") || !DOM.lyrics?.isConnected) return;
         const artwork = DOM.container.querySelector<HTMLElement>("#fullscape-art");
         const controls = DOM.container.querySelector<HTMLElement>("#fullscape-status");
         const progress = DOM.container.querySelector<HTMLElement>("#fullscape-progress-parent");
@@ -841,9 +679,8 @@ async function startFullscape() {
         cancelPlaybackTimelineResync();
         playbackDeviceDebugUpdatedAt = 0;
         playbackDeviceDebugRequest = null;
-        LOCALE = CFM.getGlobal("locale") as Config["locale"];
-        sideView = CFM.get("lyricsDisplay") ? "lyrics" : "queue";
         DOM.container.classList.toggle("lyrics-active", Boolean(CFM.get("lyricsDisplay")));
+
         DOM.container.classList.toggle(
             "vertical-mode",
             (CFM.get("verticalMonitorSupport") as Settings["verticalMonitorSupport"]) &&
@@ -900,7 +737,10 @@ async function startFullscape() {
        }
        `;
 
-        Lyrics.teardown();
+        if (CFM.get("lyricsDisplay")) {
+            Lyrics.teardown();
+        }
+        Cover.teardown();
         Queue.teardown();
         DOM.container.innerHTML = getHtmlContent();
 
@@ -910,19 +750,23 @@ async function startFullscape() {
         DOM.fluidBack = DOM.container.querySelector("#fullscape-fluid-background")!;
 
         DOM.cover = DOM.container.querySelector("#fullscape-art-image")!;
+        Cover.attach();
+        DOM.queue = DOM.container.querySelector("#fullscape-queue-container");
+        Queue.attach(DOM.queue!);
+        DOM.sideView = DOM.container.querySelector("#fullscape-side-view")!;
+        DOM.sideView.onclick = toggleQueue;
+        DOM.container.querySelector<HTMLButtonElement>("#fullscape-translation")!.onclick = () => {
+            Lyrics.toggleTranslation(); updateLyricsTools();
+        };
         DOM.title = DOM.container.querySelector("#fullscape-title-text-track")!;
         DOM.artist = DOM.container.querySelector("#fullscape-artist .fullscape-artist-list")!;
         DOM.album = DOM.container.querySelector("#fullscape-album span")!;
-        DOM.lyrics = DOM.container.querySelector("#fad-lyrics-container")!;
-        DOM.queue = DOM.container.querySelector("#fullscape-queue-container")!;
-        Queue.attach(DOM.queue, {
-            onClose: () => setSideView("lyrics", true, true),
-            onNavigate: handleNavigation,
-        });
         if (CFM.get("lyricsDisplay")) {
+            DOM.lyrics = DOM.container.querySelector("#fad-lyrics-container")!;
             Lyrics.attach(DOM.lyrics);
         }
-        applySideView();
+
+        setQueueVisible(false);
 
         if (CFM.get("upnextDisplay") !== "never") {
             DOM.upNextContainer = DOM.container.querySelector("#fullscape-upnext-container")!;
@@ -954,22 +798,24 @@ async function startFullscape() {
         if (CFM.get("playerControls") !== "never") {
             DOM.play = DOM.container.querySelector("#fullscape-play")!;
             DOM.play.onclick = () => {
+                Utils.fadeAnimation(DOM.play);
                 Spicetify.Player.togglePlay();
             };
             DOM.nextControl = DOM.container.querySelector("#fullscape-next")!;
-            DOM.nextControl.onclick = () => Spicetify.Player.next();
+            DOM.nextControl.onclick = () => {
+                Utils.fadeAnimation(DOM.nextControl, "fade-ri");
+                Spicetify.Player.next();
+            };
             DOM.backControl = DOM.container.querySelector("#fullscape-back")!;
-            DOM.backControl.onclick = () => Spicetify.Player.back();
+            DOM.backControl.onclick = () => {
+                Utils.fadeAnimation(DOM.backControl, "fade-le");
+                Spicetify.Player.back();
+            };
         }
-        DOM.playMode = DOM.container.querySelector("#fullscape-play-mode")!;
-        DOM.sideView = DOM.container.querySelector("#fullscape-side-view")!;
-        if (DOM.playMode) {
-            DOM.playMode.onclick = togglePlayMode;
-            syncPlayMode();
-        }
-        if (DOM.sideView) DOM.sideView.onclick = toggleSideView;
-        updateSideViewButton();
-        PlayerControls.updateControlVisibility(false);
+    }
+
+    function toggleQueue() {
+        setQueueVisible(!showingQueue);
     }
 
     function handleNavigation(navigateUri: string) {
@@ -994,8 +840,9 @@ async function startFullscape() {
         const meta = Spicetify.Player.data.item?.metadata;
         if (!meta) return;
 
-        if (CFM.get("lyricsDisplay")) void loadCurrentLyrics(sequence);
-        Queue.scheduleUpdate();
+        if (CFM.get("lyricsDisplay")) {
+            loadCurrentLyrics();
+        }
 
         // prepare title
         let songName = meta?.title;
@@ -1045,6 +892,8 @@ async function startFullscape() {
         DOM.coverImg.onload = () => {
             if (sequence !== infoSequence) return;
             DOM.cover.style.backgroundImage = `url("${DOM.coverImg.src}")`;
+            Cover.updateImage();
+            Queue.landIncoming();
             DOM.title.innerText = songName || "";
             DOM.title.setAttribute("uri", Spicetify.Player.data?.item?.uri || "");
 
@@ -1101,47 +950,31 @@ async function startFullscape() {
         }
         DOM.container.classList.remove("fullscape-cursor-hidden");
         DOM.container.style.cursor = "default";
-        const isInsideSideView = Boolean(
-            event?.target &&
-                (DOM.lyrics?.contains(event.target as Node) || DOM.queue?.contains(event.target as Node)),
-        );
-        const delay = isInsideSideView ? 10_000 : 3_000;
+        const isInsideLyrics = Boolean(event?.target && DOM.lyrics?.contains(event.target as Node));
+        const delay = isInsideLyrics ? 10_000 : 3_000;
         curTimer = setTimeout(() => {
             DOM.container.style.cursor = "none";
             DOM.container.classList.add("fullscape-cursor-hidden");
         }, delay);
     }
 
-    function handleControlMouseMove(event: MouseEvent) {
-        const target = event.target as HTMLElement | null;
-        const inside = Boolean(target?.closest(".fullscape-controls, #fullscape-queue-container"));
-        PlayerControls.setPointerInside(inside);
-        if (
-            CFM.get("playerControls") === "mousemove" ||
-            CFM.get("playModeControl") === "mousemove"
-        ) {
-            hidePlayerControls();
-        }
-    }
-
-    function handleControlMouseLeave() {
-        PlayerControls.setPointerInside(false);
-        PlayerControls.updateControlVisibility(false);
-    }
-
     function handleMouseMoveActivation() {
         DOM.container.addEventListener("mousemove", hideCursor);
-        DOM.container.addEventListener("mousemove", handleControlMouseMove);
-        DOM.container.addEventListener("mouseleave", handleControlMouseLeave);
+        DOM.container.addEventListener("mousemove", showLyricsTools);
+        showLyricsTools();
         hideCursor();
-        PlayerControls.hidePlayerControls();
+        if (CFM.get("playerControls") === "mousemove") {
+            DOM.container.addEventListener("mousemove", hidePlayerControls);
+            PlayerControls.hidePlayerControls();
+        }
     }
 
     function handleMouseMoveDeactivation() {
         DOM.container.removeEventListener("mousemove", hideCursor);
-        DOM.container.removeEventListener("mousemove", handleControlMouseMove);
-        DOM.container.removeEventListener("mouseleave", handleControlMouseLeave);
-        handleControlMouseLeave();
+        DOM.container.removeEventListener("mousemove", showLyricsTools);
+        clearTimeout(PlayerControls.toolsTimer);
+        DOM.container.removeEventListener("mousemove", hidePlayerControls);
+
         if (curTimer) clearTimeout(curTimer);
         if (PlayerControls.playerControlsTimer) clearTimeout(PlayerControls.playerControlsTimer);
     }
@@ -1156,18 +989,10 @@ async function startFullscape() {
         }
     }
 
-    const loadCurrentLyrics = async (expectedInfoSequence = infoSequence) => {
+    const loadCurrentLyrics = () => {
         if (!CFM.get("lyricsDisplay")) return;
         const uri = Spicetify.Player.data.item?.uri;
-        if (uri) await Lyrics.loadLyrics(uri);
-        if (
-            expectedInfoSequence === infoSequence &&
-            uri === Spicetify.Player.data?.item?.uri &&
-            Lyrics.getStatus() === "unavailable" &&
-            sideView === "lyrics"
-        ) {
-            setSideView("queue");
-        }
+        if (uri) Lyrics.loadLyrics(uri);
         Lyrics.prefetchNextLyrics();
     };
 
@@ -1175,31 +1000,29 @@ async function startFullscape() {
         Lyrics.syncPlaybackProgress();
         Lyrics.prefetchNextLyrics();
     };
-    const handleLyricsQueueUpdate = () => {
-        Queue.scheduleUpdate();
-        Lyrics.prefetchNextLyrics();
-    };
-    const handlePlayerUpdate = () => {
-        syncPlayMode();
-        Queue.scheduleUpdate();
-    };
+    const handleLyricsQueueUpdate = () => Lyrics.prefetchNextLyrics();
     function handlePlaybackTimelineProgress() {
         void updatePlaybackDeviceDebug();
         void tryPlaybackTimelineResync();
     }
 
     function handleSongChange(evt?: any) {
+        Queue.captureIncoming();
+        Queue.scheduleUpdate();
         if (evt?.data && typeof evt.data === "object") playbackStateEventData = evt.data;
         schedulePlaybackTimelineResync(evt);
         void updatePlaybackDeviceDebug(true);
-        Queue.scheduleUpdate();
         void updateInfo();
     }
 
     let activationSequence = 0;
 
     async function activate() {
+        Cover.attach();
+        Queue.attach(DOM.queue!);
+        Spicetify.Platform.PlayerAPI._events.addListener("queue_update", Queue.scheduleUpdate);
         const sequence = ++activationSequence;
+
         document.body.classList.add(...CLASSES_TO_ADD);
         if (CFM.get("enableFullscreen")) await Utils.enterFullscreen()?.catch(() => undefined);
         else await Utils.exitFullscreen()?.catch(() => undefined);
@@ -1219,6 +1042,7 @@ async function startFullscape() {
         window.addEventListener("focus", handleSpotifyForegroundChange);
         document.addEventListener("visibilitychange", handleSpotifyForegroundChange);
         void updatePlaybackDeviceDebug(true);
+        handleMouseMoveActivation();
         DOM.container.oncontextmenu = ConfigManager.openConfig.bind(ConfigManager);
         DOM.container.querySelector<HTMLElement>("#fullscape-foreground")!.ondblclick = deactivate;
         DOM.back.ondblclick = deactivate;
@@ -1227,8 +1051,6 @@ async function startFullscape() {
             Spicetify.Platform.PlayerAPI._events.addListener("queue_update", updateUpNext);
             Spicetify.Platform.PlayerAPI._events.addListener("update", updateUpNextShow);
         }
-        Spicetify.Platform.PlayerAPI._events.addListener("queue_update", handleLyricsQueueUpdate);
-        Spicetify.Platform.PlayerAPI._events.addListener("update", handlePlayerUpdate);
         if (CFM.get("icons")) {
             updatePlayingIcon({ data: { is_paused: !Spicetify.Player.isPlaying() } });
             Spicetify.Player.addEventListener("onplaypause", updatePlayingIcon);
@@ -1250,9 +1072,6 @@ async function startFullscape() {
                 updatePlayerControlsWithoutResyncEffect,
             );
         }
-        // Start the shared mousemove visibility timer after the initial player sync;
-        // otherwise that sync can immediately hide the auxiliary controls.
-        handleMouseMoveActivation();
         document.querySelector(".Root__top-container")?.append(DOM.style, DOM.container);
         updatePlaybackLayout({
             data: { is_paused: !Spicetify.Player.isPlaying() },
@@ -1267,23 +1086,36 @@ async function startFullscape() {
                 if (sequence === activationSequence && Utils.isModeActivated()) loadCurrentLyrics();
             }, 400);
             Spicetify.Player.addEventListener("onprogress", handleLyricsProgress);
+            Spicetify.Platform.PlayerAPI._events.addListener(
+                "queue_update",
+                handleLyricsQueueUpdate,
+            );
         }
         Spicetify.Mousetrap.bind("f11", toggleNativeFullscreen);
         document.addEventListener("fullscreenchange", fullscreenChangeListener);
         Spicetify.Mousetrap.bind("esc", deactivate);
-        document.addEventListener("keydown", handleSideViewShortcut);
+        if (CFM.get("lyricsDisplay")) {
+            Spicetify.Mousetrap.bind("l", () => {
+                if (showingQueue) setQueueVisible(false);
+                else Lyrics.toggleLyrics();
+            });
+        }
         Spicetify.Mousetrap.bind("c", () => {
             const popup = document.querySelector("body > generic-modal");
             if (popup) popup.remove();
             else ConfigManager.openConfig();
         });
+        Spicetify.Mousetrap.bind("q", toggleQueue);
     }
 
     async function deactivate() {
+        Cover.teardown();
+        Queue.teardown();
+        Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", Queue.scheduleUpdate);
         activationSequence += 1;
         infoSequence += 1;
         cancelPlaybackTimelineResync();
-        sideView = "lyrics";
+
         Background.stop();
         Spicetify.Player.removeEventListener("songchange", handleSongChange);
         Spicetify.Player.removeEventListener("onplaypause", updatePlaybackLayout);
@@ -1302,8 +1134,6 @@ async function startFullscape() {
             Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", updateUpNext);
             Spicetify.Platform.PlayerAPI._events.removeListener("update", updateUpNextShow);
         }
-        Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", handleLyricsQueueUpdate);
-        Spicetify.Platform.PlayerAPI._events.removeListener("update", handlePlayerUpdate);
         const progressRoot = DOM.container.querySelector("#fullscape-progress-parent");
         if (progressRoot) ReactDOM.unmountComponentAtNode(progressRoot);
         if (CFM.get("icons")) {
@@ -1318,9 +1148,12 @@ async function startFullscape() {
         Spicetify.Player.removeEventListener("onprogress", handlePlaybackTimelineProgress);
         if (CFM.get("lyricsDisplay")) {
             Spicetify.Player.removeEventListener("onprogress", handleLyricsProgress);
+            Spicetify.Platform.PlayerAPI._events.removeListener(
+                "queue_update",
+                handleLyricsQueueUpdate,
+            );
+            Lyrics.teardown();
         }
-        Lyrics.teardown();
-        Queue.teardown();
         document.body.classList.remove(...CLASSES_TO_ADD);
         UpNext.upNextShown = false;
         if (CFM.get("enableFullscreen")) {
@@ -1334,8 +1167,9 @@ async function startFullscape() {
 
         Spicetify.Mousetrap.unbind("f11");
         Spicetify.Mousetrap.unbind("esc");
-        document.removeEventListener("keydown", handleSideViewShortcut);
+        Spicetify.Mousetrap.unbind("l");
         Spicetify.Mousetrap.unbind("c");
+        Spicetify.Mousetrap.unbind("q");
     }
 
     function toggleNativeFullscreen() {
@@ -1358,6 +1192,7 @@ async function startFullscape() {
     }
 
     function resizeEvents() {
+        Queue.cancelHandoff();
         if (resizeFrameId !== null) cancelAnimationFrame(resizeFrameId);
         resizeFrameId = requestAnimationFrame(() => {
             resizeFrameId = null;

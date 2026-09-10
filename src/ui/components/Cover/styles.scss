@@ -1,0 +1,95 @@
+#fullscape-display {
+    .fullscape-cover-hitbox {
+        position: relative;
+        margin-inline: auto;
+        cursor: zoom-in;
+    }
+    #fullscape-art-image {
+        height: 0;
+        margin-inline: auto;
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center;
+        cursor: zoom-in;
+        border: 0;
+        outline: 0;
+        // Hit testing stays on the untransformed wrapper, including the inset edge.
+        pointer-events: none;
+        transform: perspective(900px) rotateX(0deg) rotateY(0deg) scale(1);
+        box-shadow:
+            0 0 24px rgb(0 0 0 / 28%),
+            0 0 56px rgb(0 0 0 / 16%);
+        transition: transform 320ms cubic-bezier(0.22, 1.18, 0.36, 1);
+        &:focus-visible {
+            outline: 2px solid currentColor;
+            outline-offset: 6px;
+        }
+    }
+    > :not(canvas, #fullscape-foreground, .fullscape-cover-viewer),
+    #fullscape-details {
+        transition: opacity 300ms ease;
+    }
+    &.fullscape-cover-expanded {
+        > :not(canvas, #fullscape-foreground, .fullscape-cover-viewer),
+        #fullscape-details {
+            opacity: 0 !important;
+            pointer-events: none;
+        }
+    }
+    .fullscape-cover-viewer {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        max-width: none;
+        max-height: none;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        overflow: hidden;
+        color: white;
+        cursor: zoom-out;
+        &::backdrop {
+            background: transparent;
+        }
+        // Keep dimming in one composited layer instead of recreating a native backdrop.
+        &::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: rgb(0 0 0 / 22%);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 300ms ease;
+        }
+        &.is-open::before {
+            opacity: 1;
+        }
+        img {
+            position: absolute;
+            inset: 0;
+            margin: auto;
+            width: auto;
+            height: auto;
+            max-width: calc(100vw - 64px);
+            max-height: calc(100vh - 64px);
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 16px 64px rgb(0 0 0 / 25%);
+            transform-origin: top left;
+            will-change: transform;
+        }
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    #fullscape-display #fullscape-art-image {
+        transition: none;
+    }
+}
+
+@starting-style {
+    #fullscape-display .fullscape-cover-viewer.is-open::before {
+        opacity: 0;
+    }
+}

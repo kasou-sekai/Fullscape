@@ -4,7 +4,6 @@
     position: fixed;
     width: 100%;
     height: 100%;
-    overflow: hidden;
     cursor: default;
     &.fullscape-cursor-hidden,
     &.fullscape-cursor-hidden * {
@@ -94,20 +93,57 @@
         height: 1.5px;
     }
     */
-    @keyframes fullscapeIconFadeIn {
-        from {
+    @keyframes fadeUp {
+        0% {
             opacity: 0;
+            transform: translateY(-10px);
         }
         to {
-            opacity: 1;
+            opacity: 0.8;
+            transform: translateY(0);
         }
     }
-    .fullscape-icon-transition-out {
-        opacity: 0 !important;
-        transition: opacity 180ms ease-out;
+    @keyframes fadeDo {
+        0% {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 0.8;
+            transform: translateY(0);
+        }
     }
-    .fullscape-icon-transition-in {
-        animation: fullscapeIconFadeIn 180ms ease-in both;
+    @keyframes fadeRi {
+        0% {
+            opacity: 0;
+            transform: translateX(10px);
+        }
+        to {
+            opacity: 0.8;
+            transform: translateX(0);
+        }
+    }
+    @keyframes fadeLe {
+        0% {
+            opacity: 0;
+            transform: translateX(-10px);
+        }
+        to {
+            opacity: 0.8;
+            transform: translateX(0);
+        }
+    }
+    .fade-do {
+        animation: fadeDo 0.5s cubic-bezier(0.3, 0, 0, 1);
+    }
+    .fade-up {
+        animation: fadeUp 0.5s cubic-bezier(0.3, 0, 0, 1);
+    }
+    .fade-ri {
+        animation: fadeRi 0.5s cubic-bezier(0.3, 0, 0, 1);
+    }
+    .fade-le {
+        animation: fadeLe 0.5s cubic-bezier(0.3, 0, 0, 1);
     }
     button.dot-after {
         padding-bottom: 3px !important;
@@ -544,11 +580,6 @@
             }
         }
     }
-    &.side-view-queue #fad-lyrics-container {
-        visibility: hidden;
-        opacity: 0;
-        pointer-events: none;
-    }
     #fad-lyrics-container.lyrics-unsynced {
         .lyrics-wrapper {
             height: 100%;
@@ -618,18 +649,6 @@
         border-radius: 8px;
         background-size: cover;
     }
-    #fullscape-art-inner {
-        position: absolute;
-        left: 3%;
-        bottom: 0;
-        width: 94%;
-        height: 94%;
-        z-index: -1;
-        box-shadow:
-            0 0 24px rgba(0, 0, 0, 0.28),
-            0 0 56px rgba(0, 0, 0, 0.16) !important;
-        transform: translateZ(0);
-    }
     #fullscape-artist {
         font-weight: 500;
         color: var(--secondary-color);
@@ -685,20 +704,11 @@
         color: var(--tertiary-color);
     }
     .fullscape-controls {
-        display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        display: flex;
+        flex-direction: row;
         align-items: center;
         transition: opacity 1s ease-in-out;
-        column-gap: clamp(6px, 1.3vw, 18px);
-    }
-    .fullscape-controls .fullscape-button {
-        width: 100%;
-        min-width: 0;
-        height: clamp(48px, 4.7vw, 64px);
-    }
-    .fullscape-controls .apple-music-control-icon {
-        max-width: 100%;
-        max-height: 100%;
+        column-gap: 18px;
     }
     #fullscape-background,
     #fullscape-fluid-background {
@@ -837,42 +847,19 @@
         &:hover {
             transform: scale(1.2);
         }
-        &:focus-visible {
-            opacity: 1 !important;
-            outline: 2px solid var(--theme-main-color);
-            outline-offset: 4px;
-        }
         &.button-active {
             background: var(--theme-background-color) !important;
             filter: saturate(1.5) contrast(1.5) !important;
         }
     }
     #fullscape-back,
-    #fullscape-next,
-    #fullscape-play,
-    #fullscape-play-mode,
-    #fullscape-side-view {
-        width: 100%;
+    #fullscape-next {
+        width: 58px;
+        height: 58px;
     }
-    #fullscape-play-mode .apple-music-mode-icon,
-    #fullscape-side-view .apple-music-list-icon,
-    #fullscape-side-view .apple-music-lyrics-icon {
-        width: 40px;
-        height: 40px;
-    }
-    #fullscape-play-mode.button-unavailable {
-        color: var(--tertiary-color);
-    }
-    #fullscape-play-mode:not(.button-unavailable),
-    #fullscape-side-view {
-        color: var(--primary-color);
-    }
-    #fullscape-play-mode[aria-pressed="true"],
-    #fullscape-side-view[aria-pressed="true"] {
-        opacity: 1;
-    }
-    &.side-view-queue #fullscape-side-view {
-        opacity: 1 !important;
+    #fullscape-play {
+        width: 84px;
+        height: 84px;
     }
     .apple-music-skip-icon {
         width: 44px;
@@ -886,8 +873,6 @@
     .apple-music-control-icon {
         display: block;
         flex: 0 0 auto;
-        color: inherit;
-        fill: currentColor;
     }
     #fullscape-foreground svg {
         fill: var(--primary-color);
@@ -904,11 +889,6 @@
         transition: background-image var(--fs-transition) linear;
     }
     @media (prefers-reduced-motion: reduce) {
-        .fullscape-icon-transition-out,
-        .fullscape-icon-transition-in {
-            animation: none !important;
-            transition: none !important;
-        }
         #fullscape-title-text-track,
         #fullscape-secondary-meta-track {
             will-change: auto;
@@ -939,10 +919,6 @@ body {
         }
     }
 }
-
-body.fullscape-activated .Root__right-sidebar {
-    display: none !important;
-}
 .fullscape-activated {
     .Root__top-bar,
     .Root__nav-bar,
@@ -956,7 +932,108 @@ body.fullscape-activated .Root__right-sidebar {
         transform: none !important;
         overflow-x: hidden !important;
     }
+    .fullscape-transform-animation {
+        transition: transform 0.4s ease-in-out;
+    }
+    .fullscape-queue-panel {
+        --queue-panel-x: 1000px;
+        z-index: 101;
+        transform: translateX(var(--queue-panel-x));
+
+        .main-buddyFeed-actions.main-buddyFeed-closeContainer,
+        .icNf66tgG3uxDMbCCIaN.XOSSUjLDKk9RRmiX_UWa,
+        .liw6Y_iPu2DJRwk10x9d.FLyfurPaIDAlwjsF3mLf {
+            display: none;
+        }
+        .XOawmCGZcQx4cesyNfVO,
+        .oXO9_yYs6JyOwkBn8E4a {
+            width: 500px !important;
+        }
+        .main-buddyFeed-container,
+        .ffFwfKcPDbmAPLXzxzKq,
+        .ffFwfKcPDbmAPLXzxzKq::before,
+        .UrfDp0_mKGL9hkfh9g_R.SKjhjAC5p3CW1UI5UiMg,
+        .UrfDp0_mKGL9hkfh9g_R.SKjhjAC5p3CW1UI5UiMg::before {
+            background: transparent !important;
+            backdrop-filter: blur(10px) brightness(0.7);
+            border-radius: 10px;
+        }
+    }
+    &.vertical-mode {
+        .XOawmCGZcQx4cesyNfVO,
+        .oXO9_yYs6JyOwkBn8E4a {
+            width: 280px !important;
+        }
+    }
     .Root__main-view-overlay {
         z-index: 1000;
+    }
+}
+
+#fullscape-display {
+    .apple-system-symbol {
+        display: inline-block;
+        flex: 0 0 auto;
+        width: 48px;
+        height: 48px;
+        background: currentColor;
+        mask: var(--symbol) center / contain no-repeat;
+        -webkit-mask: var(--symbol) center / contain no-repeat;
+    }
+    .fullscape-lyrics-tools {
+        position: absolute;
+        right: clamp(24px, 4vw, 72px);
+        bottom: clamp(22px, 4vh, 44px);
+        z-index: 10;
+        display: flex;
+        gap: 8px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 220ms ease;
+        &.is-visible,
+        &:has(:focus-visible) {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        button {
+            display: grid;
+            place-items: center;
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            border: 0;
+            border-radius: 50%;
+            color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.09);
+            cursor: pointer;
+            transition:
+                background 160ms ease,
+                color 160ms ease,
+                transform 160ms ease;
+            &:hover {
+                background: rgba(255, 255, 255, 0.19);
+            }
+            &:active {
+                transform: scale(0.94);
+            }
+            &:focus-visible {
+                outline: 2px solid white;
+                outline-offset: 4px;
+            }
+            &[aria-pressed="true"] {
+                background: rgba(255, 255, 255, 0.9);
+                color: #303438;
+            }
+            &:disabled {
+                opacity: 0.3;
+                cursor: default;
+            }
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .fullscape-lyrics-tools,
+        .fullscape-lyrics-tools button {
+            transition: none;
+        }
     }
 }

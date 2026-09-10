@@ -1,8 +1,8 @@
+import { APPLE_SYMBOLS } from "../constants/apple-system-symbols";
 import ICONS from "../constants";
 import CFM from "../utils/config";
 
 export const getHtmlContent = () => {
-    const controlsEnabled = true;
     return `
         <canvas id="fullscape-background"></canvas>
         <canvas id="fullscape-fluid-background" aria-hidden="true"></canvas>
@@ -49,12 +49,16 @@ export const getHtmlContent = () => {
 </div>`
          : ""
  }
-<div id="fad-lyrics-container" aria-label="Lyrics"></div>
+${CFM.get("lyricsDisplay") ? `<div id="fad-lyrics-container"></div>` : ""}
 <div id="fullscape-queue-container" aria-label="Queue" tabindex="-1"></div>
+<div class="fullscape-lyrics-tools" role="group" aria-label="${String(CFM.getGlobal("locale")).startsWith("zh") ? "歌词与队列" : "Lyrics and queue"}">
+    <button id="fullscape-translation" type="button">${APPLE_SYMBOLS.translate}</button>
+    <button id="fullscape-side-view" type="button">${APPLE_SYMBOLS.list}</button>
+</div>
 <div id="fullscape-foreground">
     <div id="fullscape-art">
-        <div id="fullscape-art-image" class="fullscape-background-fade">
-            <div id="fullscape-art-inner"></div>
+        <div class="fullscape-cover-hitbox">
+            <div id="fullscape-art-image" class="fullscape-background-fade"></div>
         </div>
     </div>
     <div id="fullscape-details">
@@ -83,14 +87,11 @@ export const getHtmlContent = () => {
                 </div>
             </div>
             <div id="fullscape-progress-parent"></div>
-            <div id="fullscape-status" class="${controlsEnabled ? "active" : ""}">
+            <div id="fullscape-status" class="${CFM.get("playerControls") !== "never" ? "active" : ""}">
                 ${
-                    controlsEnabled
+                    CFM.get("playerControls") !== "never"
                         ? `
                     <div class="fullscape-controls-center fullscape-controls">
-                        <button class="fullscape-button" id="fullscape-play-mode" type="button">
-                            ${ICONS.APPLE_MUSIC_LIST_LOOP}
-                        </button>
                         <button class="fullscape-button" id="fullscape-back">
                             ${ICONS.APPLE_MUSIC_BACK}
                         </button>
@@ -99,9 +100,6 @@ export const getHtmlContent = () => {
                         </button>
                         <button class="fullscape-button" id="fullscape-next">
                             ${ICONS.APPLE_MUSIC_NEXT}
-                        </button>
-                        <button class="fullscape-button" id="fullscape-side-view" type="button">
-                            ${ICONS.APPLE_MUSIC_LIST}
                         </button>
                     </div>`
                         : ""

@@ -1342,17 +1342,6 @@ export class ConfigManager {
                             (value: string) => this.saveOption("playerControls", value),
                             layout.descriptions.playerControls,
                         ),
-                        this.createOptions(
-                            strings.playModeControl,
-                            {
-                                mousemove: strings.contextDisplay.mouse,
-                                always: strings.contextDisplay.always,
-                            },
-                            CFM.get("playModeControl") as Settings["playModeControl"],
-                            "playModeControl",
-                            (value: string) => this.saveOption("playModeControl", value),
-                            layout.descriptions.playModeControl,
-                        ),
                         this.createToggle(
                             strings.playbackTimelineResync,
                             "playbackTimelineResync",

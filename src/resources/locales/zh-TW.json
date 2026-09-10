@@ -2,11 +2,6 @@
     "langName": "繁體中文",
     "upnext": "下一首",
     "unknownArtist": "未知藝人",
-    "sideView": { "showQueue": "顯示播放佇列", "showLyrics": "顯示歌詞", "unavailable": "目前歌曲沒有可用歌詞。" },
-    "playModes": { "list": "列表循環", "shuffle": "隨機播放", "single": "單曲循環" },
-    "queue": {
-        "title": "播放佇列", "lyrics": "顯示歌詞", "current": "正在播放", "upNext": "接下來播放", "later": "稍後播放", "empty": "佇列是空的", "clear": "清空使用者佇列", "clearConfirm": "要清空所有手動加入的歌曲嗎？", "playNow": "立即播放", "moveNext": "移到下一首", "remove": "從佇列移除", "openTrack": "開啟歌曲", "openArtist": "開啟藝人", "openAlbum": "開啟專輯", "playing": "播放中", "paused": "已暫停", "manual": "手動加入", "context": "播放內容", "recommendation": "Spotify 推薦", "unknown": "Spotify 佇列", "reorderUnavailable": "佇列順序由 Spotify 目前的播放內容決定。", "actionUnavailable": "目前 Spotify 用戶端不支援此佇列操作。"
-    },
     "settings": {
         "fullscapeConfig": "插件設定",
         "exit": "退出",
@@ -124,7 +119,6 @@
         "generalHeader": "一般設定",
         "progressBar": "播放進度條",
         "playerControls": "播放控制",
-        "playModeControl": "播放方式與佇列按鈕",
         "trimTitle": "縮短標題",
         "trimTitleUpNext": "縮短下一首提示的標題",
         "showAlbum": {
@@ -314,7 +308,6 @@
                 "fullscreen": "開啟播放畫面時使用系統原生全螢幕。",
                 "progressBar": "選擇進度列持續顯示、滑鼠移動時顯示或隱藏。",
                 "playerControls": "選擇播放控制按鈕的顯示時機。",
-                "playModeControl": "選擇播放方式與佇列/歌詞按鈕持續顯示，或在滑鼠移動後顯示。",
                 "showAlbum": "顯示專輯名稱，也可同時顯示發行日期。",
                 "icons": "在播放資訊旁顯示小圖示。",
                 "trimTitle": "移除歌曲標題中的版本與括號資訊。",
@@ -335,5 +328,20 @@
         },
         "configReset": "恢復預設"
     },
-    "fullscapeButtonDescription": "Fullscape"
+    "fullscapeButtonDescription": "Fullscape",
+    "cover": {
+        "enlarge": "放大封面",
+        "artwork": "專輯封面"
+    },
+    "queue": {
+        "empty": "佇列是空的",
+        "playNow": "立即播放",
+        "unknown": "Spotify 佇列",
+        "actionUnavailable": "目前 Spotify 用戶端不支援此佇列操作。"
+    },
+    "sideView": {
+        "showQueue": "顯示播放佇列",
+        "showLyrics": "顯示歌詞",
+        "unavailable": "目前歌曲沒有可用歌詞。"
+    }
 }

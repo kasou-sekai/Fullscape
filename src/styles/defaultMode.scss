@@ -8,8 +8,8 @@
         --fullscape-title-size: 50px;
         --fullscape-sec-size: 28px;
     }
-    &.lyrics-active:not(.lyrics-unavailable):not(.lyrics-hide-force),
-    &.side-view-queue {
+    &.lyrics-active
+        :not(#fullscape-display.lyrics-unavailable *, #fullscape-display.lyrics-hide-force *) {
         --fullscape-foreground-transform: 0px;
         --fullscape-art-max-width: 500px;
         --fullscape-items-max-width: 480px;
@@ -38,19 +38,8 @@
                 max-height: 70vh !important;
             }
         }
-        &.side-view-queue {
-            #fullscape-queue-container {
-                right: 0;
-                left: 0;
-                width: 100%;
-                top: 15%;
-                bottom: auto;
-                height: min(70vh, calc(100% - 15%));
-                max-height: 70vh;
-            }
-        }
-        &.lyrics-unavailable:not(.side-view-queue),
-        &.lyrics-hide-force:not(.side-view-queue) {
+        &.lyrics-unavailable,
+        &.lyrics-hide-force {
             --fullscape-foreground-transform: 0%;
             #fullscape-foreground {
                 width: 100%;
@@ -75,8 +64,11 @@
             --fullscape-title-size: 45px;
             --fullscape-sec-size: 26px;
         }
-        &.lyrics-active:not(.lyrics-unavailable):not(.lyrics-hide-force),
-        &.side-view-queue {
+        &.lyrics-active
+            :not(
+                #fullscape-display.lyrics-unavailable *,
+                #fullscape-display.lyrics-hide-force *
+            ) {
             --fullscape-foreground-transform: 0px;
             --fullscape-art-max-width: 450px;
             --fullscape-items-max-width: 430px;
@@ -95,8 +87,11 @@
             --fullscape-title-size: 40px;
             --fullscape-sec-size: 23px;
         }
-        &.lyrics-active:not(.lyrics-unavailable):not(.lyrics-hide-force),
-        &.side-view-queue {
+        &.lyrics-active
+            :not(
+                #fullscape-display.lyrics-unavailable *,
+                #fullscape-display.lyrics-hide-force *
+            ) {
             --fullscape-foreground-transform: 0px;
             --fullscape-art-max-width: 400px;
             --fullscape-items-max-width: 380px;
@@ -115,8 +110,11 @@
             --fullscape-title-size: 38px;
             --fullscape-sec-size: 21px;
         }
-        &.lyrics-active:not(.lyrics-unavailable):not(.lyrics-hide-force),
-        &.side-view-queue {
+        &.lyrics-active
+            :not(
+                #fullscape-display.lyrics-unavailable *,
+                #fullscape-display.lyrics-hide-force *
+            ) {
             --fullscape-foreground-transform: 0px;
             --fullscape-art-max-width: 350px;
             --fullscape-items-max-width: 330px;
@@ -135,8 +133,11 @@
             --fullscape-title-size: 40px;
             --fullscape-sec-size: 23px;
         }
-        &.lyrics-active:not(.lyrics-unavailable):not(.lyrics-hide-force),
-        &.side-view-queue {
+        &.lyrics-active
+            :not(
+                #fullscape-display.lyrics-unavailable *,
+                #fullscape-display.lyrics-hide-force *
+            ) {
             --fullscape-foreground-transform: 0px;
             --fullscape-art-max-width: 300px;
             --fullscape-items-max-width: 280px;
