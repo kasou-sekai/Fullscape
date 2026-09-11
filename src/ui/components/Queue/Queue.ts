@@ -114,6 +114,16 @@ export class Queue {
     private static animation: Animation | null = null;
     private static oldArtwork: HTMLElement | null = null;
 
+    private static tileRevision(entry: QueueEntry, isUpNext: boolean) {
+        return JSON.stringify([
+            entry.uri,
+            entry.title,
+            entry.artists,
+            entry.imageUrl,
+            isUpNext,
+        ]);
+    }
+
     private static get strings() {
         return (translations[CFM.getGlobal("locale") as string] || translations["en-US"]).queue;
     }
@@ -189,12 +199,45 @@ export class Queue {
             const activeUid = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>(
                 ".queue-tile",
             )?.dataset.uid;
-            const previous = new Map(
-                Array.from(container.querySelectorAll<HTMLElement>(".queue-tile")).map((tile) => [
-                    tile.dataset.uid,
-                    tile.getBoundingClientRect(),
-                ]),
+            const oldTiles = Array.from(
+                container.querySelectorAll<HTMLElement>(".queue-tile"),
             );
+            const previous = new Map(oldTiles.map((tile) => [tile, tile.getBoundingClientRect()]));
+            const availableByUid = new Map<string, HTMLElement[]>();
+            const availableByUri = new Map<string, HTMLElement[]>();
+            oldTiles.forEach((tile) => {
+                const add = (map: Map<string, HTMLElement[]>, key: string | undefined) => {
+                    if (!key) return;
+                    const matches = map.get(key) || [];
+                    matches.push(tile);
+                    map.set(key, matches);
+                };
+                add(availableByUid, tile.dataset.uid);
+                add(availableByUri, tile.dataset.uri);
+            });
+            const takeMatch = (entry: QueueEntry, isUpNext: boolean) => {
+                const take = (matches: HTMLElement[] | undefined) => {
+                    if (!matches) return null;
+                    const index = matches.findIndex(
+                        (tile) => tile.dataset.tileRevision === this.tileRevision(entry, isUpNext),
+                    );
+                    return index < 0 ? null : matches.splice(index, 1)[0];
+                };
+                const byUid = take(availableByUid.get(entry.uid));
+                if (byUid) {
+                    const uriMatches = availableByUri.get(entry.uri);
+                    const uriIndex = uriMatches?.indexOf(byUid) ?? -1;
+                    if (uriIndex >= 0) uriMatches?.splice(uriIndex, 1);
+                    return byUid;
+                }
+                const byUri = take(availableByUri.get(entry.uri));
+                if (byUri) {
+                    const uidMatches = availableByUid.get(byUri.dataset.uid || "");
+                    const uidIndex = uidMatches?.indexOf(byUri) ?? -1;
+                    if (uidIndex >= 0) uidMatches?.splice(uidIndex, 1);
+                }
+                return byUri;
+            };
             const gallery = document.createElement("div");
             gallery.className = "queue-gallery";
             const wall = document.createElement("div");
@@ -207,7 +250,9 @@ export class Queue {
             heading.textContent = "Queue";
             wall.append(upNextLabel, heading);
             for (const [index, entry] of entries.entries()) {
-                wall.append(this.createTile(entry, index, index === 0));
+                const tile = takeMatch(entry, index === 0) || this.createTile(entry, index, index === 0);
+                tile.dataset.queueIndex = String(index);
+                wall.append(tile);
             }
             gallery.append(wall);
             if (!entries.length) {
@@ -223,13 +268,13 @@ export class Queue {
             if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
                 const bounds = container.getBoundingClientRect();
                 wall.querySelectorAll<HTMLElement>(".queue-tile").forEach((tile) => {
-                    const before = previous.get(tile.dataset.uid);
+                    const before = previous.get(tile);
                     const after = tile.getBoundingClientRect();
                     if (
                         !before?.width ||
                         !after.width ||
-                        after.top > bounds.bottom ||
-                        after.bottom < bounds.top
+                        (before.top > bounds.bottom && after.top > bounds.bottom) ||
+                        (before.bottom < bounds.top && after.bottom < bounds.top)
                     )
                         return;
                     tile.animate(
@@ -268,6 +313,7 @@ export class Queue {
         tile.dataset.uid = entry.uid;
         tile.dataset.uri = entry.uri;
         tile.dataset.queueIndex = String(queueIndex);
+        tile.dataset.tileRevision = this.tileRevision(entry, isUpNext);
         const artist = entry.artists.join(" · ") || this.strings.unknown;
         tile.setAttribute("aria-label", `${this.strings.playNow}: ${entry.title} — ${artist}`);
         tile.title = `${entry.title} — ${artist}`;

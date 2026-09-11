@@ -153,6 +153,26 @@ test("gallery excludes the playing song and keeps the Up Next and Queue anchors"
         ["a", "b"],
     );
 });
+test("queue updates retain unchanged card nodes instead of reloading every cover", () => {
+    QueueAdapter.read = () => ({
+        revision: "2",
+        current: entry("old"),
+        next: [entry("a"), entry("b"), entry("c")],
+        later: [],
+    });
+    Queue.update(true);
+    const retained = DOM.queue.querySelectorAll(".queue-tile").slice(1);
+    QueueAdapter.read = () => ({
+        revision: "3",
+        current: entry("old"),
+        next: [entry("x"), entry("b"), entry("c")],
+        later: [],
+    });
+    Queue.update(true);
+    const updated = DOM.queue.querySelectorAll(".queue-tile");
+    assert.equal(updated[1], retained[0]);
+    assert.equal(updated[2], retained[1]);
+});
 test("failed playback never starts a cover handoff", async () => {
     QueueAdapter.play = async () => ({ ok: false });
     const tile = DOM.queue.querySelector(".queue-tile");
