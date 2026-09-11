@@ -26,6 +26,10 @@
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
+            transition:
+                transform var(--transition-duration) var(--transition-function),
+                opacity 180ms ease,
+                visibility 0s linear 180ms;
         }
         #fullscape-foreground {
             transform: translateX(0);
@@ -34,7 +38,8 @@
     .queue-gallery {
         min-height: 0;
         flex: 1;
-        padding: 8px 8px 24px;
+        margin-block: -18px;
+        padding: 56px 8px;
         overflow-y: auto;
         overscroll-behavior: contain;
         scrollbar-width: thin;
@@ -51,7 +56,7 @@
         margin: 0;
         color: var(--primary-color);
         font:
-            700 clamp(21px, 2.15vw, 34px) / 1 system-ui,
+            700 var(--fullscape-title-size) / 1 system-ui,
             sans-serif;
         letter-spacing: -0.045em;
         pointer-events: none;
@@ -99,6 +104,7 @@
         flex-direction: column;
         align-items: stretch;
         transform-origin: center;
+        will-change: transform, opacity, filter;
     }
     .queue-artwork-frame {
         position: relative;
@@ -220,10 +226,20 @@
         top: 52%;
         bottom: 90px;
     }
+    @media (max-width: 900px), (max-height: 900px) {
+        .queue-wall-label {
+            font-size: 35px;
+        }
+    }
     @media (prefers-reduced-motion: reduce) {
         #fullscape-queue-container,
         .queue-artwork-frame {
             transition: none;
+        }
+        .queue-motion-layer {
+            transform: none !important;
+            opacity: 1 !important;
+            filter: none !important;
         }
         .queue-tile:hover .queue-artwork-frame,
         .queue-tile:active .queue-artwork-frame {

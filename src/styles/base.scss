@@ -214,7 +214,9 @@
         overflow: hidden;
     }
     #fad-lyrics-container {
-        transition: transform var(--transition-duration) var(--transition-function);
+        transition:
+            transform var(--transition-duration) var(--transition-function),
+            opacity 180ms ease;
         position: absolute;
         right: var(--right-margin-lyrics);
         width: 50%;

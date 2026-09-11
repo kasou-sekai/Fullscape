@@ -85,7 +85,7 @@ async function startFullscape() {
         DOM.container.classList.toggle("side-view-queue", visible);
         if (DOM.lyrics) { DOM.lyrics.inert = visible; DOM.lyrics.setAttribute("aria-hidden", String(visible)); }
         if (DOM.queue) { DOM.queue.inert = !visible; DOM.queue.setAttribute("aria-hidden", String(!visible)); }
-        if (visible) Queue.update(true);
+        if (visible) Queue.update();
         updateLyricsTools();
     }
     const showLyricsTools = PlayerControls.showLyricsTools.bind(PlayerControls);

@@ -9,6 +9,7 @@ import {
 } from "../../../utils/overflow-scroll";
 import "./styles.scss";
 import { layoutQueue } from "./layout";
+import { getQueueTileMotion } from "./motion";
 
 type ArtworkOrigin = { uri: string; src: string; rect: DOMRect };
 
@@ -19,12 +20,9 @@ export class Queue {
     private static layoutObserver: ResizeObserver | null = null;
     private static deferredUpdate = false;
     private static tileOverflowAnimations = new WeakMap<HTMLElement, Animation[]>();
-    private static scrollObserver: IntersectionObserver | null = null;
     private static scrollGallery: HTMLElement | null = null;
-    private static scrollPosition = 0;
-    private static scrollDirection = 1;
-    private static tileVisibility = new WeakMap<HTMLElement, boolean>();
-    private static scrollAnimations = new WeakMap<HTMLElement, Animation[]>();
+    private static scrollFrame: number | null = null;
+    private static scrollListener: (() => void) | null = null;
 
     private static layoutGallery() {
         const gallery = this.container?.querySelector<HTMLElement>(".queue-gallery");
@@ -59,115 +57,52 @@ export class Queue {
     }
 
     private static teardownScrollAnimations() {
-        this.scrollObserver?.disconnect();
-        this.scrollObserver = null;
-        if (this.scrollGallery) this.scrollGallery.onscroll = null;
+        if (this.scrollGallery && this.scrollListener) {
+            this.scrollGallery.removeEventListener("scroll", this.scrollListener);
+        }
+        if (this.scrollFrame !== null) cancelAnimationFrame(this.scrollFrame);
         this.scrollGallery = null;
-        this.tileVisibility = new WeakMap();
-        this.scrollAnimations = new WeakMap();
+        this.scrollFrame = null;
+        this.scrollListener = null;
     }
 
-    /** Animate only when a cover crosses the queue viewport while scrolling. */
+    /** Map the visible part of each tile directly to its edge materialization. */
     private static setupScrollAnimations(gallery: HTMLElement) {
         this.teardownScrollAnimations();
-        if (typeof IntersectionObserver === "undefined") return;
         this.scrollGallery = gallery;
-        this.scrollPosition = gallery.scrollTop;
-        gallery.onscroll = () => {
-            const nextPosition = gallery.scrollTop;
-            if (Math.abs(nextPosition - this.scrollPosition) > 1) {
-                this.scrollDirection = nextPosition > this.scrollPosition ? 1 : -1;
-                this.scrollPosition = nextPosition;
-            }
+        if (
+            typeof requestAnimationFrame !== "function" ||
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        )
+            return;
+        const update = () => {
+            this.scrollFrame = null;
+            if (this.scrollGallery !== gallery) return;
+            this.updateScrollProgress(gallery);
         };
-        this.scrollObserver = new IntersectionObserver(
-            (entries) => {
-                const ordered = entries
-                    .filter((entry): entry is IntersectionObserverEntry & { target: HTMLElement } =>
-                        entry.target instanceof HTMLElement,
-                    )
-                    .sort((a, b) => {
-                        const aIndex = Number(a.target.dataset.queueIndex);
-                        const bIndex = Number(b.target.dataset.queueIndex);
-                        return this.scrollDirection > 0 ? aIndex - bIndex : bIndex - aIndex;
-                    });
-                ordered.forEach((entry, index) => {
-                    const tile = entry.target;
-                    const visible = entry.isIntersecting;
-                    const previous = this.tileVisibility.get(tile);
-                    this.tileVisibility.set(tile, visible);
-                    // The observer's first report establishes the initial state;
-                    // it must not replay entrance animation for every tile.
-                    if (previous === undefined || previous === visible) return;
-                    this.animateScrollTile(tile, visible, index * 18);
-                });
-            },
-            { root: gallery, threshold: 0.12 },
-        );
-        gallery.querySelectorAll<HTMLElement>(".queue-tile").forEach((tile) => {
-            this.scrollObserver?.observe(tile);
-        });
+        this.scrollListener = () => {
+            if (this.scrollFrame === null) this.scrollFrame = requestAnimationFrame(update);
+        };
+        gallery.addEventListener("scroll", this.scrollListener, { passive: true });
+        this.scrollFrame = requestAnimationFrame(update);
     }
 
-    private static animateScrollTile(tile: HTMLElement, entering: boolean, delay: number) {
-        const gallery = this.scrollGallery;
-        if (!gallery || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-        this.scrollAnimations.get(tile)?.forEach((animation) => animation.cancel());
+    private static updateScrollProgress(gallery: HTMLElement) {
         const galleryBounds = gallery.getBoundingClientRect();
-        const bounds = tile.getBoundingClientRect();
-        if (!galleryBounds.width || !galleryBounds.height || !bounds.width || !bounds.height) return;
-        const edgeAtBottom = entering ? this.scrollDirection > 0 : this.scrollDirection < 0;
-        const edgeX = galleryBounds.left + galleryBounds.width / 2;
-        const edgeY = edgeAtBottom ? galleryBounds.bottom : galleryBounds.top;
-        const tileY = edgeAtBottom ? bounds.bottom : bounds.top;
-        const fromX = edgeX - (bounds.left + bounds.width / 2);
-        const fromY = edgeY - tileY;
-        const line = `translate3d(${fromX}px, ${fromY}px, 0) scaleX(.045) scaleY(.018)`;
-        const nearLine = `translate3d(${fromX * 0.16}px, ${fromY * 0.16}px, 0) scale(.72)`;
-        const motion = tile.querySelector<HTMLElement>(".queue-motion-layer");
-        const artwork = tile.querySelector<HTMLElement>(".queue-artwork");
-        if (!motion || !artwork) return;
-        const animation = motion.animate(
-            entering
-                ? [
-                      { opacity: 0, transform: line },
-                      { opacity: 0.72, transform: nearLine, offset: 0.7 },
-                      { opacity: 1, transform: "none" },
-                  ]
-                : [
-                      { opacity: 1, transform: "none" },
-                      { opacity: 0.62, transform: nearLine, offset: 0.36 },
-                      { opacity: 0, transform: line },
-                  ],
-            {
-                duration: entering ? 460 : 300,
-                delay,
-                easing: "cubic-bezier(.16,.82,.18,1)",
-            },
-        );
-        const blur = artwork.animate(
-            entering
-                ? [{ filter: "blur(20px)" }, { filter: "blur(6px)", offset: 0.7 }, { filter: "blur(0px)" }]
-                : [{ filter: "blur(0px)" }, { filter: "blur(6px)", offset: 0.36 }, { filter: "blur(20px)" }],
-            {
-                duration: entering ? 460 : 300,
-                delay,
-                easing: "cubic-bezier(.16,.82,.18,1)",
-            },
-        );
-        motion.style.willChange = "transform, opacity";
-        artwork.style.willChange = "filter";
-        const animations = [animation, blur];
-        this.scrollAnimations.set(tile, animations);
-        void Promise.all(animations.map((item) => item.finished.catch(() => undefined)))
-            .catch(() => undefined)
-            .then(() => {
-                if (this.scrollAnimations.get(tile) === animations) {
-                    this.scrollAnimations.delete(tile);
-                    motion.style.removeProperty("will-change");
-                    artwork.style.removeProperty("will-change");
-                }
-            });
+        if (!galleryBounds.height) return;
+        const measurements = Array.from(
+            gallery.querySelectorAll<HTMLElement>(".queue-tile"),
+        ).map((tile) => ({ tile, bounds: tile.getBoundingClientRect() }));
+        measurements.forEach(({ tile, bounds }) => {
+            const state = getQueueTileMotion(bounds, galleryBounds, gallery.scrollTop);
+            if (!state) return;
+            const motion = tile.querySelector<HTMLElement>(".queue-motion-layer");
+            if (!motion) return;
+            motion.style.transformOrigin = state.origin;
+            motion.style.transform = `translate3d(0, ${state.translateY}px, 0) scale3d(${state.scaleX}, ${state.scaleY}, 1)`;
+            motion.style.opacity = String(state.progress);
+            motion.style.filter = `blur(${state.blur}px)`;
+        });
     }
     private static refreshTimers: ReturnType<typeof setTimeout>[] = [];
     private static updateTimer: ReturnType<typeof setTimeout> | null = null;
