@@ -1,8 +1,12 @@
 #fullscape-display {
     #fullscape-queue-container {
         position: absolute;
-        inset: clamp(156px, 17vh, 224px) clamp(24px, 4vw, 72px) clamp(92px, 12vh, 132px)
-            calc(50% + 24px);
+        inset: clamp(156px, 17vh, 224px)
+            calc(
+                25vw -
+                    clamp(300px, calc(100vh - 300px), var(--fullscape-art-max-width)) / 2
+            )
+            clamp(92px, 12vh, 132px) calc(50% + 24px);
         display: flex;
         flex-direction: column;
         min-width: 0;
