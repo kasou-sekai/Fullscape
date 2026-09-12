@@ -105,7 +105,10 @@ async function startFullscape() {
     const updateUpNextShow = UpNext.updateUpNextShow.bind(UpNext);
     const hidePlayerControls = PlayerControls.hidePlayerControls.bind(PlayerControls);
     const PLAYBACK_TIMELINE_RESYNC_TARGET_MS = 1000;
-    const PLAYBACK_TIMELINE_RESYNC_DELAY_MS = 1;
+    // Spotify applies pause/resume asynchronously. A one-millisecond gap can
+    // race the pause command and leave the player paused permanently, so keep
+    // a short settling window before issuing the resume command.
+    const PLAYBACK_TIMELINE_RESYNC_DELAY_MS = 80;
     const PLAYBACK_TIMELINE_RESYNC_CHECK_INTERVAL_MS = 100;
     let playbackTimelineResyncTimer: ReturnType<typeof setTimeout> | null = null;
     let playbackTimelineResyncCheckTimer: ReturnType<typeof setTimeout> | null = null;
@@ -159,7 +162,44 @@ async function startFullscape() {
         playbackTimelineResyncTrackUri = null;
         if (shouldResume) {
             DOM.container?.classList.remove("playback-paused");
-            Spicetify.Player.play();
+            void resumePlaybackAfterTimelineResync();
+        }
+    }
+
+    async function resumePlaybackAfterTimelineResync() {
+        const playerApi = Spicetify.Platform?.PlayerAPI as any;
+        try {
+            if (typeof playerApi?.resume === "function") {
+                await playerApi.resume();
+            } else {
+                Spicetify.Player.play();
+            }
+        } catch {
+            // Keep the legacy wrapper as a fallback for clients that expose a
+            // PlayerAPI resume method but reject it during a device handoff.
+            try {
+                Spicetify.Player.play();
+            } catch {
+                // Playback errors are owned by Spotify; do not break the UI.
+            }
+        }
+    }
+
+    async function pausePlaybackForTimelineResync() {
+        const playerApi = Spicetify.Platform?.PlayerAPI as any;
+        try {
+            if (typeof playerApi?.pause === "function") {
+                await playerApi.pause();
+                return;
+            }
+        } catch {
+            // Fall back to the legacy wrapper when the platform API is not
+            // available during a device handoff.
+        }
+        try {
+            Spicetify.Player.pause();
+        } catch {
+            // Playback errors are owned by Spotify; do not break the UI.
         }
     }
 
@@ -535,7 +575,16 @@ async function startFullscape() {
         const sequence = playbackTimelineResyncSequence;
         isPlaybackTimelineResyncing = true;
         DOM.container?.classList.add("playback-timeline-resyncing");
-        Spicetify.Player.pause();
+        await pausePlaybackForTimelineResync();
+        if (
+            sequence !== playbackTimelineResyncSequence ||
+            !isPlaybackTimelineResyncing ||
+            playbackTimelineResyncTrackUri !== Spicetify.Player.data?.item?.uri ||
+            !Utils.isModeActivated()
+        ) {
+            finishPlaybackTimelineResyncVisualState();
+            return;
+        }
         playbackTimelineResyncTimer = setTimeout(() => {
             playbackTimelineResyncTimer = null;
             const shouldResume =
@@ -551,7 +600,7 @@ async function startFullscape() {
                     finishPlaybackTimelineResyncVisualState,
                     50,
                 );
-                Spicetify.Player.play();
+                void resumePlaybackAfterTimelineResync();
             } else {
                 finishPlaybackTimelineResyncVisualState();
             }
@@ -1114,7 +1163,10 @@ async function startFullscape() {
         Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", Queue.scheduleUpdate);
         activationSequence += 1;
         infoSequence += 1;
-        cancelPlaybackTimelineResync();
+        // Deactivation must never mutate the user's playback state. In
+        // particular, do not replay a track that was paused by an in-flight
+        // resync while the user is returning to Spotify's native UI.
+        cancelPlaybackTimelineResync(false);
 
         Background.stop();
         Spicetify.Player.removeEventListener("songchange", handleSongChange);

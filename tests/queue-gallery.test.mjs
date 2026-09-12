@@ -68,12 +68,15 @@ class Node {
         return this.rect;
     }
     querySelectorAll(selector) {
+        const selectors = selector.split(",").map((part) => part.trim());
         const match = (n) =>
-            selector === "img"
-                ? n.tag === "img"
-                : selector[0] === "."
-                  ? n.classList.contains(selector.slice(1))
-                  : false;
+            selectors.some((candidate) =>
+                candidate === "img"
+                    ? n.tag === "img"
+                    : candidate[0] === "."
+                      ? n.classList.contains(candidate.slice(1))
+                      : false,
+            );
         return this.children.flatMap((n) => [
             ...(match(n) ? [n] : []),
             ...n.querySelectorAll(selector),
@@ -140,7 +143,10 @@ after(async () => {
     await rm(dir, { recursive: true, force: true });
 });
 test("gallery excludes the playing song and keeps the Up Next and Queue anchors", () => {
-    assert.deepEqual(DOM.queue.children.map((n) => n.className), ["queue-gallery"]);
+    assert.deepEqual(
+        DOM.queue.children.map((n) => n.className),
+        ["queue-gallery"],
+    );
     assert.deepEqual(
         DOM.queue
             .querySelector(".queue-wall")
@@ -172,6 +178,23 @@ test("queue updates retain unchanged card nodes instead of reloading every cover
     const updated = DOM.queue.querySelectorAll(".queue-tile");
     assert.equal(updated[1], retained[0]);
     assert.equal(updated[2], retained[1]);
+});
+test("the next card is promoted in place so it can animate to the featured slot", () => {
+    const promoted = DOM.queue.querySelectorAll(".queue-tile")[1];
+    QueueAdapter.read = () => ({
+        revision: "2",
+        current: entry("a"),
+        next: [entry("b"), entry("c")],
+        later: [],
+    });
+    Queue.update(true);
+    const tiles = DOM.queue.querySelectorAll(".queue-tile");
+    assert.equal(tiles[0], promoted);
+    assert.equal(tiles[0].classList.contains("queue-tile-lead"), true);
+    assert.equal(
+        tiles[0].querySelector(".queue-lead-copy").parent,
+        tiles[0].querySelector(".queue-motion-layer"),
+    );
 });
 test("failed playback never starts a cover handoff", async () => {
     QueueAdapter.play = async () => ({ ok: false });

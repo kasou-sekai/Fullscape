@@ -45,3 +45,9 @@ test("wide layout features the first artwork with staggered columns", () => {
     assert.equal(labels.queue.x + labels.queue.width, width);
     assert.ok(layoutQueue(640, 0).height > 0);
 });
+test("wrapped Up Next metadata reserves its measured vertical space", () => {
+    const compact = layoutQueue(640, 13, 62);
+    const wrapped = layoutQueue(640, 13, 150);
+    assert.ok(wrapped.height > compact.height);
+    assert.ok(wrapped.tiles.some((tile, index) => tile.y > compact.tiles[index].y));
+});

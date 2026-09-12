@@ -2,9 +2,9 @@
     #fullscape-queue-container {
         position: absolute;
         inset: clamp(156px, 17vh, 224px)
-            calc(
-                25vw -
-                    clamp(300px, calc(100vh - 300px), var(--fullscape-art-max-width)) / 2
+            var(
+                --queue-right-edge,
+                calc(25vw - clamp(300px, calc(100vh - 300px), var(--fullscape-art-max-width)) / 2)
             )
             clamp(92px, 12vh, 132px) calc(50% + 24px);
         display: flex;
@@ -46,9 +46,10 @@
         padding: 56px 8px;
         overflow-y: auto;
         overscroll-behavior: contain;
-        scrollbar-width: thin;
-        scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
-        scrollbar-gutter: stable;
+        scrollbar-width: none;
+        &::-webkit-scrollbar {
+            display: none;
+        }
     }
     .queue-wall {
         position: relative;
@@ -88,7 +89,6 @@
         &:hover .queue-artwork-frame,
         &:focus-visible .queue-artwork-frame {
             transform: scale(1.035);
-            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
         }
         &:active .queue-artwork-frame {
             transform: scale(0.975);
@@ -117,11 +117,10 @@
         aspect-ratio: 1;
         overflow: hidden;
         border-radius: 8px;
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+        box-shadow: none;
         transform-origin: center;
         transition:
             transform 350ms cubic-bezier(0.2, 0.75, 0.2, 1),
-            box-shadow 300ms ease,
             opacity 200ms ease;
         &::after {
             position: absolute;
@@ -198,14 +197,45 @@
         margin-left: auto;
         text-align: right;
     }
+    .queue-tile-lead {
+        container-type: inline-size;
+    }
+    .queue-tile-lead .queue-track-title,
+    .queue-tile-lead .queue-track-artist {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        white-space: normal;
+    }
+    .queue-tile-lead .queue-track-title-viewport,
+    .queue-tile-lead .queue-track-artist-viewport {
+        overflow: visible;
+    }
     .queue-tile-lead .queue-track-title {
         color: var(--primary-color);
-        font-size: clamp(14px, 1.28vw, 18px);
+        font-size: clamp(14px, 5cqw, 19px);
+        line-height: 1.15;
+    }
+    .queue-tile-lead[data-title-length="1"] .queue-track-title,
+    .queue-tile-lead[data-title-length="2"] .queue-track-title,
+    .queue-tile-lead[data-title-length="3"] .queue-track-title,
+    .queue-tile-lead[data-title-length="4"] .queue-track-title,
+    .queue-tile-lead[data-title-length="5"] .queue-track-title,
+    .queue-tile-lead[data-title-length="6"] .queue-track-title,
+    .queue-tile-lead[data-title-length="7"] .queue-track-title,
+    .queue-tile-lead[data-title-length="8"] .queue-track-title,
+    .queue-tile-lead[data-title-length="9"] .queue-track-title,
+    .queue-tile-lead[data-title-length="10"] .queue-track-title,
+    .queue-tile-lead[data-title-length="11"] .queue-track-title,
+    .queue-tile-lead[data-title-length="12"] .queue-track-title {
+        font-size: clamp(18px, 7cqw, 27px);
     }
     .queue-tile-lead .queue-track-artist-viewport {
         max-height: 1.5em;
         margin-top: 2px;
         opacity: 1;
+    }
+    .queue-tile-lead .queue-track-artist {
+        font-size: clamp(12px, 4cqw, 14px);
     }
     .queue-empty {
         margin: 0;

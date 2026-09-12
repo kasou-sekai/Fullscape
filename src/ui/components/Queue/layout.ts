@@ -6,14 +6,13 @@ type Tile = Point & { width: number };
  * remaining queue. Each column starts at a different height, so the rhythm
  * reads as one wall instead of two matching pairs of columns.
  */
-export function layoutQueue(width: number, count: number) {
+export function layoutQueue(width: number, count: number, leadCaption = 62) {
     const columns = width >= 600 ? 4 : width >= 420 ? 3 : 2;
     const gap = columns >= 4 ? 18 : 14;
     const unit = Math.max(1, (width - gap * (columns - 1)) / columns);
     const labelHeight: number = columns >= 4 ? 42 : 36;
     const leadSpan = columns >= 4 ? 2 : 1;
     const leadSize = leadSpan * unit + (leadSpan - 1) * gap;
-    const leadCaption = 62;
     const tiles: Tile[] = [];
     const heights: number[] = Array.from({ length: columns }, () => 0);
     const leadY = labelHeight + gap;
@@ -26,7 +25,10 @@ export function layoutQueue(width: number, count: number) {
         // the artwork instead of creating a blank row across the wall.
         for (let column = 0; column < leadSpan; column++) {
             heights[column] =
-                leadY + leadSize + gap + (column === leadSpan - 1 ? leadCaption + gap : 0);
+                leadY +
+                leadSize +
+                gap +
+                (column === leadSpan - 1 ? Math.max(0, leadCaption - 8) : 0);
         }
         for (let column = leadSpan; column < columns; column++) {
             // Only the right-most stream reserves room for the QUEUE label.
@@ -36,9 +38,9 @@ export function layoutQueue(width: number, count: number) {
 
     const laneOrder =
         columns === 4
-            // Fill below the lead after the first right-hand pair, so short
-            // queues never leave the entire left half empty.
-            ? [2, 3, 0, 1]
+            ? // Fill below the lead after the first right-hand pair, so short
+              // queues never leave the entire left half empty.
+              [2, 3, 0, 1]
             : columns === 3
               ? [1, 2, 0]
               : [1, 0];

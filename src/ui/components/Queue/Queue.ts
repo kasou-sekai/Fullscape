@@ -10,50 +10,85 @@ import {
 import "./styles.scss";
 import { layoutQueue } from "./layout";
 import { getQueueTileMotion } from "./motion";
+import Utils from "../../../utils/utils";
 
 type ArtworkOrigin = { uri: string; src: string; rect: DOMRect };
+type LayoutDestination = {
+    bounds: Pick<DOMRect, "top" | "bottom" | "height">;
+    scrollTop: number;
+};
 
 /** The queue is a wall of upcoming artwork; the playing artwork lives on the left. */
 export class Queue {
     private static container: HTMLElement | null = null;
     private static revision = "";
     private static layoutObserver: ResizeObserver | null = null;
-    private static deferredUpdate = false;
     private static tileOverflowAnimations = new WeakMap<HTMLElement, Animation[]>();
     private static scrollGallery: HTMLElement | null = null;
     private static scrollFrame: number | null = null;
     private static scrollListener: (() => void) | null = null;
+    private static layoutDestinations = new WeakMap<HTMLElement, LayoutDestination>();
+
+    private static displayTitle(title: string) {
+        return CFM.get("trimTitle") ? Utils.trimTitle(title) : title;
+    }
+
+    private static tileRevision(entry: QueueEntry) {
+        return JSON.stringify([
+            entry.uri,
+            this.displayTitle(entry.title),
+            entry.artists,
+            entry.imageUrl,
+        ]);
+    }
 
     private static layoutGallery() {
         const gallery = this.container?.querySelector<HTMLElement>(".queue-gallery");
         const wall = gallery?.querySelector<HTMLElement>(".queue-wall");
         if (!gallery || !wall) return;
+        const coverBounds = DOM.cover?.getBoundingClientRect();
+        const containerStyle = this.container?.style;
+        if (
+            coverBounds?.width &&
+            Number.isFinite(coverBounds.left) &&
+            typeof containerStyle?.setProperty === "function"
+        ) {
+            const rightEdge = `${Math.max(0, coverBounds.width * (4 / 7))}px`;
+            if (containerStyle.getPropertyValue("--queue-right-edge") !== rightEdge) {
+                containerStyle.setProperty("--queue-right-edge", rightEdge);
+            }
+        }
         const tiles = Array.from(wall.querySelectorAll<HTMLElement>(".queue-tile"));
         const width = gallery.clientWidth - 16;
         if (!Number.isFinite(width) || width <= 0) return;
-        const layout = layoutQueue(width, tiles.length);
-        const labels = [
-            [".queue-up-next-label", layout.labels.upNext],
-            [".queue-heading", layout.labels.queue],
-        ] as const;
-        labels.forEach(([selector, position]) => {
-            const label = wall.querySelector<HTMLElement>(selector);
-            if (!label) return;
-            Object.assign(label.style, {
-                left: `${position.x}px`,
-                top: `${position.y}px`,
-                width: "width" in position && position.width ? `${position.width}px` : "",
+        const applyLayout = (layout: ReturnType<typeof layoutQueue>) => {
+            const labels = [
+                [".queue-up-next-label", layout.labels.upNext],
+                [".queue-heading", layout.labels.queue],
+            ] as const;
+            labels.forEach(([selector, position]) => {
+                const label = wall.querySelector<HTMLElement>(selector);
+                if (!label) return;
+                Object.assign(label.style, {
+                    left: `${position.x}px`,
+                    top: `${position.y}px`,
+                    width: "width" in position && position.width ? `${position.width}px` : "",
+                });
             });
-        });
-        tiles.forEach((tile, index) => {
-            const position = layout.tiles[index];
-            Object.assign(tile.style, {
-                left: `${position.x}px`,
-                top: `${position.y}px`,
-                width: `${position.width}px`,
+            tiles.forEach((tile, index) => {
+                const position = layout.tiles[index];
+                Object.assign(tile.style, {
+                    left: `${position.x}px`,
+                    top: `${position.y}px`,
+                    width: `${position.width}px`,
+                });
             });
-        });
-        wall.style.height = `${layout.height}px`;
+            wall.style.height = `${layout.height}px`;
+        };
+        applyLayout(layoutQueue(width, tiles.length));
+        const leadCopy = wall.querySelector<HTMLElement>(".queue-tile-lead .queue-lead-copy");
+        const captionHeight = Math.ceil(leadCopy?.scrollHeight || 0);
+        if (captionHeight > 62) applyLayout(layoutQueue(width, tiles.length, captionHeight));
     }
 
     private static teardownScrollAnimations() {
@@ -90,9 +125,21 @@ export class Queue {
     private static updateScrollProgress(gallery: HTMLElement) {
         const galleryBounds = gallery.getBoundingClientRect();
         if (!galleryBounds.height) return;
-        const measurements = Array.from(
-            gallery.querySelectorAll<HTMLElement>(".queue-tile"),
-        ).map((tile) => ({ tile, bounds: tile.getBoundingClientRect() }));
+        const measurements = Array.from(gallery.querySelectorAll<HTMLElement>(".queue-tile")).map(
+            (tile) => {
+                const destination = this.layoutDestinations.get(tile);
+                if (!destination) return { tile, bounds: tile.getBoundingClientRect() };
+                const scrollDelta = gallery.scrollTop - destination.scrollTop;
+                return {
+                    tile,
+                    bounds: {
+                        top: destination.bounds.top - scrollDelta,
+                        bottom: destination.bounds.bottom - scrollDelta,
+                        height: destination.bounds.height,
+                    },
+                };
+            },
+        );
         measurements.forEach(({ tile, bounds }) => {
             const state = getQueueTileMotion(bounds, galleryBounds, gallery.scrollTop);
             if (!state) return;
@@ -114,16 +161,6 @@ export class Queue {
     private static animation: Animation | null = null;
     private static oldArtwork: HTMLElement | null = null;
 
-    private static tileRevision(entry: QueueEntry, isUpNext: boolean) {
-        return JSON.stringify([
-            entry.uri,
-            entry.title,
-            entry.artists,
-            entry.imageUrl,
-            isUpNext,
-        ]);
-    }
-
     private static get strings() {
         return (translations[CFM.getGlobal("locale") as string] || translations["en-US"]).queue;
     }
@@ -137,6 +174,7 @@ export class Queue {
         if (typeof ResizeObserver !== "undefined") {
             this.layoutObserver = new ResizeObserver(() => this.layoutGallery());
             this.layoutObserver.observe(container);
+            if (DOM.cover) this.layoutObserver.observe(DOM.cover);
         }
         this.refreshTimers = [250, 900].map((delay) => setTimeout(() => this.update(), delay));
     }
@@ -144,7 +182,6 @@ export class Queue {
     static teardown() {
         this.layoutObserver?.disconnect();
         this.layoutObserver = null;
-        this.deferredUpdate = false;
         this.selection++;
         this.refreshTimers.forEach(clearTimeout);
         this.refreshTimers = [];
@@ -156,6 +193,7 @@ export class Queue {
         this.incoming = null;
         this.cancelFlight();
         this.tileOverflowAnimations = new WeakMap();
+        this.layoutDestinations = new WeakMap();
         this.teardownScrollAnimations();
         this.container?.replaceChildren();
         this.container = null;
@@ -174,10 +212,6 @@ export class Queue {
     static update(force = false) {
         const container = this.container;
         if (!container) return;
-        if (this.incoming || this.flight) {
-            this.deferredUpdate = true;
-            return;
-        }
         try {
             const snapshot = QueueAdapter.read();
             const entries = [...snapshot.next, ...snapshot.later].filter(
@@ -199,9 +233,7 @@ export class Queue {
             const activeUid = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>(
                 ".queue-tile",
             )?.dataset.uid;
-            const oldTiles = Array.from(
-                container.querySelectorAll<HTMLElement>(".queue-tile"),
-            );
+            const oldTiles = Array.from(container.querySelectorAll<HTMLElement>(".queue-tile"));
             const previous = new Map(oldTiles.map((tile) => [tile, tile.getBoundingClientRect()]));
             const availableByUid = new Map<string, HTMLElement[]>();
             const availableByUri = new Map<string, HTMLElement[]>();
@@ -215,11 +247,11 @@ export class Queue {
                 add(availableByUid, tile.dataset.uid);
                 add(availableByUri, tile.dataset.uri);
             });
-            const takeMatch = (entry: QueueEntry, isUpNext: boolean) => {
+            const takeMatch = (entry: QueueEntry) => {
                 const take = (matches: HTMLElement[] | undefined) => {
                     if (!matches) return null;
                     const index = matches.findIndex(
-                        (tile) => tile.dataset.tileRevision === this.tileRevision(entry, isUpNext),
+                        (tile) => tile.dataset.tileRevision === this.tileRevision(entry),
                     );
                     return index < 0 ? null : matches.splice(index, 1)[0];
                 };
@@ -250,7 +282,9 @@ export class Queue {
             heading.textContent = "Queue";
             wall.append(upNextLabel, heading);
             for (const [index, entry] of entries.entries()) {
-                const tile = takeMatch(entry, index === 0) || this.createTile(entry, index, index === 0);
+                const isUpNext = index === 0;
+                const tile = takeMatch(entry) || this.createTile(entry, index, isUpNext);
+                this.setTileRole(tile, isUpNext);
                 tile.dataset.queueIndex = String(index);
                 wall.append(tile);
             }
@@ -277,7 +311,11 @@ export class Queue {
                         (before.bottom < bounds.top && after.bottom < bounds.top)
                     )
                         return;
-                    tile.animate(
+                    this.layoutDestinations.set(tile, {
+                        bounds: { top: after.top, bottom: after.bottom, height: after.height },
+                        scrollTop: gallery.scrollTop,
+                    });
+                    const layoutAnimation = tile.animate(
                         [
                             {
                                 transform: `translate(${before.left - after.left}px, ${before.top - after.top}px) scale(${before.width / after.width})`,
@@ -287,7 +325,14 @@ export class Queue {
                         ],
                         { duration: 320, easing: "cubic-bezier(.2,.75,.2,1)" },
                     );
+                    void layoutAnimation.finished
+                        .catch(() => undefined)
+                        .then(() => {
+                            this.layoutDestinations.delete(tile);
+                            if (this.scrollGallery === gallery) this.updateScrollProgress(gallery);
+                        });
                 });
+                this.updateScrollProgress(gallery);
             }
             if (activeUid) {
                 const replacement = Array.from(
@@ -313,10 +358,12 @@ export class Queue {
         tile.dataset.uid = entry.uid;
         tile.dataset.uri = entry.uri;
         tile.dataset.queueIndex = String(queueIndex);
-        tile.dataset.tileRevision = this.tileRevision(entry, isUpNext);
+        tile.dataset.tileRevision = this.tileRevision(entry);
         const artist = entry.artists.join(" · ") || this.strings.unknown;
-        tile.setAttribute("aria-label", `${this.strings.playNow}: ${entry.title} — ${artist}`);
-        tile.title = `${entry.title} — ${artist}`;
+        const displayTitle = this.displayTitle(entry.title);
+        tile.dataset.titleLength = String([...displayTitle].length);
+        tile.setAttribute("aria-label", `${this.strings.playNow}: ${displayTitle} — ${artist}`);
+        tile.title = `${displayTitle} — ${artist}`;
         const image = document.createElement("img");
         image.className = "queue-artwork";
         image.alt = "";
@@ -332,7 +379,7 @@ export class Queue {
         artwork.append(image);
         const title = document.createElement("span");
         title.className = "queue-track-title";
-        title.textContent = entry.title;
+        title.textContent = displayTitle;
         const subtitle = document.createElement("span");
         subtitle.className = "queue-track-artist";
         subtitle.textContent = artist;
@@ -361,6 +408,25 @@ export class Queue {
         return tile;
     }
 
+    /** Preserve a card as it moves between the queue and the featured Up Next slot. */
+    private static setTileRole(tile: HTMLElement, isUpNext: boolean) {
+        const classes = new Set(tile.className.split(/\s+/).filter(Boolean));
+        if (isUpNext) classes.add("queue-tile-lead");
+        else classes.delete("queue-tile-lead");
+        tile.className = [...classes].join(" ");
+
+        const motion = tile.querySelector<HTMLElement>(".queue-motion-layer");
+        const artwork = tile.querySelector<HTMLElement>(".queue-artwork-frame");
+        const copy = tile.querySelector<HTMLElement>(".queue-lead-copy, .queue-artwork-copy");
+        if (!motion || !artwork || !copy) return;
+        copy.className = isUpNext ? "queue-lead-copy" : "queue-artwork-copy";
+        if (isUpNext) motion.append(artwork, copy);
+        else {
+            artwork.append(copy);
+            motion.append(artwork);
+        }
+    }
+
     private static startTileOverflow(tile: HTMLElement) {
         this.cancelTileOverflow(tile);
         if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -377,8 +443,8 @@ export class Queue {
                         ? { track, overflow: Math.ceil(track.scrollWidth - viewport.clientWidth) }
                         : null;
                 })
-                .filter(
-                    (value): value is { track: HTMLElement; overflow: number } => Boolean(value),
+                .filter((value): value is { track: HTMLElement; overflow: number } =>
+                    Boolean(value),
                 );
             const maxOverflow = Math.max(0, ...measurements.map(({ overflow }) => overflow));
             if (maxOverflow <= 1) return;
@@ -573,9 +639,5 @@ export class Queue {
         this.oldArtwork?.remove();
         this.oldArtwork = null;
         DOM.cover?.classList.remove("queue-artwork-landing");
-        if (this.deferredUpdate) {
-            this.deferredUpdate = false;
-            this.scheduleUpdate();
-        }
     }
 }
