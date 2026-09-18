@@ -34,9 +34,7 @@ generic-modal:has(
                 #fullscape-update-fallback
             )
     ) {
-    background:
-        linear-gradient(145deg, rgba(255, 255, 255, 0.045), transparent 38%),
-        #202329;
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.045), transparent 38%), #202329;
     border: 1px solid rgba(255, 255, 255, 0.11);
     border-radius: 22px;
     box-shadow:
@@ -50,15 +48,13 @@ generic-modal:has(
 .main-trackCreditsModal-container:has(#fullscape-config-container) {
     height: min(900px, calc(100vh - 48px)) !important;
     max-height: calc(100vh - 48px) !important;
-    width: clamp(800px, 82vw, 1180px);
+    width: min(1120px, calc(100vw - 48px));
+    max-width: calc(100vw - 48px);
+    min-height: 0;
 }
 
 .main-trackCreditsModal-container:has(
-        :is(
-                #fullscape-update-prompt,
-                #fullscape-version-confirmation,
-                #fullscape-update-fallback
-            )
+        :is(#fullscape-update-prompt, #fullscape-version-confirmation, #fullscape-update-fallback)
     ) {
     max-width: calc(100vw - 32px);
     width: 488px;
@@ -134,11 +130,7 @@ generic-modal:has(
 }
 
 .main-trackCreditsModal-container:has(
-        :is(
-                #fullscape-update-prompt,
-                #fullscape-version-confirmation,
-                #fullscape-update-fallback
-            )
+        :is(#fullscape-update-prompt, #fullscape-version-confirmation, #fullscape-update-fallback)
     )
     .main-trackCreditsModal-mainSection {
     padding: 18px 22px 0;
@@ -346,19 +338,19 @@ generic-modal:has(
     color: var(--main-text-color);
     display: grid;
     grid-template-rows: minmax(0, 1fr) auto;
-    height: min(800px, calc(100vh - 130px));
-    min-height: min(560px, calc(100vh - 130px));
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+    container-type: inline-size;
 
     .settings-shell {
         display: grid;
-        grid-template-columns: 202px minmax(0, 1fr);
+        grid-template-columns: 180px minmax(0, 1fr);
         min-height: 0;
     }
 
     .settings-nav {
-        background:
-            linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 45%),
-            #202329;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 45%), #202329;
         border: 1px solid var(--section-border-color);
         border-radius: 15px 0 0 0;
         display: flex;
@@ -421,13 +413,14 @@ generic-modal:has(
     }
 
     .settings-content {
-        background:
-            radial-gradient(circle at 100% 0, rgba(255, 255, 255, 0.035), transparent 32%),
+        background: radial-gradient(circle at 100% 0, rgba(255, 255, 255, 0.035), transparent 32%),
             #25282f;
         border: 1px solid var(--section-border-color);
         border-left: 0;
         border-radius: 0 15px 0 0;
         min-width: 0;
+        min-height: 0;
+        scrollbar-gutter: stable;
         overflow: auto;
         padding: 26px 30px 40px;
     }
@@ -542,7 +535,6 @@ generic-modal:has(
         &:hover {
             background: var(--surface-hover-color);
         }
-
     }
 
     .setting-container {
@@ -931,7 +923,12 @@ generic-modal:has(
         border: 1px solid var(--section-border-color);
         border-radius: 10px;
         color: var(--secondary-text-color);
-        font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font:
+            12px/1.6 ui-monospace,
+            SFMono-Regular,
+            Menlo,
+            Consolas,
+            monospace;
         margin-top: 8px;
         max-height: min(52vh, 560px);
         overflow: auto;
@@ -1018,8 +1015,8 @@ generic-modal:has(
     }
 
     #fullscape-config-container {
-        height: calc(100vh - 116px);
-        min-height: min(480px, calc(100vh - 116px));
+        height: 100%;
+        min-height: 0;
 
         .settings-shell {
             grid-template-columns: 1fr;
@@ -1146,14 +1143,14 @@ generic-modal:has(
         }
 
         :is(
-            button[aria-label="Close"],
-            button[aria-label="close"],
-            button[title="Close"],
-            [class*="closeButton"],
-            [class*="CloseButton"],
-            [class*="closeBtn"],
-            [class*="CloseBtn"]
-        ) {
+                button[aria-label="Close"],
+                button[aria-label="close"],
+                button[title="Close"],
+                [class*="closeButton"],
+                [class*="CloseButton"],
+                [class*="closeBtn"],
+                [class*="CloseBtn"]
+            ) {
             background: rgba(23, 29, 35, 0.045) !important;
             border-color: rgba(23, 29, 35, 0.1) !important;
             color: #606870 !important;
@@ -1316,5 +1313,111 @@ generic-modal:has(
     .update-dialog * {
         scroll-behavior: auto !important;
         transition-duration: 0.01ms !important;
+    }
+}
+
+// Own the full modal layout: Spotify's legacy GenericModal rules are no longer
+// consistently present, and PopupModal inserts a <main> between the flex host
+// and our settings root. Every link must be shrinkable for inner scrolling.
+generic-modal:has(#fullscape-config-container) {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+
+    .GenericModal__overlay {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        box-sizing: border-box;
+    }
+
+    .GenericModal {
+        position: relative;
+        inset: auto;
+        transform: none;
+        margin: 0;
+        display: flex;
+        width: min(1120px, 100%);
+        height: min(900px, calc(100dvh - 32px));
+        max-width: 100%;
+        max-height: calc(100dvh - 32px);
+        min-height: 0;
+        border-radius: 22px;
+        overflow: hidden;
+    }
+
+    .main-trackCreditsModal-container {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        max-width: 100%;
+        height: 100% !important;
+        max-height: 100% !important;
+        min-height: 0;
+    }
+
+    .main-trackCreditsModal-header {
+        flex: 0 0 auto;
+        padding: 20px 24px;
+    }
+
+    .main-trackCreditsModal-mainSection {
+        flex: 1 1 0;
+        min-height: 0;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        padding: 0 16px 16px;
+    }
+
+    .main-trackCreditsModal-originalCredits {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 0;
+        min-height: 0;
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+    }
+}
+#fullscape-config-container {
+    &,
+    * {
+        box-sizing: border-box;
+    }
+    flex: 1;
+    .settings-footer {
+        min-width: 0;
+        flex-wrap: wrap;
+    }
+    .setting-title {
+        overflow-wrap: anywhere;
+    }
+    button:focus-visible,
+    select:focus-visible,
+    input:focus-visible {
+        outline: 2px solid var(--theme-color);
+        outline-offset: 3px;
+    }
+    button:active:not(:disabled) {
+        transform: scale(0.97);
+    }
+}
+@container (max-width: 760px) {
+    #fullscape-config-container .setting-item {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 12px;
+    }
+    #fullscape-config-container .setting-action {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        justify-content: flex-start;
+        text-align: left;
     }
 }

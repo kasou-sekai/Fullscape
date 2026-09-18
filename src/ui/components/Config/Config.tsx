@@ -196,6 +196,7 @@ export class ConfigManager {
             const button = document.createElement("button");
             button.type = "button";
             button.classList.add("settings-nav-button");
+            button.classList.toggle("active", index === 0);
             button.dataset.sectionId = id;
             button.textContent = title;
             button.setAttribute("aria-selected", String(index === 0));
