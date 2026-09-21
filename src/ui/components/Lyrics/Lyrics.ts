@@ -37,6 +37,12 @@ import type { LyricsChineseConversion } from "../../../utils/chinese-conversion"
 type LyricLine = EnhancedLyricLine;
 type LyricsTrack = TrackInfo & {
     uri: string;
+    image?: string;
+};
+type SpotifyLyricsApiResponse = {
+    error?: unknown;
+    code?: number | string;
+    lyrics?: { lines?: unknown[] };
 };
 type TimedLyricLine = {
     index: number;
@@ -544,7 +550,7 @@ export class Lyrics {
         const source = getEffectiveCacheSource(entry);
         if (source === "manual") return true;
         if (source !== "plugin") return false;
-        if (entry.kind === "spotify") return true;
+        if (entry.kind === "spotify") return entry.lines.length > 0;
 
         // LyricShiori can expose the Spotify base entry under the requested
         // enhanced cache kind. It is a useful fallback, but it must not be
@@ -877,9 +883,19 @@ export class Lyrics {
 
     private static async getSpotifyLyrics(track: LyricsTrack) {
         const cached = getCachedLyricsFullEntry(track.uri, "spotify");
-        if (cached !== null && this.isPreferredCacheEntry(cached))
+        if (
+            cached !== null &&
+            !cached.lines.length &&
+            getEffectiveCacheSource(cached) === "plugin"
+        ) {
+            // Earlier builds saved transport/API failures as successful empty
+            // Spotify results. Drop those entries so they cannot mask lyrics
+            // that are available from Spotify now.
+            deleteCachedLyrics(track.uri, "spotify");
+        } else if (cached !== null && this.isPreferredCacheEntry(cached)) {
             return this.linesForEntry(cached);
-        const automaticFallback = cached;
+        }
+        const automaticFallback = cached?.lines.length ? cached : null;
         const pending = this.spotifyRequests.get(track.uri);
         if (pending) return pending;
 
@@ -887,10 +903,9 @@ export class Lyrics {
         if (!trackId) return [];
         const releaseLease = await this.beginBridgeLease(track.uri);
         const requestStartedAt = Date.now();
-        const request = this.getLyricsWithRetry(trackId)
-            .then((response) => this.normalizeLines(response?.lyrics?.lines))
-            .catch(() => [])
-            .then((lines) => {
+        const request = this.getLyricsWithRetry(trackId, track.image)
+            .then((response) => {
+                const lines = this.normalizeLines(response.lyrics.lines);
                 const authoritative = getCachedLyricsFullEntry(track.uri, "spotify");
                 if (
                     authoritative &&
@@ -913,6 +928,13 @@ export class Lyrics {
                     ? lines
                     : this.linesForEntry(automaticFallback);
             })
+            .catch((error) => {
+                // Do not turn a failed request into a cached "no lyrics" result.
+                // loadLyrics will retry with its normal backoff, and the next
+                // attempt can still read Spotify's lyrics endpoint.
+                console.warn("Unable to fetch Spotify lyrics", error);
+                return automaticFallback ? this.linesForEntry(automaticFallback) : [];
+            })
             .finally(() => {
                 if (this.spotifyRequests.get(track.uri) === request) {
                     this.spotifyRequests.delete(track.uri);
@@ -923,19 +945,52 @@ export class Lyrics {
         return request;
     }
 
-    private static async getLyricsWithRetry(trackId: string) {
-        const url = `https://spclient.wg.spotify.com/color-lyrics/v2/track/${trackId}?format=json&market=from_token`;
+    private static async getLyricsWithRetry(trackId: string, image?: string) {
+        if (!image) throw new Error("Spotify track is missing its artwork for lyrics lookup");
+        const params = new URLSearchParams({ format: "json", vocalRemoval: "false" });
+        if (navigator.language) params.set("clientLanguage", navigator.language);
         let lastError: unknown;
+        const requestBuilder = Spicetify.Platform.Registry?.resolve(
+            Symbol.for("RequestBuilder"),
+        );
+        if (typeof requestBuilder?.build !== "function") {
+            throw new Error("Spotify request builder is unavailable");
+        }
 
         for (let attempt = 0; attempt < this.RETRY_DELAYS_MS.length; attempt++) {
             const delay = this.RETRY_DELAYS_MS[attempt];
             if (delay) await this.sleep(delay);
 
             try {
-                return await this.withTimeout(
-                    Spicetify.CosmosAsync.get(url),
+                const request = requestBuilder
+                    .build()
+                    .withHost("https://spclient.wg.spotify.com/color-lyrics/v2")
+                    .withPath(
+                        `/track/${encodeURIComponent(trackId)}/image/${encodeURIComponent(image)}`,
+                    )
+                    .withQueryParameters(Object.fromEntries(params.entries()))
+                    .withEndpointIdentifier("/track/{trackId}");
+                const result = await this.withTimeout(
+                    request.send() as Promise<{ body: unknown }>,
                     this.REQUEST_TIMEOUT_MS,
                 );
+                const response = (result as { body?: unknown } | null)?.body as
+                    | SpotifyLyricsApiResponse
+                    | null
+                    | undefined;
+                if (
+                    !response ||
+                    typeof response !== "object" ||
+                    response.error ||
+                    (response.code !== undefined && Number(response.code) >= 400) ||
+                    !response.lyrics ||
+                    !Array.isArray(response.lyrics.lines)
+                ) {
+                    throw new Error("Spotify returned an invalid lyrics response");
+                }
+                return response as SpotifyLyricsApiResponse & {
+                    lyrics: { lines: unknown[] };
+                };
             } catch (err) {
                 lastError = err;
             }
@@ -945,13 +1000,15 @@ export class Lyrics {
     }
 
     private static getCurrentTrack(uri: string): LyricsTrack {
-        const metadata = (Spicetify.Player.data?.item?.metadata ?? {}) as Partial<
-            Record<string, string>
-        >;
+        const item = Spicetify.Player.data?.item;
+        const metadata = (item?.metadata ?? {}) as Partial<Record<string, string>>;
         return this.createTrack(
             uri,
             metadata,
             Spicetify.Player.data?.duration ?? Number(metadata.duration ?? 0),
+            item?.images?.find((image) => image.label === "large")?.url ??
+                item?.images?.[0]?.url ??
+                metadata.image_xlarge_url,
         );
     }
 
@@ -968,13 +1025,22 @@ export class Lyrics {
             metadata.track_uri;
         if (!uri || typeof uri !== "string") return null;
         const duration = Number(contextTrack.duration ?? queued.duration ?? metadata.duration ?? 0);
-        return this.createTrack(uri, metadata, duration);
+        const images = contextTrack.images ?? queued.images;
+        return this.createTrack(
+            uri,
+            metadata,
+            duration,
+            images?.find((image: Spicetify.ImagesEntity) => image.label === "large")?.url ??
+                images?.[0]?.url ??
+                metadata.image_xlarge_url,
+        );
     }
 
     private static createTrack(
         uri: string,
         metadata: Partial<Record<string, unknown>>,
         duration: number,
+        image?: string,
     ): LyricsTrack {
         const title = `${metadata.title ?? ""}`.trim();
         const artists = Object.keys(metadata)
@@ -990,6 +1056,7 @@ export class Lyrics {
             artists,
             album,
             duration: Number.isFinite(duration) ? duration : 0,
+            image,
         };
     }
 
