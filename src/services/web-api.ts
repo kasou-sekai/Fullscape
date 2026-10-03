@@ -17,27 +17,6 @@ class WebAPI {
         });
     }
 
-    static async getArtistInfo(id: string) {
-        const variables = encodeURIComponent(JSON.stringify({ uri: `spotify:artist:${id}` }));
-        return this.fetchJson(
-            `https://api-partner.spotify.com/pathfinder/v1/query?operationName=queryArtistOverview&variables=${variables}&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%22d66221ea13998b2f81883c5187d174c8646e4041d67f5b1e103bc262d447e3a0%22%7D%7D`,
-            {
-                headers: {
-                    Authorization: `Bearer ${WebAPI.getToken()}`,
-                },
-            },
-        ).then((res) => res.data.artist);
-    }
-
-    static async searchArt(name: string) {
-        const params = new URLSearchParams({ q: name, type: "artist", limit: "2" });
-        return this.fetchJson(`https://api.spotify.com/v1/search?${params}`, {
-            headers: {
-                Authorization: `Bearer ${WebAPI.getToken()}`,
-            },
-        });
-    }
-
     private static async fetchJson(url: string, init: RequestInit) {
         const response = await fetch(url, init);
         if (!response.ok) {

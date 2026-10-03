@@ -88,10 +88,6 @@ export function startSharedBridgePresence() {
     sharedPresenceTimer = setInterval(() => void heartbeat(), SHARED_PRESENCE_INTERVAL_MS);
 }
 
-export function getCachedLyrics(trackUri: string, kind: LyricsCacheKind) {
-    return getCachedLyricsEntry(trackUri, kind)?.lines ?? null;
-}
-
 export function getCachedLyricsDebug(trackUri: string, kind: LyricsCacheKind) {
     return getCachedLyricsEntry(trackUri, kind)?.debug ?? null;
 }
@@ -99,7 +95,6 @@ export function getCachedLyricsDebug(trackUri: string, kind: LyricsCacheKind) {
 export async function getSharedCachedLyrics(
     trackUri: string,
     kind: LyricsCacheKind,
-    cacheLocally = true,
     metadata: LyricsCacheMetadata = {},
 ) {
     if (!CFM.get("sharedLyricsBridge")) return null;
@@ -117,7 +112,6 @@ export async function getSharedCachedLyrics(
         const entry = (await response.json()) as LyricsCacheEntry;
         if (!isValidEntry(entry, trackUri, kind)) return null;
         traceLyricsBridge("bridge.received", entry, "GET shared cache");
-        if (cacheLocally) cacheSharedEntry(entry);
         return entry;
     } catch {
         return null;
@@ -182,7 +176,7 @@ export function setCachedLyrics(
                 ? READY_TTL_MS
                 : EMPTY_TTL_MS),
         lines,
-        cacheSource: metadata.cacheSource ?? inferCacheSource(metadata),
+        cacheSource: metadata.cacheSource ?? getEffectiveCacheSource(metadata),
         source: metadata.source ?? "plugin",
         sourceName: metadata.sourceName,
         isManualSelection: metadata.isManualSelection ?? false,
@@ -259,17 +253,6 @@ export function getEffectiveCacheSource(
     if (entry.source === "plugin") return "plugin";
     if (entry.cachedWithoutPlugin) return "without-plugin";
     return entry.source === "lyric-shiori" ? "without-plugin" : "plugin";
-}
-
-function inferCacheSource(
-    metadata: Partial<
-        Pick<
-            LyricsCacheEntry,
-            "cacheSource" | "source" | "isManualSelection" | "cachedWithoutPlugin"
-        >
-    >,
-): LyricsCacheSourceKind {
-    return getEffectiveCacheSource(metadata);
 }
 
 function getStore(): LyricsCacheStore {
@@ -378,19 +361,6 @@ async function getSharedSessionToken() {
         throw new Error("Unsupported bridge session");
     sharedSessionToken = payload.token;
     return payload.token;
-}
-
-function cacheSharedEntry(entry: LyricsCacheEntry) {
-    const cache = getStore();
-    const key = getCacheKey(entry.trackUri, entry.kind);
-    if (
-        getEffectiveCacheSource(cache.entries[key]) === "manual" &&
-        getEffectiveCacheSource(entry) !== "manual"
-    )
-        return;
-    cache.entries[key] = entry;
-    trimStore(cache);
-    persistStore();
 }
 
 function entriesEqual(first: LyricsCacheEntry, second: LyricsCacheEntry) {

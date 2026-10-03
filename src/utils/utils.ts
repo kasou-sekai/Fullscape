@@ -1,9 +1,6 @@
 import HtmlSelectors from "./selectors";
 import WebAPI from "../services/web-api";
 
-let wasQueuePanelEnabled: boolean | null = null;
-let queuePanelSequence = 0;
-
 class Utils {
     static allNotExist() {
         const extraBar = HtmlSelectors.getExtraBarSelector();
@@ -117,29 +114,6 @@ class Utils {
         );
         return " • " + dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
     }
-    static async getImageAndLoad(meta: Spicetify.Metadata) {
-        if (meta.artist_uri == null) return meta.image_xlarge_url;
-        let arUri = meta.artist_uri.split(":")[2];
-        if (meta.artist_uri.split(":")[1] === "local") {
-            const res = await WebAPI.searchArt(meta.artist_name ?? "").catch((err) =>
-                console.error(err),
-            );
-            arUri = res?.artists?.items?.[0]?.id ?? "";
-        }
-        if (!arUri) return meta.image_xlarge_url;
-        const artistInfo = await WebAPI.getArtistInfo(arUri).catch((err) => console.error(err));
-        return artistInfo?.visuals?.headerImage?.sources[0].url ?? meta.image_xlarge_url;
-    }
-
-    static async getNextColor(colorChoice: string) {
-        let nextColor = "#444444";
-        const imageColors = await WebAPI.colorExtractor(
-            Spicetify.Player.data.item?.metadata.image_xlarge_url ?? "",
-        ).catch((err) => console.warn(err));
-        if (imageColors && imageColors[colorChoice]) nextColor = imageColors[colorChoice];
-        return nextColor;
-    }
-
     // Return the total time left to show the upnext timer
     static getShowTime(upnextTime: number) {
         const showBefore = upnextTime * 1000;
@@ -169,54 +143,6 @@ class Utils {
             languages[lang] = translations[lang].langName;
         }
         return languages;
-    }
-
-    static toggleQueuePanel(myQueueButton: HTMLElement | null, enabled: boolean) {
-        const sequence = ++queuePanelSequence;
-        const originalQueueButton = HtmlSelectors.getOriginalQueueButton();
-        const rightPanel = HtmlSelectors.getRightPanel();
-        if (enabled) {
-            setTimeout(() => {
-                if (sequence !== queuePanelSequence || !Utils.isModeActivated()) return;
-                if (!originalQueueButton?.classList.contains("main-genericButton-buttonActive")) {
-                    originalQueueButton?.click();
-                    wasQueuePanelEnabled = false;
-                } else {
-                    wasQueuePanelEnabled = true;
-                }
-                setTimeout(() => {
-                    if (sequence !== queuePanelSequence || !Utils.isModeActivated()) return;
-                    rightPanel?.classList.add("fullscape-queue-panel");
-                    setTimeout(() => {
-                        if (sequence !== queuePanelSequence || !Utils.isModeActivated()) return;
-                        rightPanel?.classList.add("fullscape-transform-animation");
-                    }, 100);
-                }, 300);
-            }, 600);
-        } else {
-            if (wasQueuePanelEnabled != null && !wasQueuePanelEnabled) {
-                originalQueueButton?.click();
-            }
-            rightPanel?.style.setProperty("--queue-panel-x", "1000px");
-            wasQueuePanelEnabled = null;
-            myQueueButton?.classList.remove("button-active", "dot-after");
-            rightPanel?.classList.remove("fullscape-queue-panel", "fullscape-transform-animation");
-            document.body.classList.remove("fullscape-queue-panel-active");
-        }
-    }
-
-    static toggleQueue(queueButton: HTMLElement | null) {
-        const rightPanel = HtmlSelectors.getRightPanel();
-
-        if (document.body.classList.contains("fullscape-queue-panel-active")) {
-            rightPanel?.style.setProperty("--queue-panel-x", "1000px");
-            queueButton?.classList.remove("button-active", "dot-after");
-            document.body.classList.remove("fullscape-queue-panel-active");
-        } else {
-            rightPanel?.style.setProperty("--queue-panel-x", "0px");
-            queueButton?.classList.add("button-active", "dot-after");
-            document.body.classList.add("fullscape-queue-panel-active");
-        }
     }
 
     static getTimeFormatted() {

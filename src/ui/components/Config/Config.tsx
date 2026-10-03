@@ -66,19 +66,6 @@ export class ConfigManager {
         if (Utils.isModeActivated()) this.activate();
     }
 
-    static getSettingTopHeader(LOCALE: string) {
-        const container = document.createElement("div");
-        container.innerHTML = `
-        <div class="setting-button-row">
-          <button class="main-buttons-button main-button-primary" id="mode-exit">
-            ${translations[LOCALE].settings.exit}
-          </button>
-        </div>`;
-        const exitButton = container.querySelector<HTMLElement>("#mode-exit");
-        if (exitButton) exitButton.onclick = this.deactivate;
-        return container;
-    }
-
     static getSettingsFooter(LOCALE: string) {
         const container = document.createElement("div");
         container.innerHTML = `
@@ -271,31 +258,6 @@ export class ConfigManager {
             else toggle.checked = CFM.get(key as keyof Settings) as boolean;
 
             toggle.onchange = (evt) => callback((evt?.target as HTMLInputElement)?.checked);
-        }
-        return settingCard;
-    }
-
-    static createInputElement(
-        title: string,
-        key: keyof Settings | keyof Config,
-        type: string,
-        callback = (value: string) => this.saveOption(key as keyof Settings, value),
-        description = "",
-    ): HTMLDivElement {
-        const settingCard = getSettingCard(
-            `<label class="gen-input">
-                <input type="${type}">
-            </label>`,
-            title,
-            key,
-            description,
-        );
-        const inputElement = settingCard.querySelector<HTMLInputElement>("input");
-        if (inputElement) {
-            if (key in DEFAULTS) inputElement.value = CFM.getGlobal(key as keyof Config) as string;
-            else inputElement.value = CFM.get(key as keyof Settings) as string;
-
-            inputElement.oninput = (evt) => callback((evt?.target as HTMLInputElement)?.value);
         }
         return settingCard;
     }
@@ -707,7 +669,6 @@ export class ConfigManager {
                 );
                 if (section) section.hidden = value !== "custom";
                 CFM.set("beatResponsePreset", value as Settings["beatResponsePreset"]);
-                CFM.set("beatBounce", value !== "off");
             },
             strings.description,
         );

@@ -786,9 +786,9 @@ async function startFullscape() {
        }
        `;
 
-        if (CFM.get("lyricsDisplay")) {
-            Lyrics.teardown();
-        }
+        // Clean up the previous renderer even when the setting was just disabled.
+        Lyrics.teardown();
+        DOM.lyrics = null;
         Cover.teardown();
         Queue.teardown();
         DOM.container.innerHTML = getHtmlContent();
@@ -1198,14 +1198,12 @@ async function startFullscape() {
             );
         }
         Spicetify.Player.removeEventListener("onprogress", handlePlaybackTimelineProgress);
-        if (CFM.get("lyricsDisplay")) {
-            Spicetify.Player.removeEventListener("onprogress", handleLyricsProgress);
-            Spicetify.Platform.PlayerAPI._events.removeListener(
-                "queue_update",
-                handleLyricsQueueUpdate,
-            );
-            Lyrics.teardown();
-        }
+        Spicetify.Player.removeEventListener("onprogress", handleLyricsProgress);
+        Spicetify.Platform.PlayerAPI._events.removeListener(
+            "queue_update",
+            handleLyricsQueueUpdate,
+        );
+        Lyrics.teardown();
         document.body.classList.remove(...CLASSES_TO_ADD);
         UpNext.upNextShown = false;
         if (CFM.get("enableFullscreen")) {
@@ -1326,7 +1324,6 @@ async function startFullscape() {
 
 async function main() {
     ReleaseUpdater.reportRuntimeVersion();
-    ReleaseUpdater.initializeUpdateModel();
     if (!(await ReleaseUpdater.shouldStartBundledVersion())) return;
     await startFullscape();
 }

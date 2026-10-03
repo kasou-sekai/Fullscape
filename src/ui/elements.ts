@@ -20,7 +20,7 @@ export class DOM {
     static nextControl: HTMLElement;
     static backControl: HTMLElement;
     static queue: HTMLElement | null;
-    static lyrics: HTMLElement;
+    static lyrics: HTMLElement | null;
     static sideView: HTMLElement;
     static coverImg = new Image();
     static backgroundImg = new Image();

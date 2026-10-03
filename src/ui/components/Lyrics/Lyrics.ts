@@ -93,7 +93,6 @@ type BridgeLease = {
 
 export class Lyrics {
     private static readonly REQUEST_TIMEOUT_MS = 10000;
-    private static readonly RETRY_DELAYS_MS = [0];
     private static readonly REFETCH_DELAYS_MS = [15000, 45000, 120000];
     private static readonly SHARED_SYNC_POLL_MS = 1000;
     private static readonly SHARED_SYNC_MAX_POLL_MS = 5000;
@@ -113,11 +112,6 @@ export class Lyrics {
         /(?:未经著作权人许可|不得翻唱翻录重制|all\s+rights\s+reserved|[©℗®])/iu;
     private static readonly INTERLUDE_BREATH_BEATS = 8;
     private static readonly INTERLUDE_DEFAULT_BPM = 120;
-    private static readonly CACHE_KINDS: LyricsCacheKind[] = [
-        "enhanced",
-        "enhanced-relaxed",
-        "spotify",
-    ];
     private static readonly spotifyRequests = new Map<string, Promise<LyricLine[]>>();
     private static readonly enhancedRequests = new Map<string, Promise<LyricLine[]>>();
     private static readonly prefetchedTrackUris = new Set<string>();
@@ -411,19 +405,18 @@ export class Lyrics {
         const thirdPartyEnabled = Boolean(CFM.get("thirdPartyLyrics"));
         const relaxedMatching = Boolean(CFM.get("relaxedLyricsMatching"));
         const kind: LyricsCacheKind = thirdPartyEnabled ? this.getEnhancedCacheKind() : "spotify";
+        const cached = getCachedLyricsFullEntry(track.uri, kind);
         let automaticFallback: LyricsCacheEntry | null = null;
         if (kind !== "spotify") {
-            const cached = getCachedLyricsFullEntry(track.uri, kind);
-            const selected = this.selectBestCachedLyrics(null, cached, false);
-            if (selected !== null && this.isPreferredCacheEntry(selected.entry)) {
+            const selected = this.selectBestCachedLyrics(cached, false);
+            if (selected !== null && this.isPreferredCacheEntry(selected)) {
                 if (publishDebug) {
                     this.publishCachedDebug(track.uri);
                 }
-                return this.linesForEntry(selected.entry);
+                return this.linesForEntry(selected);
             }
-            automaticFallback = this.selectBestCachedLyrics(null, cached, true)?.entry ?? null;
+            automaticFallback = this.selectBestCachedLyrics(cached, true);
         }
-        const cached = getCachedLyricsFullEntry(track.uri, kind);
         if (cached !== null && this.isPreferredCacheEntry(cached)) {
             if (publishDebug && kind !== "spotify") this.publishCachedDebug(track.uri);
             return this.linesForEntry(cached);
@@ -531,7 +524,6 @@ export class Lyrics {
         const entry = await getSharedCachedLyrics(
             track.uri,
             kind,
-            false,
             this.cacheMetadataForTrack(track),
         );
         if (entry && consumeSharedManualReset(entry)) {
@@ -560,62 +552,13 @@ export class Lyrics {
     }
 
     private static selectBestCachedLyrics(
-        shared: LyricsCacheEntry | null,
         cached: LyricsCacheEntry | null,
         allowAutomatic: boolean,
     ) {
-        const candidates = [
-            shared ? { source: "shared" as const, entry: shared } : null,
-            cached ? { source: "cached" as const, entry: cached } : null,
-        ].filter(Boolean) as Array<{ source: "shared" | "cached"; entry: LyricsCacheEntry }>;
-        const manual = candidates.filter(
-            (candidate) => getEffectiveCacheSource(candidate.entry) === "manual",
-        );
-        if (manual.length) return this.bestEntry(manual);
-        const plugin = candidates.filter(
-            (candidate) => getEffectiveCacheSource(candidate.entry) === "plugin",
-        );
-        if (plugin.length) return this.bestEntry(plugin);
-        if (!allowAutomatic) return null;
-        return this.bestEntry(candidates);
-    }
-
-    private static bestEntry(
-        candidates: Array<{ source: "shared" | "cached"; entry: LyricsCacheEntry }>,
-    ) {
-        return (
-            candidates.sort((first, second) => {
-                const sourcePriority =
-                    this.cacheSourcePriority(first.entry) - this.cacheSourcePriority(second.entry);
-                if (sourcePriority !== 0) return sourcePriority;
-                const quality = this.compareLyricsQuality(second.entry.lines, first.entry.lines);
-                if (quality !== 0) return quality;
-                const kindPriority =
-                    this.cacheKindPriority(first.entry.kind) -
-                    this.cacheKindPriority(second.entry.kind);
-                if (kindPriority !== 0) return kindPriority;
-                return (second.entry.cachedAt ?? 0) - (first.entry.cachedAt ?? 0);
-            })[0] ?? null
-        );
-    }
-
-    private static cacheSourcePriority(entry: LyricsCacheEntry) {
-        switch (getEffectiveCacheSource(entry)) {
-            case "manual":
-                return 0;
-            case "plugin":
-                return 1;
-            case "without-plugin":
-                return 2;
-        }
-    }
-
-    private static cacheKindPriority(kind: LyricsCacheKind) {
-        const preferred = CFM.get("thirdPartyLyrics") ? this.getEnhancedCacheKind() : "spotify";
-        return [
-            preferred,
-            ...this.CACHE_KINDS.filter((candidate) => candidate !== preferred),
-        ].indexOf(kind);
+        if (cached === null) return null;
+        const source = getEffectiveCacheSource(cached);
+        if (source === "manual" || source === "plugin" || allowAutomatic) return cached;
+        return null;
     }
 
     private static linesForEntry(entry: LyricsCacheEntry): LyricLine[] {
@@ -903,7 +846,7 @@ export class Lyrics {
         if (!trackId) return [];
         const releaseLease = await this.beginBridgeLease(track.uri);
         const requestStartedAt = Date.now();
-        const request = this.getLyricsWithRetry(trackId, track.image)
+        const request = this.requestSpotifyLyrics(trackId, track.image)
             .then((response) => {
                 const lines = this.normalizeLines(response.lyrics.lines);
                 const authoritative = getCachedLyricsFullEntry(track.uri, "spotify");
@@ -945,11 +888,10 @@ export class Lyrics {
         return request;
     }
 
-    private static async getLyricsWithRetry(trackId: string, image?: string) {
+    private static async requestSpotifyLyrics(trackId: string, image?: string) {
         if (!image) throw new Error("Spotify track is missing its artwork for lyrics lookup");
         const params = new URLSearchParams({ format: "json", vocalRemoval: "false" });
         if (navigator.language) params.set("clientLanguage", navigator.language);
-        let lastError: unknown;
         const requestBuilder = Spicetify.Platform.Registry?.resolve(
             Symbol.for("RequestBuilder"),
         );
@@ -957,46 +899,35 @@ export class Lyrics {
             throw new Error("Spotify request builder is unavailable");
         }
 
-        for (let attempt = 0; attempt < this.RETRY_DELAYS_MS.length; attempt++) {
-            const delay = this.RETRY_DELAYS_MS[attempt];
-            if (delay) await this.sleep(delay);
-
-            try {
-                const request = requestBuilder
-                    .build()
-                    .withHost("https://spclient.wg.spotify.com/color-lyrics/v2")
-                    .withPath(
-                        `/track/${encodeURIComponent(trackId)}/image/${encodeURIComponent(image)}`,
-                    )
-                    .withQueryParameters(Object.fromEntries(params.entries()))
-                    .withEndpointIdentifier("/track/{trackId}");
-                const result = await this.withTimeout(
-                    request.send() as Promise<{ body: unknown }>,
-                    this.REQUEST_TIMEOUT_MS,
-                );
-                const response = (result as { body?: unknown } | null)?.body as
-                    | SpotifyLyricsApiResponse
-                    | null
-                    | undefined;
-                if (
-                    !response ||
-                    typeof response !== "object" ||
-                    response.error ||
-                    (response.code !== undefined && Number(response.code) >= 400) ||
-                    !response.lyrics ||
-                    !Array.isArray(response.lyrics.lines)
-                ) {
-                    throw new Error("Spotify returned an invalid lyrics response");
-                }
-                return response as SpotifyLyricsApiResponse & {
-                    lyrics: { lines: unknown[] };
-                };
-            } catch (err) {
-                lastError = err;
-            }
+        const request = requestBuilder
+            .build()
+            .withHost("https://spclient.wg.spotify.com/color-lyrics/v2")
+            .withPath(
+                `/track/${encodeURIComponent(trackId)}/image/${encodeURIComponent(image)}`,
+            )
+            .withQueryParameters(Object.fromEntries(params.entries()))
+            .withEndpointIdentifier("/track/{trackId}");
+        const result = await this.withTimeout(
+            request.send() as Promise<{ body: unknown }>,
+            this.REQUEST_TIMEOUT_MS,
+        );
+        const response = (result as { body?: unknown } | null)?.body as
+            | SpotifyLyricsApiResponse
+            | null
+            | undefined;
+        if (
+            !response ||
+            typeof response !== "object" ||
+            response.error ||
+            (response.code !== undefined && Number(response.code) >= 400) ||
+            !response.lyrics ||
+            !Array.isArray(response.lyrics.lines)
+        ) {
+            throw new Error("Spotify returned an invalid lyrics response");
         }
-
-        throw lastError;
+        return response as SpotifyLyricsApiResponse & {
+            lyrics: { lines: unknown[] };
+        };
     }
 
     private static getCurrentTrack(uri: string): LyricsTrack {
@@ -1077,10 +1008,6 @@ export class Lyrics {
                 },
             );
         });
-    }
-
-    private static sleep(ms: number) {
-        return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
     private static scheduleRefetch(trackUri: string, force: "enhanced" | "all") {

@@ -30,7 +30,6 @@ export const DEFAULTS: Config = {
         invertColors: "never",
         backAnimationTime: 1,
         animationSpeed: 0.25,
-        beatBounce: true,
         beatResponsePreset: "medium",
         bpmDrivenMotion: true,
         beatScaleAmount: 0.18,

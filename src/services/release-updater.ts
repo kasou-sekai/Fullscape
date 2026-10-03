@@ -12,7 +12,6 @@ const RELEASE_SCRIPT_DB_NAME = "fullscape-release-cache";
 const RELEASE_SCRIPT_DB_VERSION = 1;
 const RELEASE_SCRIPT_STORE = "scripts";
 const MAX_CACHED_RELEASES = 3;
-const UPDATE_MODEL_VERSION = "verified-release-cache-v1";
 const RELEASE_RUNTIME_HANDSHAKE = "fullscape-runtime-handshake-v1";
 const RELEASE_STYLE_ID = "fullscape";
 
@@ -22,7 +21,6 @@ const STORAGE_KEYS = {
     releaseListCache: "fullscape:update:release-list-cache",
     promptedVersion: "fullscape:update:prompted-version",
     loadFailure: "fullscape:update:load-failure",
-    modelVersion: "fullscape:update:model-version",
 } as const;
 
 export const CURRENT_VERSION = packageJson.version;
@@ -264,11 +262,6 @@ export class ReleaseUpdater {
     private static releaseDbPromise: Promise<IDBDatabase | null> | null = null;
     private static storagePersistenceRequested = false;
     private static releaseListWarning: string | null = null;
-
-    static initializeUpdateModel() {
-        if (storageGet(STORAGE_KEYS.modelVersion) === UPDATE_MODEL_VERSION) return;
-        storageSet(STORAGE_KEYS.modelVersion, UPDATE_MODEL_VERSION);
-    }
 
     static reportRuntimeVersion() {
         (window as UpdateRuntimeWindow).__fullscapeRuntimeReport = {

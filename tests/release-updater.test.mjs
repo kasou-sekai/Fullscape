@@ -226,7 +226,7 @@ test("snoozes an update prompt for 24 hours instead of forever", () => {
     assert.equal(ReleaseUpdater.shouldPromptFor(release), true);
 });
 
-test("does not crash startup or reload when local storage throws", () => {
+test("does not select a release when local storage throws", () => {
     globalThis.localStorage = {
         getItem() {
             throw new Error("storage blocked");
@@ -245,7 +245,6 @@ test("does not crash startup or reload when local storage throws", () => {
         publishedAt: "2026-01-01T00:00:00Z",
     };
 
-    assert.doesNotThrow(() => ReleaseUpdater.initializeUpdateModel());
     assert.equal(
         ReleaseUpdater.switchToRelease(release, () => {}),
         false,

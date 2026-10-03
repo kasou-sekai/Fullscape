@@ -131,8 +131,6 @@ beforeEach(() => {
     DOM.queue.rect = { left: 700, top: 50, width: 600, height: 600, bottom: 650 };
     DOM.container.append(DOM.queue, DOM.cover);
     QueueAdapter.read = () => ({
-        revision: "1",
-        current: entry("old"),
         next: [entry("a")],
         later: [entry("b")],
     });
@@ -161,16 +159,12 @@ test("gallery excludes the playing song and keeps the Up Next and Queue anchors"
 });
 test("queue updates retain unchanged card nodes instead of reloading every cover", () => {
     QueueAdapter.read = () => ({
-        revision: "2",
-        current: entry("old"),
         next: [entry("a"), entry("b"), entry("c")],
         later: [],
     });
     Queue.update(true);
     const retained = DOM.queue.querySelectorAll(".queue-tile").slice(1);
     QueueAdapter.read = () => ({
-        revision: "3",
-        current: entry("old"),
         next: [entry("x"), entry("b"), entry("c")],
         later: [],
     });
@@ -182,8 +176,6 @@ test("queue updates retain unchanged card nodes instead of reloading every cover
 test("the next card is promoted in place so it can animate to the featured slot", () => {
     const promoted = DOM.queue.querySelectorAll(".queue-tile")[1];
     QueueAdapter.read = () => ({
-        revision: "2",
-        current: entry("a"),
         next: [entry("b"), entry("c")],
         later: [],
     });
