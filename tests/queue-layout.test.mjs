@@ -48,6 +48,20 @@ test("wide layout features the first artwork with staggered columns", () => {
 test("wide reading order follows visible rows instead of the masonry fill order", () => {
     assert.deepEqual(layoutQueue(640, 11).readingOrder, [0, 1, 2, 5, 6, 3, 4, 9, 10, 7, 8]);
 });
+test("large artwork reads both complete right-hand rows before restarting on the left", () => {
+    for (const caption of [62, 150, 320]) {
+        const { tiles, readingOrder } = layoutQueue(1100, 13, caption);
+        assert.ok(tiles[5].y + tiles[5].width <= tiles[0].y + tiles[0].width);
+        assert.ok(tiles[9].y + tiles[9].width > tiles[0].y + tiles[0].width);
+        assert.deepEqual(readingOrder, [0, 1, 2, 5, 6, 3, 4, 9, 10, 7, 8, 11, 12]);
+    }
+});
+test("narrow artwork reads only the fitting right-hand row before restarting on the left", () => {
+    const { tiles, readingOrder } = layoutQueue(560, 10);
+    assert.ok(tiles[1].y + tiles[1].width <= tiles[0].y + tiles[0].width);
+    assert.ok(tiles[3].y + tiles[3].width > tiles[0].y + tiles[0].width);
+    assert.deepEqual(readingOrder, [0, 1, 2, 5, 3, 4, 8, 6, 7, 9]);
+});
 test("reading order includes every tile exactly once at responsive widths", () => {
     for (const width of [220, 320, 419, 420, 559, 600, 740, 1100]) {
         for (const count of [0, 1, 2, 11, 40]) {

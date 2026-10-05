@@ -29,187 +29,6 @@ export class Queue {
     private static scrollFrame: number | null = null;
     private static scrollListener: (() => void) | null = null;
     private static layoutDestinations = new WeakMap<HTMLElement, LayoutDestination>();
-    private static canonicalQueue: QueueEntry[] = [];
-    private static lastAppliedQueue: string[] = [];
-    private static queueOrderInitialized = false;
-    private static queueOrderLayout = "";
-    private static failedQueueOrderLayout = "";
-    private static queueReorderTimer: ReturnType<typeof setTimeout> | null = null;
-    private static queueReorderInProgress = false;
-    private static queueOrderGeneration = 0;
-    private static pendingQueueLayout: ReturnType<typeof layoutQueue> | null = null;
-
-    private static queueEntryKey(entry: QueueEntry) {
-        return `${entry.uid}\u0000${entry.uri}`;
-    }
-
-    /** Keep a stable source order while the native queue is temporarily sorted for this layout. */
-    private static reconcileCanonicalQueue(entries: QueueEntry[]) {
-        const currentKeys = entries.map((entry) => this.queueEntryKey(entry));
-        if (!this.queueOrderInitialized) {
-            this.canonicalQueue = [...entries];
-            this.lastAppliedQueue = currentKeys;
-            this.queueOrderInitialized = true;
-            return;
-        }
-
-        const currentByKey = new Map(entries.map((entry) => [this.queueEntryKey(entry), entry]));
-        const previousSet = new Set(this.lastAppliedQueue);
-        const existingInCurrentOrder = currentKeys.filter((key) => previousSet.has(key));
-        const survivingPreviousOrder = this.lastAppliedQueue.filter((key) => currentByKey.has(key));
-        const naturalQueueChange = existingInCurrentOrder.every(
-            (key, index) => key === survivingPreviousOrder[index],
-        );
-        const orderChanged =
-            currentKeys.length !== this.lastAppliedQueue.length ||
-            currentKeys.some((key, index) => key !== this.lastAppliedQueue[index]);
-
-        if (naturalQueueChange) {
-            const canonicalKeys = new Set(
-                this.canonicalQueue.map((entry) => this.queueEntryKey(entry)),
-            );
-            this.canonicalQueue = this.canonicalQueue
-                .filter((entry) => currentByKey.has(this.queueEntryKey(entry)))
-                .map((entry) => currentByKey.get(this.queueEntryKey(entry)))
-                .filter((entry): entry is QueueEntry => Boolean(entry));
-            entries.forEach((entry) => {
-                if (!canonicalKeys.has(this.queueEntryKey(entry))) this.canonicalQueue.push(entry);
-            });
-        } else {
-            // An external/manual reorder becomes the new source order.
-            this.canonicalQueue = [...entries];
-            this.queueOrderLayout = "";
-        }
-        if (orderChanged) this.queueOrderLayout = "";
-        this.lastAppliedQueue = currentKeys;
-    }
-
-    private static scheduleResponsiveQueueOrder(layout: ReturnType<typeof layoutQueue>) {
-        if (!QueueAdapter.canReorder()) return;
-        this.pendingQueueLayout = layout;
-        if (this.queueReorderTimer) clearTimeout(this.queueReorderTimer);
-        this.queueReorderTimer = setTimeout(() => {
-            this.queueReorderTimer = null;
-            void this.applyResponsiveQueueOrder();
-        }, 120);
-    }
-
-    private static async applyResponsiveQueueOrder() {
-        if (this.queueReorderInProgress) return;
-        const layout = this.pendingQueueLayout;
-        this.pendingQueueLayout = null;
-        if (!layout) return;
-
-        let snapshot;
-        try {
-            snapshot = QueueAdapter.read();
-        } catch (error) {
-            console.warn("[Fullscape] Unable to read queue before responsive reordering.", error);
-            return;
-        }
-        const entries = [...snapshot.next, ...snapshot.later].filter((entry) => !entry.isCurrent);
-        this.reconcileCanonicalQueue(entries);
-        if (
-            entries.length !== layout.tiles.length ||
-            !entries.length ||
-            entries.some((entry) => !entry.hasSpotifyUid) ||
-            new Set(entries.map((entry) => entry.uid)).size !== entries.length ||
-            (Array.isArray(Spicetify.Queue?.nextTracks) &&
-                Spicetify.Queue.nextTracks.length !== entries.length)
-        )
-            return;
-
-        const target = layout.readingOrder
-            .map((index) => this.canonicalQueue[index])
-            .filter((entry): entry is QueueEntry => Boolean(entry));
-        if (target.length !== layout.readingOrder.length) return;
-        const targetKeys = target.map((entry) => this.queueEntryKey(entry));
-        const layoutSignature = JSON.stringify([layout.columns, targetKeys]);
-        if (
-            layoutSignature === this.queueOrderLayout ||
-            layoutSignature === this.failedQueueOrderLayout
-        )
-            return;
-
-        const current = [...entries];
-        if (targetKeys.every((key, index) => key === this.queueEntryKey(current[index]))) {
-            this.lastAppliedQueue = targetKeys;
-            this.queueOrderLayout = layoutSignature;
-            return;
-        }
-
-        this.queueReorderInProgress = true;
-        const generation = this.queueOrderGeneration;
-        let reordered = true;
-        try {
-            const working = [...current];
-            for (let targetIndex = 0; targetIndex < target.length; targetIndex++) {
-                const key = targetKeys[targetIndex];
-                const currentIndex = working.findIndex(
-                    (entry) => this.queueEntryKey(entry) === key,
-                );
-                if (currentIndex < 0) {
-                    reordered = false;
-                    break;
-                }
-                if (currentIndex === targetIndex) continue;
-                const result = await QueueAdapter.reorder(working[currentIndex], targetIndex);
-                if (!result.ok || generation !== this.queueOrderGeneration) {
-                    reordered = false;
-                    break;
-                }
-                const [entry] = working.splice(currentIndex, 1);
-                working.splice(targetIndex, 0, entry);
-            }
-
-            if (reordered) {
-                this.lastAppliedQueue = targetKeys;
-                this.queueOrderLayout = layoutSignature;
-                this.failedQueueOrderLayout = "";
-            } else {
-                // Best-effort rollback keeps a partially failed host mutation from being left behind.
-                for (let targetIndex = 0; targetIndex < current.length; targetIndex++) {
-                    const key = this.queueEntryKey(current[targetIndex]);
-                    const live = QueueAdapter.read();
-                    const liveEntries = [...live.next, ...live.later];
-                    const currentIndex = liveEntries.findIndex(
-                        (entry) => this.queueEntryKey(entry) === key,
-                    );
-                    if (currentIndex >= 0 && currentIndex !== targetIndex) {
-                        const rollback = await QueueAdapter.reorder(
-                            liveEntries[currentIndex],
-                            targetIndex,
-                        );
-                        if (!rollback.ok) break;
-                    }
-                }
-                if (generation === this.queueOrderGeneration) {
-                    const restored = QueueAdapter.read();
-                    this.reconcileCanonicalQueue([...restored.next, ...restored.later]);
-                }
-            }
-        } catch (error) {
-            console.warn("[Fullscape] Unable to adapt queue order to the cover layout.", error);
-            reordered = false;
-        } finally {
-            this.queueReorderInProgress = false;
-            if (!reordered) {
-                this.queueOrderLayout = "";
-                if (generation === this.queueOrderGeneration)
-                    this.failedQueueOrderLayout = layoutSignature;
-            }
-            if (generation === this.queueOrderGeneration) {
-                this.update(true);
-                if (this.pendingQueueLayout)
-                    this.scheduleResponsiveQueueOrder(this.pendingQueueLayout);
-            } else if (this.container) {
-                this.update(true);
-                if (this.pendingQueueLayout)
-                    this.scheduleResponsiveQueueOrder(this.pendingQueueLayout);
-            }
-        }
-    }
-
     private static displayTitle(title: string) {
         return CFM.get("trimTitle") ? Utils.trimTitle(title) : title;
     }
@@ -257,7 +76,7 @@ export class Queue {
                 });
             });
             tiles.forEach((tile, index) => {
-                const position = layout.tiles[index];
+                const position = layout.tiles[layout.readingOrder[index]];
                 Object.assign(tile.style, {
                     left: `${position.x}px`,
                     top: `${position.y}px`,
@@ -274,7 +93,6 @@ export class Queue {
             layout = layoutQueue(width, tiles.length, captionHeight);
             applyLayout(layout);
         }
-        this.scheduleResponsiveQueueOrder(layout);
     }
 
     private static teardownScrollAnimations() {
@@ -376,14 +194,8 @@ export class Queue {
         this.refreshTimers = [];
         if (this.updateTimer) clearTimeout(this.updateTimer);
         if (this.selectionTimer) clearTimeout(this.selectionTimer);
-        if (this.queueReorderTimer) clearTimeout(this.queueReorderTimer);
         this.updateTimer = null;
         this.selectionTimer = null;
-        this.queueReorderTimer = null;
-        this.pendingQueueLayout = null;
-        this.queueOrderGeneration++;
-        this.failedQueueOrderLayout = "";
-        this.failedQueueOrderLayout = "";
         this.selected = null;
         this.incoming = null;
         this.cancelFlight();
@@ -406,13 +218,12 @@ export class Queue {
 
     static update(force = false) {
         const container = this.container;
-        if (!container || this.queueReorderInProgress) return;
+        if (!container) return;
         try {
             const snapshot = QueueAdapter.read();
             const entries = [...snapshot.next, ...snapshot.later].filter(
                 (entry) => !entry.isCurrent,
             );
-            this.reconcileCanonicalQueue(entries);
             const revision = JSON.stringify(
                 entries.map((entry) => [
                     entry.uid,

@@ -165,39 +165,53 @@ test("gallery excludes the playing song and keeps the Up Next and Queue anchors"
         ["a", "b"],
     );
 });
-test("wide responsive layout reorders the native queue to the visual reading sequence", async () => {
-    Queue.teardown();
+test("responsive artwork positions follow playback order without mutating Spotify's queue", async () => {
     const originalOrder = "abcdefghijk".split("").map(entry);
-    let liveOrder = [...originalOrder];
+    let reorderCalls = 0;
+    QueueAdapter.read = () => ({ next: originalOrder.slice(0, 3), later: originalOrder.slice(3) });
     QueueAdapter.canReorder = () => true;
-    QueueAdapter.read = () => ({
-        revision: liveOrder.map((track) => track.uid).join("|"),
-        current: entry("old"),
-        next: liveOrder.slice(0, 3),
-        later: liveOrder.slice(3),
-    });
-    QueueAdapter.reorder = async (track, targetIndex) => {
-        const currentIndex = liveOrder.findIndex((candidate) => candidate.uid === track.uid);
-        if (currentIndex < 0) return { ok: false };
-        const [moved] = liveOrder.splice(currentIndex, 1);
-        liveOrder.splice(targetIndex, 0, moved);
-        return { ok: true };
-    };
-
+    QueueAdapter.reorder = async () => { reorderCalls++; return { ok: true }; };
     Queue.attach(DOM.queue);
-    await new Promise((resolve) => setTimeout(resolve, 180));
-    assert.deepEqual(
-        liveOrder.map((track) => track.uid),
-        ["a", "b", "c", "f", "g", "d", "e", "j", "k", "h", "i"],
-    );
+
+    const position = (tile) => [parseFloat(tile.style.left), parseFloat(tile.style.top)];
+    const ids = () => DOM.queue.querySelectorAll(".queue-tile").map((tile) => tile.dataset.uid);
+    const byId = (id) => DOM.queue.querySelectorAll(".queue-tile").find((tile) => tile.dataset.uid === id);
+    // The first two right-hand rows must contain the next four consecutive tracks.
+    assert.equal(position(byId("b"))[0], position(byId("d"))[0]);
+    assert.equal(position(byId("c"))[0], position(byId("e"))[0]);
+    assert.ok(position(byId("d"))[1] > position(byId("b"))[1]);
+    assert.ok(position(byId("e"))[1] > position(byId("c"))[1]);
+    assert.equal(position(byId("f"))[0], 0);
+    assert.ok(position(byId("d"))[1] + parseFloat(byId("d").style.width) <=
+        position(byId("a"))[1] + parseFloat(byId("a").style.width));
+    assert.deepEqual(ids(), originalOrder.map((track) => track.uid));
+
+    const lanes = () => {
+        const groups = new Map();
+        for (const tile of DOM.queue.querySelectorAll(".queue-tile")) {
+            const [x] = position(tile);
+            if (!groups.has(x)) groups.set(x, []);
+            groups.get(x).push(tile);
+        }
+        return [...groups.entries()].sort(([a], [b]) => a - b).map(([, tiles]) =>
+            tiles.sort((a, b) => position(a)[1] - position(b)[1]).map((tile) => tile.dataset.uid));
+    };
+    DOM.queue.querySelector(".queue-gallery").clientWidth = 1116;
+    Queue.layoutGallery();
+    assert.deepEqual(lanes(), [["a", "f", "j"], ["g", "k"], ["b", "d", "h"], ["c", "e", "i"]]);
+
+    DOM.queue.querySelector(".queue-gallery").clientWidth = 576;
+    Queue.layoutGallery();
+    assert.deepEqual(lanes(), [["a", "d", "g"], ["b", "e", "h", "j"], ["c", "f", "i", "k"]]);
 
     DOM.queue.querySelector(".queue-gallery").clientWidth = 416;
     Queue.layoutGallery();
+    assert.equal(position(byId("c"))[0], 0);
+    assert.ok(position(byId("c"))[1] > position(byId("a"))[1]);
+    assert.equal(position(byId("d"))[0], position(byId("b"))[0]);
+    assert.deepEqual(ids(), originalOrder.map((track) => track.uid));
     await new Promise((resolve) => setTimeout(resolve, 180));
-    assert.deepEqual(
-        liveOrder.map((track) => track.uid),
-        ["a", "b", "d", "c", "f", "e", "h", "g", "j", "i", "k"],
-    );
+    assert.equal(reorderCalls, 0);
 });
 test("queue updates retain unchanged card nodes instead of reloading every cover", () => {
     QueueAdapter.read = () => ({
