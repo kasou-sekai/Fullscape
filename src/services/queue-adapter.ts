@@ -102,6 +102,30 @@ export const QueueAdapter = {
         };
     },
 
+    canReorder() {
+        return Boolean(
+            getMutation("reorderQueue") ||
+                getMutation("moveInQueue") ||
+                getMutation("moveQueueItem"),
+        );
+    },
+
+    async reorder(entry: QueueEntry, targetIndex: number): Promise<QueueMutationResult> {
+        const api = getApi();
+        const name = ["reorderQueue", "moveInQueue", "moveQueueItem"].find(
+            (candidate) => typeof api?.[candidate] === "function",
+        );
+        if (!name || !api) return { ok: false, reason: "unsupported" };
+        try {
+            const mutation = api[name] as (...args: unknown[]) => unknown;
+            await mutation.call(api, { uid: entry.uid, uri: entry.uri }, targetIndex);
+            return { ok: true };
+        } catch (error) {
+            console.warn("[Fullscape] Unable to reorder queue entry.", error);
+            return { ok: false, reason: "failed" };
+        }
+    },
+
     async play(entry: QueueEntry): Promise<QueueMutationResult> {
         const api = getApi();
         const skip = getMutation("skipToNext");
