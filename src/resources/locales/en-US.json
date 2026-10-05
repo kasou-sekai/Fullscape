@@ -394,5 +394,16 @@
     "cover": {
         "enlarge": "Enlarge cover",
         "artwork": "Album artwork"
+    },
+    "queue": {
+        "empty": "Nothing queued",
+        "playNow": "Play now",
+        "unknown": "Spotify queue",
+        "actionUnavailable": "This queue action is not supported by the current Spotify client."
+    },
+    "sideView": {
+        "showQueue": "Show queue",
+        "showLyrics": "Show lyrics",
+        "unavailable": "Lyrics are unavailable for this track."
     }
 }

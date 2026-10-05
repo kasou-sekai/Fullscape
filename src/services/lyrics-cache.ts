@@ -88,10 +88,6 @@ export function startSharedBridgePresence() {
     sharedPresenceTimer = setInterval(() => void heartbeat(), SHARED_PRESENCE_INTERVAL_MS);
 }
 
-export function getCachedLyrics(trackUri: string, kind: LyricsCacheKind) {
-    return getCachedLyricsEntry(trackUri, kind)?.lines ?? null;
-}
-
 export function getCachedLyricsDebug(trackUri: string, kind: LyricsCacheKind) {
     return getCachedLyricsEntry(trackUri, kind)?.debug ?? null;
 }
@@ -99,7 +95,6 @@ export function getCachedLyricsDebug(trackUri: string, kind: LyricsCacheKind) {
 export async function getSharedCachedLyrics(
     trackUri: string,
     kind: LyricsCacheKind,
-    cacheLocally = true,
     metadata: LyricsCacheMetadata = {},
 ) {
     if (!CFM.get("sharedLyricsBridge")) return null;
@@ -117,7 +112,6 @@ export async function getSharedCachedLyrics(
         const entry = (await response.json()) as LyricsCacheEntry;
         if (!isValidEntry(entry, trackUri, kind)) return null;
         traceLyricsBridge("bridge.received", entry, "GET shared cache");
-        if (cacheLocally) cacheSharedEntry(entry);
         return entry;
     } catch {
         return null;
@@ -129,7 +123,15 @@ function getCachedLyricsEntry(trackUri: string, kind: LyricsCacheKind) {
     const key = getCacheKey(trackUri, kind);
     const entry = cache.entries[key];
     if (!entry) return null;
-    if (entry.expiresAt <= Date.now()) {
+    const failedEnhancement =
+        entry.kind !== "spotify" &&
+        entry.debug &&
+        ["error", "not-matched"].includes(entry.debug.status) &&
+        getEffectiveCacheSource(entry) !== "manual";
+    const expiresAt = failedEnhancement
+        ? Math.min(entry.expiresAt, entry.cachedAt + EMPTY_TTL_MS)
+        : entry.expiresAt;
+    if (expiresAt <= Date.now()) {
         delete cache.entries[key];
         persistStore();
         return null;
@@ -151,7 +153,9 @@ export function setCachedLyrics(
     lines: EnhancedLyricLine[],
     debug?: ThirdPartyLyricsDebug,
     syncShared = true,
-    metadata: Partial<Omit<LyricsCacheEntry, "kind" | "trackUri" | "cachedAt" | "expiresAt" | "lines" | "debug">> = {},
+    metadata: Partial<
+        Omit<LyricsCacheEntry, "kind" | "trackUri" | "cachedAt" | "expiresAt" | "lines" | "debug">
+    > = {},
 ) {
     const cache = getStore();
     const now = Date.now();
@@ -159,9 +163,20 @@ export function setCachedLyrics(
         kind,
         trackUri,
         cachedAt: now,
-        expiresAt: now + (lines.length ? READY_TTL_MS : EMPTY_TTL_MS),
+        expiresAt:
+            now +
+            (lines.length &&
+            !(
+                kind !== "spotify" &&
+                debug &&
+                ["error", "not-matched"].includes(debug.status) &&
+                metadata.cacheSource !== "manual" &&
+                !metadata.isManualSelection
+            )
+                ? READY_TTL_MS
+                : EMPTY_TTL_MS),
         lines,
-        cacheSource: metadata.cacheSource ?? inferCacheSource(metadata),
+        cacheSource: metadata.cacheSource ?? getEffectiveCacheSource(metadata),
         source: metadata.source ?? "plugin",
         sourceName: metadata.sourceName,
         isManualSelection: metadata.isManualSelection ?? false,
@@ -192,9 +207,7 @@ export function setCachedLyrics(
 
 export function deleteCachedLyrics(trackUri: string, kind?: LyricsCacheKind) {
     const cache = getStore();
-    const kinds: LyricsCacheKind[] = kind
-        ? [kind]
-        : ["spotify", "enhanced", "enhanced-relaxed"];
+    const kinds: LyricsCacheKind[] = kind ? [kind] : ["spotify", "enhanced", "enhanced-relaxed"];
     let changed = false;
     kinds.forEach((cacheKind) => {
         const key = getCacheKey(trackUri, cacheKind);
@@ -228,17 +241,18 @@ export function consumeSharedManualReset(entry: LyricsCacheEntry) {
     return true;
 }
 
-export function getEffectiveCacheSource(entry?: Pick<LyricsCacheEntry, "cacheSource" | "source" | "isManualSelection" | "cachedWithoutPlugin"> | null): LyricsCacheSourceKind {
+export function getEffectiveCacheSource(
+    entry?: Pick<
+        LyricsCacheEntry,
+        "cacheSource" | "source" | "isManualSelection" | "cachedWithoutPlugin"
+    > | null,
+): LyricsCacheSourceKind {
     if (!entry) return "without-plugin";
     if (entry.cacheSource) return entry.cacheSource;
     if (entry.isManualSelection) return "manual";
     if (entry.source === "plugin") return "plugin";
     if (entry.cachedWithoutPlugin) return "without-plugin";
     return entry.source === "lyric-shiori" ? "without-plugin" : "plugin";
-}
-
-function inferCacheSource(metadata: Partial<Pick<LyricsCacheEntry, "cacheSource" | "source" | "isManualSelection" | "cachedWithoutPlugin">>): LyricsCacheSourceKind {
-    return getEffectiveCacheSource(metadata);
 }
 
 function getStore(): LyricsCacheStore {
@@ -343,21 +357,10 @@ async function getSharedSessionToken() {
     });
     if (!response.ok) throw new Error(`Bridge session HTTP ${response.status}`);
     const payload = (await response.json()) as { token?: string; protocolVersion?: number };
-    if (!payload.token || payload.protocolVersion !== 1) throw new Error("Unsupported bridge session");
+    if (!payload.token || payload.protocolVersion !== 1)
+        throw new Error("Unsupported bridge session");
     sharedSessionToken = payload.token;
     return payload.token;
-}
-
-function cacheSharedEntry(entry: LyricsCacheEntry) {
-    const cache = getStore();
-    const key = getCacheKey(entry.trackUri, entry.kind);
-    if (
-        getEffectiveCacheSource(cache.entries[key]) === "manual" &&
-        getEffectiveCacheSource(entry) !== "manual"
-    ) return;
-    cache.entries[key] = entry;
-    trimStore(cache);
-    persistStore();
 }
 
 function entriesEqual(first: LyricsCacheEntry, second: LyricsCacheEntry) {

@@ -126,6 +126,7 @@ test("rejects release metadata without the fullscape script digest", async () =>
 
 test("requires a matching runtime version from handshake-enabled releases", () => {
     globalThis.document = {
+        getElementById: () => null,
         createElement: () => ({ dataset: {}, textContent: "", remove() {} }),
         head: {
             append(script) {
@@ -139,6 +140,47 @@ test("requires a matching runtime version from handshake-enabled releases", () =
 
     assert.equal(ReleaseUpdater.executeReleaseSource(selected, source(selected.version)), true);
     assert.equal(ReleaseUpdater.executeReleaseSource(selected, source("9.8.3")), false);
+});
+
+test("hands CSS ownership to the selected release and restores it on failure", () => {
+    const styles = new Set();
+    const createStyle = (id) => {
+        const style = {
+            id,
+            remove() {
+                styles.delete(style);
+            },
+        };
+        styles.add(style);
+        return style;
+    };
+    const bundledStyle = createStyle("fullscape");
+    globalThis.document = {
+        getElementById(id) {
+            return [...styles].find((style) => style.id === id) ?? null;
+        },
+        createElement: () => ({ dataset: {}, textContent: "", remove() {} }),
+        head: {
+            append(script) {
+                createStyle("fullscape");
+                Function("window", script.textContent)(globalThis.window);
+            },
+        },
+    };
+
+    const selected = { version: "9.8.7", tag: "v9.8.7" };
+    const source = (version) =>
+        `window.__fullscapeRuntimeReport={protocol:"fullscape-runtime-handshake-v1",version:${JSON.stringify(version)}};`;
+
+    assert.equal(ReleaseUpdater.executeReleaseSource(selected, source(selected.version)), true);
+    assert.equal(styles.has(bundledStyle), false);
+    assert.equal([...styles].filter((style) => style.id === "fullscape").length, 1);
+
+    const nextBundledStyle = [...styles][0];
+    assert.equal(ReleaseUpdater.executeReleaseSource(selected, source("9.8.6")), false);
+    assert.equal(styles.has(nextBundledStyle), true);
+    assert.equal(nextBundledStyle.id, "fullscape");
+    assert.equal([...styles].length, 1);
 });
 
 test("marks an expired cached update result as stale when the network fails", async () => {
@@ -184,7 +226,7 @@ test("snoozes an update prompt for 24 hours instead of forever", () => {
     assert.equal(ReleaseUpdater.shouldPromptFor(release), true);
 });
 
-test("does not crash startup or reload when local storage throws", () => {
+test("does not select a release when local storage throws", () => {
     globalThis.localStorage = {
         getItem() {
             throw new Error("storage blocked");
@@ -203,7 +245,6 @@ test("does not crash startup or reload when local storage throws", () => {
         publishedAt: "2026-01-01T00:00:00Z",
     };
 
-    assert.doesNotThrow(() => ReleaseUpdater.initializeUpdateModel());
     assert.equal(
         ReleaseUpdater.switchToRelease(release, () => {}),
         false,

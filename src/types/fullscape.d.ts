@@ -38,7 +38,6 @@ export type Settings = {
     invertColors: "never" | "always" | "auto";
     backAnimationTime: number;
     animationSpeed: number;
-    beatBounce: boolean;
     beatResponsePreset: BeatResponsePreset;
     bpmDrivenMotion: boolean;
     beatScaleAmount: number;

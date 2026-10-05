@@ -380,5 +380,16 @@
     "cover": {
         "enlarge": "放大封面",
         "artwork": "专辑封面"
+    },
+    "queue": {
+        "empty": "队列为空",
+        "playNow": "立即播放",
+        "unknown": "Spotify 队列",
+        "actionUnavailable": "当前 Spotify 客户端不支持此队列操作。"
+    },
+    "sideView": {
+        "showQueue": "显示播放队列",
+        "showLyrics": "显示歌词",
+        "unavailable": "当前歌曲没有可用歌词。"
     }
 }

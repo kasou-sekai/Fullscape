@@ -1,3 +1,5 @@
+import { APPLE_SYMBOLS } from "./constants/apple-system-symbols";
+import { Queue } from "./ui/components/Queue/Queue";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-non-null-assertion */
 import React from "react";
@@ -61,6 +63,33 @@ async function startFullscape() {
     }
 
     let LOCALE: string = CFM.getGlobal("locale") as Config["locale"];
+    let showingQueue = false;
+    function updateLyricsTools() {
+        const translation = DOM.container.querySelector<HTMLButtonElement>("#fullscape-translation");
+        if (translation) {
+            translation.title = LOCALE.startsWith("zh") ? "歌词翻译" : "Lyrics translation";
+            translation.setAttribute("aria-label", translation.title);
+            translation.setAttribute("aria-pressed", String(Boolean(CFM.get("showLyricsTranslation"))));
+            translation.disabled = showingQueue || !CFM.get("lyricsDisplay");
+        }
+        if (DOM.sideView) {
+            DOM.sideView.innerHTML = showingQueue ? APPLE_SYMBOLS.lyrics : APPLE_SYMBOLS.list;
+            DOM.sideView.title = showingQueue ? translations[LOCALE].sideView.showLyrics : translations[LOCALE].sideView.showQueue;
+            DOM.sideView.setAttribute("aria-label", DOM.sideView.title);
+            DOM.sideView.setAttribute("aria-pressed", String(showingQueue));
+        }
+    }
+    function setQueueVisible(visible: boolean) {
+        if (!visible) Queue.cancelHandoff();
+        showingQueue = visible;
+        DOM.container.classList.toggle("side-view-queue", visible);
+        if (DOM.lyrics) { DOM.lyrics.inert = visible; DOM.lyrics.setAttribute("aria-hidden", String(visible)); }
+        if (DOM.queue) { DOM.queue.inert = !visible; DOM.queue.setAttribute("aria-hidden", String(!visible)); }
+        if (visible) Queue.update();
+        updateLyricsTools();
+    }
+    const showLyricsTools = PlayerControls.showLyricsTools.bind(PlayerControls);
+
     function applyLyricsScale() {
         if (!CFM.get("lyricsDisplay")) return;
         const size = Number(CFM.get("lyricsSize") || 30);
@@ -76,7 +105,10 @@ async function startFullscape() {
     const updateUpNextShow = UpNext.updateUpNextShow.bind(UpNext);
     const hidePlayerControls = PlayerControls.hidePlayerControls.bind(PlayerControls);
     const PLAYBACK_TIMELINE_RESYNC_TARGET_MS = 1000;
-    const PLAYBACK_TIMELINE_RESYNC_DELAY_MS = 1;
+    // Spotify applies pause/resume asynchronously. A one-millisecond gap can
+    // race the pause command and leave the player paused permanently, so keep
+    // a short settling window before issuing the resume command.
+    const PLAYBACK_TIMELINE_RESYNC_DELAY_MS = 80;
     const PLAYBACK_TIMELINE_RESYNC_CHECK_INTERVAL_MS = 100;
     let playbackTimelineResyncTimer: ReturnType<typeof setTimeout> | null = null;
     let playbackTimelineResyncCheckTimer: ReturnType<typeof setTimeout> | null = null;
@@ -130,7 +162,44 @@ async function startFullscape() {
         playbackTimelineResyncTrackUri = null;
         if (shouldResume) {
             DOM.container?.classList.remove("playback-paused");
-            Spicetify.Player.play();
+            void resumePlaybackAfterTimelineResync();
+        }
+    }
+
+    async function resumePlaybackAfterTimelineResync() {
+        const playerApi = Spicetify.Platform?.PlayerAPI as any;
+        try {
+            if (typeof playerApi?.resume === "function") {
+                await playerApi.resume();
+            } else {
+                Spicetify.Player.play();
+            }
+        } catch {
+            // Keep the legacy wrapper as a fallback for clients that expose a
+            // PlayerAPI resume method but reject it during a device handoff.
+            try {
+                Spicetify.Player.play();
+            } catch {
+                // Playback errors are owned by Spotify; do not break the UI.
+            }
+        }
+    }
+
+    async function pausePlaybackForTimelineResync() {
+        const playerApi = Spicetify.Platform?.PlayerAPI as any;
+        try {
+            if (typeof playerApi?.pause === "function") {
+                await playerApi.pause();
+                return;
+            }
+        } catch {
+            // Fall back to the legacy wrapper when the platform API is not
+            // available during a device handoff.
+        }
+        try {
+            Spicetify.Player.pause();
+        } catch {
+            // Playback errors are owned by Spotify; do not break the UI.
         }
     }
 
@@ -506,7 +575,16 @@ async function startFullscape() {
         const sequence = playbackTimelineResyncSequence;
         isPlaybackTimelineResyncing = true;
         DOM.container?.classList.add("playback-timeline-resyncing");
-        Spicetify.Player.pause();
+        await pausePlaybackForTimelineResync();
+        if (
+            sequence !== playbackTimelineResyncSequence ||
+            !isPlaybackTimelineResyncing ||
+            playbackTimelineResyncTrackUri !== Spicetify.Player.data?.item?.uri ||
+            !Utils.isModeActivated()
+        ) {
+            finishPlaybackTimelineResyncVisualState();
+            return;
+        }
         playbackTimelineResyncTimer = setTimeout(() => {
             playbackTimelineResyncTimer = null;
             const shouldResume =
@@ -522,7 +600,7 @@ async function startFullscape() {
                     finishPlaybackTimelineResyncVisualState,
                     50,
                 );
-                Spicetify.Player.play();
+                void resumePlaybackAfterTimelineResync();
             } else {
                 finishPlaybackTimelineResyncVisualState();
             }
@@ -651,7 +729,7 @@ async function startFullscape() {
         playbackDeviceDebugUpdatedAt = 0;
         playbackDeviceDebugRequest = null;
         DOM.container.classList.toggle("lyrics-active", Boolean(CFM.get("lyricsDisplay")));
-        Utils.toggleQueuePanel(null, false);
+
         DOM.container.classList.toggle(
             "vertical-mode",
             (CFM.get("verticalMonitorSupport") as Settings["verticalMonitorSupport"]) &&
@@ -708,10 +786,11 @@ async function startFullscape() {
        }
        `;
 
-        if (CFM.get("lyricsDisplay")) {
-            Lyrics.teardown();
-        }
+        // Clean up the previous renderer even when the setting was just disabled.
+        Lyrics.teardown();
+        DOM.lyrics = null;
         Cover.teardown();
+        Queue.teardown();
         DOM.container.innerHTML = getHtmlContent();
 
         DOM.back = DOM.container.querySelector("#fullscape-background")!;
@@ -721,6 +800,13 @@ async function startFullscape() {
 
         DOM.cover = DOM.container.querySelector("#fullscape-art-image")!;
         Cover.attach();
+        DOM.queue = DOM.container.querySelector("#fullscape-queue-container");
+        Queue.attach(DOM.queue!);
+        DOM.sideView = DOM.container.querySelector("#fullscape-side-view")!;
+        DOM.sideView.onclick = toggleQueue;
+        DOM.container.querySelector<HTMLButtonElement>("#fullscape-translation")!.onclick = () => {
+            Lyrics.toggleTranslation(); updateLyricsTools();
+        };
         DOM.title = DOM.container.querySelector("#fullscape-title-text-track")!;
         DOM.artist = DOM.container.querySelector("#fullscape-artist .fullscape-artist-list")!;
         DOM.album = DOM.container.querySelector("#fullscape-album span")!;
@@ -728,6 +814,8 @@ async function startFullscape() {
             DOM.lyrics = DOM.container.querySelector("#fad-lyrics-container")!;
             Lyrics.attach(DOM.lyrics);
         }
+
+        setQueueVisible(false);
 
         if (CFM.get("upnextDisplay") !== "never") {
             DOM.upNextContainer = DOM.container.querySelector("#fullscape-upnext-container")!;
@@ -776,7 +864,7 @@ async function startFullscape() {
     }
 
     function toggleQueue() {
-        Utils.toggleQueue(null);
+        setQueueVisible(!showingQueue);
     }
 
     function handleNavigation(navigateUri: string) {
@@ -854,6 +942,7 @@ async function startFullscape() {
             if (sequence !== infoSequence) return;
             DOM.cover.style.backgroundImage = `url("${DOM.coverImg.src}")`;
             Cover.updateImage();
+            Queue.landIncoming();
             DOM.title.innerText = songName || "";
             DOM.title.setAttribute("uri", Spicetify.Player.data?.item?.uri || "");
 
@@ -920,6 +1009,8 @@ async function startFullscape() {
 
     function handleMouseMoveActivation() {
         DOM.container.addEventListener("mousemove", hideCursor);
+        DOM.container.addEventListener("mousemove", showLyricsTools);
+        showLyricsTools();
         hideCursor();
         if (CFM.get("playerControls") === "mousemove") {
             DOM.container.addEventListener("mousemove", hidePlayerControls);
@@ -929,6 +1020,8 @@ async function startFullscape() {
 
     function handleMouseMoveDeactivation() {
         DOM.container.removeEventListener("mousemove", hideCursor);
+        DOM.container.removeEventListener("mousemove", showLyricsTools);
+        clearTimeout(PlayerControls.toolsTimer);
         DOM.container.removeEventListener("mousemove", hidePlayerControls);
 
         if (curTimer) clearTimeout(curTimer);
@@ -963,6 +1056,8 @@ async function startFullscape() {
     }
 
     function handleSongChange(evt?: any) {
+        Queue.captureIncoming();
+        Queue.scheduleUpdate();
         if (evt?.data && typeof evt.data === "object") playbackStateEventData = evt.data;
         schedulePlaybackTimelineResync(evt);
         void updatePlaybackDeviceDebug(true);
@@ -973,8 +1068,10 @@ async function startFullscape() {
 
     async function activate() {
         Cover.attach();
+        Queue.attach(DOM.queue!);
+        Spicetify.Platform.PlayerAPI._events.addListener("queue_update", Queue.scheduleUpdate);
         const sequence = ++activationSequence;
-        Utils.toggleQueuePanel(null, true);
+
         document.body.classList.add(...CLASSES_TO_ADD);
         if (CFM.get("enableFullscreen")) await Utils.enterFullscreen()?.catch(() => undefined);
         else await Utils.exitFullscreen()?.catch(() => undefined);
@@ -1047,7 +1144,10 @@ async function startFullscape() {
         document.addEventListener("fullscreenchange", fullscreenChangeListener);
         Spicetify.Mousetrap.bind("esc", deactivate);
         if (CFM.get("lyricsDisplay")) {
-            Spicetify.Mousetrap.bind("l", Lyrics.toggleLyrics);
+            Spicetify.Mousetrap.bind("l", () => {
+                if (showingQueue) setQueueVisible(false);
+                else Lyrics.toggleLyrics();
+            });
         }
         Spicetify.Mousetrap.bind("c", () => {
             const popup = document.querySelector("body > generic-modal");
@@ -1059,10 +1159,15 @@ async function startFullscape() {
 
     async function deactivate() {
         Cover.teardown();
+        Queue.teardown();
+        Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", Queue.scheduleUpdate);
         activationSequence += 1;
         infoSequence += 1;
-        cancelPlaybackTimelineResync();
-        Utils.toggleQueuePanel(null, false);
+        // Deactivation must never mutate the user's playback state. In
+        // particular, do not replay a track that was paused by an in-flight
+        // resync while the user is returning to Spotify's native UI.
+        cancelPlaybackTimelineResync(false);
+
         Background.stop();
         Spicetify.Player.removeEventListener("songchange", handleSongChange);
         Spicetify.Player.removeEventListener("onplaypause", updatePlaybackLayout);
@@ -1093,14 +1198,12 @@ async function startFullscape() {
             );
         }
         Spicetify.Player.removeEventListener("onprogress", handlePlaybackTimelineProgress);
-        if (CFM.get("lyricsDisplay")) {
-            Spicetify.Player.removeEventListener("onprogress", handleLyricsProgress);
-            Spicetify.Platform.PlayerAPI._events.removeListener(
-                "queue_update",
-                handleLyricsQueueUpdate,
-            );
-            Lyrics.teardown();
-        }
+        Spicetify.Player.removeEventListener("onprogress", handleLyricsProgress);
+        Spicetify.Platform.PlayerAPI._events.removeListener(
+            "queue_update",
+            handleLyricsQueueUpdate,
+        );
+        Lyrics.teardown();
         document.body.classList.remove(...CLASSES_TO_ADD);
         UpNext.upNextShown = false;
         if (CFM.get("enableFullscreen")) {
@@ -1139,6 +1242,7 @@ async function startFullscape() {
     }
 
     function resizeEvents() {
+        Queue.cancelHandoff();
         if (resizeFrameId !== null) cancelAnimationFrame(resizeFrameId);
         resizeFrameId = requestAnimationFrame(() => {
             resizeFrameId = null;
@@ -1220,7 +1324,6 @@ async function startFullscape() {
 
 async function main() {
     ReleaseUpdater.reportRuntimeVersion();
-    ReleaseUpdater.initializeUpdateModel();
     if (!(await ReleaseUpdater.shouldStartBundledVersion())) return;
     await startFullscape();
 }

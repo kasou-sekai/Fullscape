@@ -131,6 +131,7 @@ export type ThirdPartyLyricsDebug = {
         preview?: EnhancedLyricLine[];
         match: boolean;
         reason: string;
+        fetchError?: boolean;
         counts?: {
             lrc: number;
             translation: number;
@@ -234,7 +235,10 @@ export async function enhanceWithThirdPartyLyrics(
 
         debug = {
             ...debug,
-            status: searchErrors.length ? "error" : "not-matched",
+            status:
+                searchErrors.length || debug.candidates.some((candidate) => candidate.fetchError)
+                    ? "error"
+                    : "not-matched",
             reason: [
                 songs.length
                     ? relaxedMatching
@@ -401,6 +405,7 @@ async function evaluateLyricsCandidate(
         const lines = buildThirdPartyLyrics(parsed);
         return { song, parsed, lines, debug: candidateDebug };
     } catch (err) {
+        candidateDebug.fetchError = true;
         candidateDebug.reason = `${preliminaryReason}；获取或解析失败：${formatError(err)}`;
         return null;
     }
@@ -607,7 +612,21 @@ async function requestJson(
     body?: Record<string, unknown>,
     headers: Record<string, string> = { Referer: "https://music.163.com/" },
 ) {
-    return parseResponseBody(await requestBody(url, method, stage, body, headers));
+    try {
+        return validateProviderResponse(
+            parseResponseBody(await requestBody(url, method, stage, body, headers)),
+        );
+    } catch (transportError) {
+        try {
+            return validateProviderResponse(
+                JSON.parse(await requestText(url, method, stage, body, headers)),
+            );
+        } catch (proxyError) {
+            throw new Error(
+                `${stage}失败：${formatError(transportError)}；${formatError(proxyError)}`,
+            );
+        }
+    }
 }
 
 async function requestText(
@@ -624,14 +643,12 @@ async function requestText(
     try {
         const response = await fetchWithTimeout(proxyUrl, {
             method,
-            headers: {
-                "Content-Type": "application/json",
-                ...headers,
-            },
+            // A GET needs no Content-Type (which would force a CORS preflight).
+            headers: method === "POST" ? { ...headers, "Content-Type": "application/json" } : {},
             body: method === "POST" && body ? JSON.stringify(body) : undefined,
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.text();
+        return await withTimeout(response.text(), REQUEST_TIMEOUT_MS);
     } catch (proxyErr) {
         throw new Error(`${stage}失败: CORS proxy=${formatError(proxyErr)}`);
     }
@@ -651,7 +668,7 @@ async function requestBody(
             body: method === "POST" && body ? JSON.stringify(body) : undefined,
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return await response.text();
+        return await withTimeout(response.text(), REQUEST_TIMEOUT_MS);
     } catch (directError) {
         try {
             // Use Cosmos only after the direct transport has definitively
@@ -686,6 +703,24 @@ async function mapWithConcurrency<T, R>(
     };
     await Promise.all(Array.from({ length: Math.min(limit, values.length) }, worker));
     return results;
+}
+
+function validateProviderResponse(data: ReturnType<typeof parseResponseBody>) {
+    if (!data || typeof data !== "object") throw new Error("服务返回空响应");
+    // Cosmos can resolve HTTP failures instead of rejecting them. MusicU also
+    // reports errors inside req_1 while its outer envelope still says code=0.
+    for (const result of [data, data.req_1]) {
+        if (!result) continue;
+        if (
+            result.error ||
+            (result.code !== undefined && ![0, 200].includes(Number(result.code)))
+        ) {
+            throw new Error(
+                `服务错误 ${result.code ?? ""}: ${result.message ?? result.error ?? "请求被拒绝"}`,
+            );
+        }
+    }
+    return data;
 }
 
 function parseResponseBody(body: unknown) {

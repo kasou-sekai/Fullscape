@@ -279,5 +279,16 @@
     "cover": {
         "enlarge": "カバーを拡大",
         "artwork": "アルバムアート"
+    },
+    "queue": {
+        "empty": "キューは空です",
+        "playNow": "今すぐ再生",
+        "unknown": "Spotify キュー",
+        "actionUnavailable": "この Spotify クライアントではキュー操作を利用できません。"
+    },
+    "sideView": {
+        "showQueue": "キューを表示",
+        "showLyrics": "歌詞を表示",
+        "unavailable": "この曲の歌詞は利用できません。"
     }
 }

@@ -145,21 +145,6 @@
     .fade-le {
         animation: fadeLe 0.5s cubic-bezier(0.3, 0, 0, 1);
     }
-    button.dot-after {
-        padding-bottom: 3px !important;
-    }
-    .dot-after:after {
-        background-color: currentColor;
-        border-radius: 50%;
-        bottom: 3px;
-        content: "";
-        display: block;
-        height: 4px;
-        left: 50%;
-        position: absolute;
-        transform: translateX(-50%);
-        width: 4px;
-    }
     #fullscape-progress-container {
         --theme-main-color: rgba(var(--main-color), 1);
     }
@@ -214,7 +199,9 @@
         overflow: hidden;
     }
     #fad-lyrics-container {
-        transition: transform var(--transition-duration) var(--transition-function);
+        transition:
+            transform var(--transition-duration) var(--transition-function),
+            opacity 180ms ease;
         position: absolute;
         right: var(--right-margin-lyrics);
         width: 50%;
@@ -932,40 +919,75 @@ body {
         transform: none !important;
         overflow-x: hidden !important;
     }
-    .fullscape-transform-animation {
-        transition: transform 0.4s ease-in-out;
-    }
-    .fullscape-queue-panel {
-        --queue-panel-x: 1000px;
-        z-index: 101;
-        transform: translateX(var(--queue-panel-x));
-
-        .main-buddyFeed-actions.main-buddyFeed-closeContainer,
-        .icNf66tgG3uxDMbCCIaN.XOSSUjLDKk9RRmiX_UWa,
-        .liw6Y_iPu2DJRwk10x9d.FLyfurPaIDAlwjsF3mLf {
-            display: none;
-        }
-        .XOawmCGZcQx4cesyNfVO,
-        .oXO9_yYs6JyOwkBn8E4a {
-            width: 500px !important;
-        }
-        .main-buddyFeed-container,
-        .ffFwfKcPDbmAPLXzxzKq,
-        .ffFwfKcPDbmAPLXzxzKq::before,
-        .UrfDp0_mKGL9hkfh9g_R.SKjhjAC5p3CW1UI5UiMg,
-        .UrfDp0_mKGL9hkfh9g_R.SKjhjAC5p3CW1UI5UiMg::before {
-            background: transparent !important;
-            backdrop-filter: blur(10px) brightness(0.7);
-            border-radius: 10px;
-        }
-    }
-    &.vertical-mode {
-        .XOawmCGZcQx4cesyNfVO,
-        .oXO9_yYs6JyOwkBn8E4a {
-            width: 280px !important;
-        }
-    }
     .Root__main-view-overlay {
         z-index: 1000;
+    }
+}
+
+#fullscape-display {
+    .apple-system-symbol {
+        display: inline-block;
+        flex: 0 0 auto;
+        width: 48px;
+        height: 48px;
+        background: currentColor;
+        mask: var(--symbol) center / contain no-repeat;
+        -webkit-mask: var(--symbol) center / contain no-repeat;
+    }
+    .fullscape-lyrics-tools {
+        position: absolute;
+        right: clamp(24px, 4vw, 72px);
+        bottom: clamp(22px, 4vh, 44px);
+        z-index: 10;
+        display: flex;
+        gap: 8px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 220ms ease;
+        &.is-visible,
+        &:has(:focus-visible) {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        button {
+            display: grid;
+            place-items: center;
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            border: 0;
+            border-radius: 50%;
+            color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.09);
+            cursor: pointer;
+            transition:
+                background 160ms ease,
+                color 160ms ease,
+                transform 160ms ease;
+            &:hover {
+                background: rgba(255, 255, 255, 0.19);
+            }
+            &:active {
+                transform: scale(0.94);
+            }
+            &:focus-visible {
+                outline: 2px solid white;
+                outline-offset: 4px;
+            }
+            &[aria-pressed="true"] {
+                background: rgba(255, 255, 255, 0.9);
+                color: #303438;
+            }
+            &:disabled {
+                opacity: 0.3;
+                cursor: default;
+            }
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .fullscape-lyrics-tools,
+        .fullscape-lyrics-tools button {
+            transition: none;
+        }
     }
 }

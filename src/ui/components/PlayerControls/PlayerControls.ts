@@ -4,6 +4,15 @@ import Utils from "../../../utils/utils";
 import ICONS from "../../../constants";
 
 export class PlayerControls {
+    static toolsTimer: ReturnType<typeof setTimeout>;
+
+    static showLyricsTools() {
+        clearTimeout(this.toolsTimer);
+        const tools = DOM.container.querySelector(".fullscape-lyrics-tools");
+        tools?.classList.add("is-visible");
+        this.toolsTimer = setTimeout(() => tools?.classList.remove("is-visible"), 3000);
+    }
+
     static playerControlsTimer: ReturnType<typeof setTimeout>;
 
     static updatePlayerControls(evt: { data: { is_paused?: boolean; isPaused?: boolean } }) {

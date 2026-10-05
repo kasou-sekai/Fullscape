@@ -1,3 +1,4 @@
+import { APPLE_SYMBOLS } from "../constants/apple-system-symbols";
 import ICONS from "../constants";
 import CFM from "../utils/config";
 
@@ -49,6 +50,11 @@ export const getHtmlContent = () => {
          : ""
  }
 ${CFM.get("lyricsDisplay") ? `<div id="fad-lyrics-container"></div>` : ""}
+<div id="fullscape-queue-container" aria-label="Queue" tabindex="-1"></div>
+<div class="fullscape-lyrics-tools" role="group" aria-label="${String(CFM.getGlobal("locale")).startsWith("zh") ? "歌词与队列" : "Lyrics and queue"}">
+    <button id="fullscape-translation" type="button">${APPLE_SYMBOLS.translate}</button>
+    <button id="fullscape-side-view" type="button">${APPLE_SYMBOLS.list}</button>
+</div>
 <div id="fullscape-foreground">
     <div id="fullscape-art">
         <div class="fullscape-cover-hitbox">

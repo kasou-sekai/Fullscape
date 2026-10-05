@@ -279,5 +279,16 @@
     "cover": {
         "enlarge": "커버 확대",
         "artwork": "앨범 아트"
+    },
+    "queue": {
+        "empty": "대기열이 비어 있습니다",
+        "playNow": "지금 재생",
+        "unknown": "Spotify 대기열",
+        "actionUnavailable": "현재 Spotify 클라이언트에서는 이 대기열 작업을 지원하지 않습니다."
+    },
+    "sideView": {
+        "showQueue": "대기열 표시",
+        "showLyrics": "가사 표시",
+        "unavailable": "이 트랙의 가사를 사용할 수 없습니다."
     }
 }
