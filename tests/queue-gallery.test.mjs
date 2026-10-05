@@ -26,6 +26,8 @@ globalThis.Spicetify = {
 };
 globalThis.localStorage = { getItem: () => null, setItem: () => {} };
 const { Queue, DOM, QueueAdapter } = await import(pathToFileURL(join(dir, "queue.mjs")));
+const originalCanReorder = QueueAdapter.canReorder.bind(QueueAdapter);
+const originalReorder = QueueAdapter.reorder.bind(QueueAdapter);
 class Node {
     children = [];
     style = {};
@@ -35,6 +37,7 @@ class Node {
     textContent = "";
     isConnected = true;
     scrollTop = 0;
+    clientWidth = 656;
     rect = { left: 800, top: 140, width: 160, height: 160, bottom: 300 };
     classList = {
         contains: (c) => this.className.split(" ").includes(c),
@@ -110,9 +113,12 @@ const entry = (id) => ({
     artists: ["Artist"],
     imageUrl: id + ".png",
     isCurrent: false,
+    hasSpotifyUid: true,
 });
 beforeEach(() => {
     Queue.teardown();
+    QueueAdapter.canReorder = originalCanReorder;
+    QueueAdapter.reorder = originalReorder;
     notifications = [];
     reduced = false;
     globalThis.document = {
@@ -157,6 +163,40 @@ test("gallery excludes the playing song and keeps the Up Next and Queue anchors"
     assert.deepEqual(
         DOM.queue.querySelectorAll(".queue-tile").map((n) => n.dataset.uri),
         ["a", "b"],
+    );
+});
+test("wide responsive layout reorders the native queue to the visual reading sequence", async () => {
+    Queue.teardown();
+    const originalOrder = "abcdefghijk".split("").map(entry);
+    let liveOrder = [...originalOrder];
+    QueueAdapter.canReorder = () => true;
+    QueueAdapter.read = () => ({
+        revision: liveOrder.map((track) => track.uid).join("|"),
+        current: entry("old"),
+        next: liveOrder.slice(0, 3),
+        later: liveOrder.slice(3),
+    });
+    QueueAdapter.reorder = async (track, targetIndex) => {
+        const currentIndex = liveOrder.findIndex((candidate) => candidate.uid === track.uid);
+        if (currentIndex < 0) return { ok: false };
+        const [moved] = liveOrder.splice(currentIndex, 1);
+        liveOrder.splice(targetIndex, 0, moved);
+        return { ok: true };
+    };
+
+    Queue.attach(DOM.queue);
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    assert.deepEqual(
+        liveOrder.map((track) => track.uid),
+        ["a", "b", "c", "f", "g", "d", "e", "j", "k", "h", "i"],
+    );
+
+    DOM.queue.querySelector(".queue-gallery").clientWidth = 416;
+    Queue.layoutGallery();
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    assert.deepEqual(
+        liveOrder.map((track) => track.uid),
+        ["a", "b", "d", "c", "f", "e", "h", "g", "j", "i", "k"],
     );
 });
 test("queue updates retain unchanged card nodes instead of reloading every cover", () => {

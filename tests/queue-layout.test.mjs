@@ -45,6 +45,20 @@ test("wide layout features the first artwork with staggered columns", () => {
     assert.equal(labels.queue.x + labels.queue.width, width);
     assert.ok(layoutQueue(640, 0).height > 0);
 });
+test("wide reading order follows visible rows instead of the masonry fill order", () => {
+    assert.deepEqual(layoutQueue(640, 11).readingOrder, [0, 1, 2, 5, 6, 3, 4, 9, 10, 7, 8]);
+});
+test("reading order includes every tile exactly once at responsive widths", () => {
+    for (const width of [220, 320, 419, 420, 559, 600, 740, 1100]) {
+        for (const count of [0, 1, 2, 11, 40]) {
+            const { readingOrder } = layoutQueue(width, count);
+            assert.deepEqual(
+                readingOrder.slice().sort((a, b) => a - b),
+                [...Array(count).keys()],
+            );
+        }
+    }
+});
 test("wrapped Up Next metadata reserves its measured vertical space", () => {
     const compact = layoutQueue(640, 13, 62);
     const wrapped = layoutQueue(640, 13, 150);

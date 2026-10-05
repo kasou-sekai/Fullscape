@@ -69,3 +69,26 @@ test("stale entries and unsupported hosts never fall back to destructive playbac
     Spicetify.Platform.PlayerAPI = {};
     assert.equal((await QueueAdapter.play(entry)).ok, false);
 });
+test("native queue reordering is available only through an explicit host mutation", async () => {
+    const nextTracks = [track("spotify:track:a", "a"), track("spotify:track:b", "b")];
+    let args;
+    globalThis.Spicetify = {
+        Player: { data: {} },
+        Queue: { nextTracks },
+        Platform: {
+            PlayerAPI: {
+                moveInQueue: async (...values) => {
+                    args = values;
+                },
+            },
+        },
+    };
+    const entry = QueueAdapter.read().next[1];
+    assert.equal(QueueAdapter.canReorder(), true);
+    assert.deepEqual(await QueueAdapter.reorder(entry, 0), { ok: true });
+    assert.deepEqual(args, [{ uid: "b", uri: "spotify:track:b" }, 0]);
+
+    Spicetify.Platform.PlayerAPI = {};
+    assert.equal(QueueAdapter.canReorder(), false);
+    assert.deepEqual(await QueueAdapter.reorder(entry, 0), { ok: false, reason: "unsupported" });
+});

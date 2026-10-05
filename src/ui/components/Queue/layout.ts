@@ -1,6 +1,31 @@
 type Point = { x: number; y: number };
 type Tile = Point & { width: number };
 
+/** Keep Up Next fixed, then read roughly aligned tile tops across each visual row. */
+function getReadingOrder(tiles: Tile[], rowTolerance: number) {
+    if (tiles.length < 2) return tiles.map((_, index) => index);
+
+    const remaining = tiles
+        .slice(1)
+        .map((tile, offset) => ({ tile, index: offset + 1 }))
+        .sort((a, b) => a.tile.y - b.tile.y || a.tile.x - b.tile.x || a.index - b.index);
+    const rows: { top: number; tiles: typeof remaining }[] = [];
+    remaining.forEach((item) => {
+        const row = rows[rows.length - 1];
+        if (!row || item.tile.y - row.top > rowTolerance) {
+            rows.push({ top: item.tile.y, tiles: [item] });
+        } else row.tiles.push(item);
+    });
+    return [
+        0,
+        ...rows.flatMap((row) =>
+            row.tiles
+                .sort((a, b) => a.tile.x - b.tile.x || a.index - b.index)
+                .map(({ index }) => index),
+        ),
+    ];
+}
+
 /**
  * Packs the queue around two visual anchors: the immediate next track and the
  * remaining queue. Each column starts at a different height, so the rhythm
@@ -55,6 +80,11 @@ export function layoutQueue(width: number, count: number, leadCaption = 62) {
 
     return {
         tiles,
+        // The first slot is always Up Next; the remainder follows responsive row order.
+        readingOrder: getReadingOrder(
+            tiles,
+            Math.min(leadY + Math.max(0, leadCaption - 8), unit + gap - 1),
+        ),
         height: count ? Math.max(...heights) - gap : labelHeight,
         columns,
         labels: {
