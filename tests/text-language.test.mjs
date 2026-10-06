@@ -166,3 +166,44 @@ test("renders Japanese originals and independently converted Chinese translation
         globalThis.document = previousDocument;
     }
 });
+
+test("translation toggles retain lyric nodes, karaoke animation and manual scroll position", () => {
+    const previousStorage = globalThis.localStorage;
+    const previousDocument = globalThis.document;
+    const previousPlayer = globalThis.Spicetify;
+    const saved = {};
+    for (const key of ["lyricsRoot", "measureHeights", "applyTransforms", "updateInterludeDots", "renderLines", "manualScrollActive", "manualScrollRenderPosition", "karaokeAnimationLine", "karaokeWordsByLine"]) saved[key] = Lyrics[key];
+    const storage = new Map();
+    globalThis.localStorage = { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) };
+    globalThis.document = { dispatchEvent() {} };
+    globalThis.Spicetify = { Player: { getProgress: () => 1000 } };
+    try {
+        config.set("showLyricsTranslation", true);
+        const translation = { hidden: false };
+        const root = { querySelectorAll: () => [translation] };
+        const words = [{ animation: { cancel() { assert.fail("karaoke was cancelled"); } } }];
+        Lyrics.lyricsRoot = root;
+        Lyrics.measureHeights = () => {};
+        Lyrics.applyTransforms = () => {};
+        Lyrics.updateInterludeDots = () => {};
+        Lyrics.renderLines = () => assert.fail("lyrics were rebuilt");
+        Lyrics.manualScrollActive = true;
+        Lyrics.manualScrollRenderPosition = 5.5;
+        Lyrics.karaokeAnimationLine = 3;
+        Lyrics.karaokeWordsByLine = [words];
+        Lyrics.toggleTranslation();
+        assert.equal(translation.hidden, true);
+        Lyrics.toggleTranslation();
+        assert.equal(translation.hidden, false);
+        assert.equal(Lyrics.lyricsRoot, root);
+        assert.equal(Lyrics.karaokeWordsByLine[0], words);
+        assert.equal(Lyrics.karaokeAnimationLine, 3);
+        assert.equal(Lyrics.manualScrollRenderPosition, 5.5);
+        assert.equal(Lyrics.manualScrollActive, true);
+    } finally {
+        Object.assign(Lyrics, saved);
+        globalThis.localStorage = previousStorage;
+        globalThis.document = previousDocument;
+        globalThis.Spicetify = previousPlayer;
+    }
+});

@@ -17,12 +17,12 @@ export class PlayerControls {
 
     static updatePlayerControls(evt: { data: { is_paused?: boolean; isPaused?: boolean } }) {
         if (CFM.get("playerControls") === "mousemove") this.hidePlayerControls();
-        Utils.fadeAnimation(DOM.play);
         if (evt.data.is_paused || evt.data.isPaused) {
             DOM.play.innerHTML = ICONS.APPLE_MUSIC_PLAY;
         } else {
             DOM.play.innerHTML = ICONS.APPLE_MUSIC_PAUSE;
         }
+        Utils.fadeAnimation(DOM.play);
     }
 
     static hidePlayerControls() {

@@ -1,3 +1,4 @@
+import { animateFeedback } from "./motion";
 import HtmlSelectors from "./selectors";
 import WebAPI from "../services/web-api";
 
@@ -46,11 +47,17 @@ class Utils {
      * @param animClass Fade animation type class
      */
     static fadeAnimation(element: HTMLElement, animClass = "fade-do") {
-        element.classList.remove(animClass);
-        element.classList.add(animClass);
-        setTimeout(() => {
-            element.classList.remove(animClass);
-        }, 800);
+        const offset =
+            animClass === "fade-ri"
+                ? "translateX(5px)"
+                : animClass === "fade-le"
+                  ? "translateX(-5px)"
+                  : "translateY(3px)";
+        // Animate the icon so button hover/press transforms remain independent.
+        animateFeedback(element?.firstElementChild as HTMLElement | null, [
+            { opacity: 0.45, transform: `${offset} scale(0.92)` },
+            { opacity: 1, transform: "translate(0, 0) scale(1)" },
+        ]);
     }
 
     // Utility function to add a observer with wait for element support

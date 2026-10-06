@@ -49,7 +49,7 @@
                 }
             }
             #fad-lyrics-container {
-                transform: translateY(1000px) scale3d(0.1, 0.1, 0.1);
+                transform: translateY(24px);
             }
         }
     }
@@ -149,7 +149,10 @@
     #fullscape-details,
     #fullscape-status,
     #fullscape-progress-parent {
-        transition: all var(--transition-duration) var(--transition-function);
+        transition:
+            transform var(--transition-duration) var(--transition-function),
+            opacity var(--fs-motion-content) var(--fs-motion-ease),
+            color var(--fs-motion-content) ease;
     }
 
     #fullscape-foreground {
@@ -199,12 +202,18 @@
         font-weight: 700;
         font-family: inherit;
         font-synthesis: none;
-        transition: all var(--transition-duration) var(--transition-function);
+        transition:
+            transform var(--transition-duration) var(--transition-function),
+            opacity var(--fs-motion-content) var(--fs-motion-ease),
+            color var(--fs-motion-content) ease;
     }
     #fullscape-artist,
     #fullscape-album {
         font-size: var(--fullscape-sec-size);
-        transition: all var(--transition-duration) var(--transition-function);
+        transition:
+            transform var(--transition-duration) var(--transition-function),
+            opacity var(--fs-motion-content) var(--fs-motion-ease),
+            color var(--fs-motion-content) ease;
     }
     @media (max-width: 900px), (max-height: 900px) {
         #fullscape-title {

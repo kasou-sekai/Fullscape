@@ -16,7 +16,7 @@
         pointer-events: none;
         z-index: 3;
         transition:
-            opacity 180ms ease,
+            opacity var(--fs-motion-feedback) ease,
             visibility 0s linear 180ms;
     }
     &.side-view-queue {
@@ -32,7 +32,7 @@
             pointer-events: none;
             transition:
                 transform var(--transition-duration) var(--transition-function),
-                opacity 180ms ease,
+                opacity var(--fs-motion-feedback) ease,
                 visibility 0s linear 180ms;
         }
         #fullscape-foreground {
@@ -120,7 +120,7 @@
         box-shadow: none;
         transform-origin: center;
         transition:
-            transform 350ms cubic-bezier(0.2, 0.75, 0.2, 1),
+            transform var(--fs-motion-content) var(--fs-motion-ease),
             opacity 200ms ease;
         &::after {
             position: absolute;
@@ -176,9 +176,9 @@
         margin-top: 0;
         opacity: 0;
         transition:
-            max-height 260ms cubic-bezier(0.2, 0.75, 0.2, 1),
-            margin 260ms cubic-bezier(0.2, 0.75, 0.2, 1),
-            opacity 160ms ease;
+            max-height 260ms var(--fs-motion-ease),
+            margin 260ms var(--fs-motion-ease),
+            opacity var(--fs-motion-feedback) ease;
     }
     .queue-track-artist {
         color: var(--secondary-color);

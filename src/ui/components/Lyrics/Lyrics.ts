@@ -1,3 +1,4 @@
+import { animateFeedback, frameSmoothing, prefersReducedMotion } from "../../../utils/motion";
 import { DOM } from "../../elements";
 import CFM from "../../../utils/config";
 import {
@@ -955,9 +956,7 @@ export class Lyrics {
         const params = new URLSearchParams({ format: "json", vocalRemoval: "false" });
         if (navigator.language) params.set("clientLanguage", navigator.language);
         let lastError: unknown;
-        const requestBuilder = Spicetify.Platform.Registry?.resolve(
-            Symbol.for("RequestBuilder"),
-        );
+        const requestBuilder = Spicetify.Platform.Registry?.resolve(Symbol.for("RequestBuilder"));
         if (typeof requestBuilder?.build !== "function") {
             throw new Error("Spotify request builder is unavailable");
         }
@@ -1189,6 +1188,10 @@ export class Lyrics {
         else DOM.container.classList.remove("lyrics-unavailable");
         this.stopLoop();
         this.container.innerHTML = `<div class="lyrics-wrapper"><div class="lyrics-status">${this.escapeHtml(text)}</div></div>`;
+        animateFeedback(this.container.querySelector(".lyrics-status"), [
+            { opacity: 0 },
+            { opacity: 1 },
+        ]);
     }
 
     private static applyLines(lines: LyricLine[]) {
@@ -1213,7 +1216,9 @@ export class Lyrics {
         this.lines = lines;
         DOM.container.classList.toggle(
             "lyrics-has-translation",
-            lines.some((line) => Boolean(line.translation?.trim()) && line.translation?.trim() !== "//"),
+            lines.some(
+                (line) => Boolean(line.translation?.trim()) && line.translation?.trim() !== "//",
+            ),
         );
         this.dictionaryFurigana = [];
         this.renderedLyricsSignature = signature;
@@ -1306,7 +1311,17 @@ export class Lyrics {
 
     static toggleTranslation() {
         CFM.set("showLyricsTranslation", !CFM.get("showLyricsTranslation"));
-        this.renderLines();
+        if (!this.lyricsRoot) return;
+        const visible = Boolean(CFM.get("showLyricsTranslation"));
+        this.lyricsRoot
+            .querySelectorAll<HTMLElement>(".rnp-lyrics-line-translated")
+            .forEach((node) => {
+                node.hidden = !visible;
+                if (visible) animateFeedback(node, [{ opacity: 0 }, { opacity: 1 }]);
+            });
+        this.measureHeights();
+        this.applyTransforms();
+        this.updateInterludeDots(this.getSynchronizedPlaybackProgress());
     }
 
     static updateTitleLanguage() {
@@ -1360,6 +1375,7 @@ export class Lyrics {
                 </div>
             </div>`;
         this.lyricsRoot = this.container.querySelector(".rnp-lyrics") as HTMLElement;
+        animateFeedback(this.lyricsRoot, [{ opacity: 0 }, { opacity: 1 }]);
         this.lineNodes = Array.from(
             this.container.querySelectorAll<HTMLElement>(".rnp-lyrics-line"),
         );
@@ -1437,8 +1453,8 @@ export class Lyrics {
             this.getChineseConversion(),
         );
         const translation =
-            CFM.get("showLyricsTranslation") && line.translation && line.translation.trim() !== "//"
-                ? `<div class="rnp-lyrics-line-translated" lang="${translated.language}" data-text-language="${translated.language}">${this.escapeHtml(translated.text)}</div>`
+            line.translation && line.translation.trim() !== "//"
+                ? `<div ${CFM.get("showLyricsTranslation") ? "" : "hidden"} class="rnp-lyrics-line-translated" lang="${translated.language}" data-text-language="${translated.language}">${this.escapeHtml(translated.text)}</div>`
                 : "";
 
         return `${original}${romanization}${translation}`;
@@ -2113,11 +2129,7 @@ export class Lyrics {
                     ? null
                     : Math.max(0, plainLyricsNormalGap - this.INTERLUDE_NORMAL_EXTENSION_MS);
             const gapStart = previous
-                ? this.getLyricLineEnd(
-                      lines[previous.index],
-                      next.time,
-                      plainLyricsMinimumDuration,
-                  )
+                ? this.getLyricLineEnd(lines[previous.index], next.time, plainLyricsMinimumDuration)
                 : 0;
             const gapEnd = Math.max(gapStart, next.time);
             if (gapEnd - gapStart < this.INTERLUDE_MIN_GAP_MS) continue;
@@ -2154,10 +2166,7 @@ export class Lyrics {
         // remainder as the interlude.
         const fallbackDuration = Math.min(
             Math.max(0, nextTime - line.time),
-            Math.max(
-                this.INTERLUDE_FALLBACK_LINE_DURATION_MS,
-                plainLyricsMinimumDuration ?? 0,
-            ),
+            Math.max(this.INTERLUDE_FALLBACK_LINE_DURATION_MS, plainLyricsMinimumDuration ?? 0),
         );
         return Math.min(nextTime, line.time + fallbackDuration);
     }
@@ -2604,7 +2613,8 @@ export class Lyrics {
 
     private static scheduleManualScrollRender() {
         if (this.manualScrollFrame !== null) return;
-        const render = () => {
+        let previousTime = performance.now();
+        const render = (timestamp: number) => {
             this.manualScrollFrame = null;
             if (!this.manualScrollActive || !this.lines.length) return;
             const distance = this.manualScrollTargetPosition - this.manualScrollRenderPosition;
@@ -2613,7 +2623,10 @@ export class Lyrics {
                 this.applyTransforms();
                 return;
             }
-            this.manualScrollRenderPosition += distance * 0.28;
+            this.manualScrollRenderPosition += prefersReducedMotion()
+                ? distance
+                : distance * frameSmoothing(timestamp - previousTime);
+            previousTime = timestamp;
             this.applyTransforms();
             this.manualScrollFrame = requestAnimationFrame(render);
         };
@@ -2891,10 +2904,7 @@ export class Lyrics {
                 }
             } else if (anchorIndex < 0 && nextTransform && this.interludeNode) {
                 const interludeTop = nextTransform.top - interludeLineGap - interludeHeight;
-                this.interludeNode.style.setProperty(
-                    "--interlude-height",
-                    `${interludeHeight}px`,
-                );
+                this.interludeNode.style.setProperty("--interlude-height", `${interludeHeight}px`);
                 this.interludeNode.style.top = "0";
                 this.interludeNode.style.transform = `translate3d(0, ${interludeTop}px, 0) scale(var(--interlude-scale, 0))`;
             }
@@ -2915,11 +2925,17 @@ export class Lyrics {
             const wasOutsideViewport = node.classList.contains("rnp-lyrics-line-outside");
             node.classList.toggle("rnp-lyrics-line-outside", outsideViewport);
             const enteredViewport = wasOutsideViewport && !outsideViewport;
-            const duration = skipAnimation || this.manualScrollActive || enteredViewport ? 0 : 520;
+            const duration =
+                skipAnimation ||
+                prefersReducedMotion() ||
+                this.manualScrollActive ||
+                enteredViewport
+                    ? 0
+                    : 520;
             node.style.setProperty("--lyrics-line-transform-duration", `${duration}ms`);
             node.style.setProperty(
                 "--lyrics-line-transform-delay",
-                `${skipAnimation || this.manualScrollActive ? 0 : t.delay}ms`,
+                `${skipAnimation || prefersReducedMotion() || this.manualScrollActive ? 0 : t.delay}ms`,
             );
             const isHovered = this.lyricsInteractionActive && node === this.hoveredLine;
             node.style.transformOrigin = "left center";

@@ -1,3 +1,4 @@
+import { MOTION } from "../../../utils/motion";
 import CFM from "../../../utils/config";
 import translations from "../../../resources/strings";
 import ICONS from "../../../constants";
@@ -23,6 +24,8 @@ type LayoutDestination = {
 export class Queue {
     private static container: HTMLElement | null = null;
     private static revision = "";
+    private static layoutAnimations = new Map<HTMLElement, Animation>();
+    private static removedTiles = new Set<HTMLElement>();
     private static layoutObserver: ResizeObserver | null = null;
     private static observedGallery: HTMLElement | null = null;
     private static tileOverflowAnimations = new WeakMap<HTMLElement, Animation[]>();
@@ -186,7 +189,19 @@ export class Queue {
         this.refreshTimers = [250, 900].map((delay) => setTimeout(() => this.update(), delay));
     }
 
+    private static cancelLayoutAnimations() {
+        this.layoutAnimations.forEach((animation) => animation.cancel());
+        this.layoutAnimations.clear();
+        this.removedTiles.forEach((tile) => tile.remove());
+        this.removedTiles.clear();
+        this.layoutDestinations = new WeakMap();
+    }
+
     static teardown() {
+        this.cancelLayoutAnimations();
+        this.container
+            ?.querySelectorAll<HTMLElement>(".queue-tile")
+            .forEach((tile) => this.cancelTileOverflow(tile));
         this.layoutObserver?.disconnect();
         this.layoutObserver = null;
         this.observedGallery = null;
@@ -243,6 +258,7 @@ export class Queue {
             )?.dataset.uid;
             const oldTiles = Array.from(container.querySelectorAll<HTMLElement>(".queue-tile"));
             const previous = new Map(oldTiles.map((tile) => [tile, tile.getBoundingClientRect()]));
+            this.cancelLayoutAnimations();
             const availableByUid = new Map<string, HTMLElement[]>();
             const availableByUri = new Map<string, HTMLElement[]>();
             oldTiles.forEach((tile) => {
@@ -316,6 +332,25 @@ export class Queue {
                     const before = previous.get(tile);
                     const after = tile.getBoundingClientRect();
                     if (
+                        !before &&
+                        after.width &&
+                        after.top < bounds.bottom &&
+                        after.bottom > bounds.top
+                    ) {
+                        const entering = tile.animate([{ opacity: 0 }, { opacity: 1 }], {
+                            duration: MOTION.content,
+                            easing: MOTION.ease,
+                        });
+                        this.layoutAnimations.set(tile, entering);
+                        void entering.finished
+                            .catch(() => undefined)
+                            .then(() => {
+                                if (this.layoutAnimations.get(tile) === entering)
+                                    this.layoutAnimations.delete(tile);
+                            });
+                        return;
+                    }
+                    if (
                         !before?.width ||
                         !after.width ||
                         (before.top > bounds.bottom && after.top > bounds.bottom) ||
@@ -334,13 +369,60 @@ export class Queue {
                             },
                             { transform: "none", transformOrigin: "top left" },
                         ],
-                        { duration: 320, easing: "cubic-bezier(.2,.75,.2,1)" },
+                        { duration: MOTION.layout, easing: MOTION.ease },
                     );
+                    this.layoutAnimations.set(tile, layoutAnimation);
                     void layoutAnimation.finished
                         .catch(() => undefined)
                         .then(() => {
+                            if (this.layoutAnimations.get(tile) !== layoutAnimation) return;
+                            this.layoutAnimations.delete(tile);
                             this.layoutDestinations.delete(tile);
                             if (this.scrollGallery === gallery) this.updateScrollProgress(gallery);
+                        });
+                });
+                const retained = new Set(
+                    Array.from(wall.querySelectorAll<HTMLElement>(".queue-tile")),
+                );
+                oldTiles.forEach((tile) => {
+                    if (retained.has(tile)) return;
+                    this.cancelTileOverflow(tile);
+                    const rect = previous.get(tile);
+                    if (
+                        !rect ||
+                        rect.bottom < bounds.top ||
+                        rect.top > bounds.bottom ||
+                        tile.dataset.uri === Spicetify.Player.data?.item?.uri ||
+                        typeof tile.cloneNode !== "function"
+                    )
+                        return;
+                    const ghost = tile.cloneNode(true) as HTMLElement;
+                    ghost.setAttribute("aria-hidden", "true");
+                    ghost.tabIndex = -1;
+                    Object.assign(ghost.style, {
+                        position: "fixed",
+                        left: `${rect.left}px`,
+                        top: `${rect.top}px`,
+                        width: `${rect.width}px`,
+                        height: `${rect.height}px`,
+                        transform: "none",
+                        pointerEvents: "none",
+                        zIndex: "4",
+                    });
+                    DOM.container.append(ghost);
+                    this.removedTiles.add(ghost);
+                    const leaving = ghost.animate([{ opacity: 1 }, { opacity: 0 }], {
+                        duration: MOTION.feedback,
+                        easing: MOTION.ease,
+                        fill: "forwards",
+                    });
+                    this.layoutAnimations.set(ghost, leaving);
+                    void leaving.finished
+                        .catch(() => undefined)
+                        .then(() => {
+                            this.layoutAnimations.delete(ghost);
+                            this.removedTiles.delete(ghost);
+                            ghost.remove();
                         });
                 });
                 this.updateScrollProgress(gallery);
@@ -443,8 +525,12 @@ export class Queue {
         if (tile.classList.contains("queue-tile-lead")) return;
         if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
         requestAnimationFrame(() => {
-            if (!tile.isConnected || tile.classList.contains("queue-tile-lead") ||
-                !tile.matches(":hover, :focus-visible")) return;
+            if (
+                !tile.isConnected ||
+                tile.classList.contains("queue-tile-lead") ||
+                !tile.matches(":hover, :focus-visible")
+            )
+                return;
             this.cancelTileOverflow(tile);
             const measurements = Array.from(
                 tile.querySelectorAll<HTMLElement>(
@@ -620,7 +706,7 @@ export class Queue {
             if (this.flight !== flight) return;
         }
         this.oldArtwork?.animate([{ opacity: 1 }, { opacity: 0 }], {
-            duration: 380,
+            duration: MOTION.layout,
             fill: "forwards",
         });
         const animation = flight.animate(
@@ -630,7 +716,7 @@ export class Queue {
                     transform: `translate3d(${target.left - incoming.rect.left}px,${target.top - incoming.rect.top}px,0) scale(${target.width / incoming.rect.width},${target.height / incoming.rect.height})`,
                 },
             ],
-            { duration: 520, easing: "cubic-bezier(.22,.75,.18,1)", fill: "forwards" },
+            { duration: MOTION.handoff, easing: MOTION.ease, fill: "forwards" },
         );
         this.animation = animation;
         void animation.finished

@@ -6,6 +6,13 @@ import React from "react";
 import ReactDOM from "react-dom";
 
 import Utils from "./utils/utils";
+import {
+    animateFeedback,
+    cancelFeedback,
+    initializeMotionTokens,
+    MOTION,
+    prefersReducedMotion,
+} from "./utils/motion";
 import CFM from "./utils/config";
 
 import translations from "./resources/strings";
@@ -35,6 +42,7 @@ import "./styles/settings.scss";
 import "./ui/components/Cover/styles.scss";
 
 async function startFullscape() {
+    initializeMotionTokens();
     let INIT_RETRIES = 0;
     let entriesNotPresent = Utils.allNotExist();
 
@@ -67,13 +75,24 @@ async function startFullscape() {
     function updateLyricsTools() {
         const translation = DOM.container.querySelector<HTMLButtonElement>("#fullscape-translation");
         if (translation) {
-            translation.setAttribute("aria-label", LOCALE.startsWith("zh") ? "歌词翻译" : "Lyrics translation");
-            translation.setAttribute("aria-pressed", String(Boolean(CFM.get("showLyricsTranslation"))));
+            translation.setAttribute(
+                "aria-label",
+                LOCALE.startsWith("zh") ? "歌词翻译" : "Lyrics translation",
+            );
+            translation.setAttribute(
+                "aria-pressed",
+                String(Boolean(CFM.get("showLyricsTranslation"))),
+            );
             translation.disabled = showingQueue || !CFM.get("lyricsDisplay");
         }
         if (DOM.sideView) {
             DOM.sideView.innerHTML = showingQueue ? APPLE_SYMBOLS.lyrics : APPLE_SYMBOLS.list;
-            DOM.sideView.setAttribute("aria-label", showingQueue ? translations[LOCALE].sideView.showLyrics : translations[LOCALE].sideView.showQueue);
+            DOM.sideView.setAttribute(
+                "aria-label",
+                showingQueue
+                    ? translations[LOCALE].sideView.showLyrics
+                    : translations[LOCALE].sideView.showQueue,
+            );
             DOM.sideView.setAttribute("aria-pressed", String(showingQueue));
         }
     }
@@ -313,12 +332,7 @@ async function startFullscape() {
 
     function isLocalPlaybackDevice(device: any, source?: any): boolean | null {
         if (!device && !source) return null;
-        const localFlags = [
-            device?.isLocal,
-            device?.is_local,
-            source?.isLocal,
-            source?.is_local,
-        ];
+        const localFlags = [device?.isLocal, device?.is_local, source?.isLocal, source?.is_local];
         const localFlag = localFlags.find((value) => typeof value === "boolean");
         if (typeof localFlag === "boolean") return localFlag;
 
@@ -377,9 +391,7 @@ async function startFullscape() {
 
         let apiState: any = null;
         try {
-            const internalPlaybackState = await Spicetify.CosmosAsync.get(
-                "sp://player/v2/main",
-            );
+            const internalPlaybackState = await Spicetify.CosmosAsync.get("sp://player/v2/main");
             const internalState = parsePlaybackResponse(internalPlaybackState);
             const internalDevice = getPlaybackDevice(internalState);
             if (hasPlaybackDeviceType(internalDevice)) {
@@ -458,28 +470,30 @@ async function startFullscape() {
             device?.deviceInfo?.type;
         if (typeof type === "number") {
             return (
-                {
-                    0: "UNKNOWN",
-                    1: "COMPUTER",
-                    2: "TABLET",
-                    3: "SMARTPHONE",
-                    4: "SPEAKER",
-                    5: "TV",
-                    6: "AVR",
-                    7: "STB",
-                    8: "AUDIO_DONGLE",
-                    9: "GAME_CONSOLE",
-                    10: "CAST_VIDEO",
-                    11: "CAST_AUDIO",
-                    12: "AUTOMOBILE",
-                    13: "SMARTWATCH",
-                    14: "CHROMEBOOK",
-                    100: "UNKNOWN_SPOTIFY",
-                    101: "CAR_THING",
-                    102: "OBSERVER",
-                    103: "HOME_THING",
-                } as Record<number, string>
-            )[type] ?? `TYPE_${type}`;
+                (
+                    {
+                        0: "UNKNOWN",
+                        1: "COMPUTER",
+                        2: "TABLET",
+                        3: "SMARTPHONE",
+                        4: "SPEAKER",
+                        5: "TV",
+                        6: "AVR",
+                        7: "STB",
+                        8: "AUDIO_DONGLE",
+                        9: "GAME_CONSOLE",
+                        10: "CAST_VIDEO",
+                        11: "CAST_AUDIO",
+                        12: "AUTOMOBILE",
+                        13: "SMARTWATCH",
+                        14: "CHROMEBOOK",
+                        100: "UNKNOWN_SPOTIFY",
+                        101: "CAR_THING",
+                        102: "OBSERVER",
+                        103: "HOME_THING",
+                    } as Record<number, string>
+                )[type] ?? `TYPE_${type}`
+            );
         }
         return type ? String(type).toUpperCase() : "UNKNOWN";
     }
@@ -492,9 +506,7 @@ async function startFullscape() {
         if (!CFM.get("debugMode")) return;
         const target = DOM.container.querySelector<HTMLElement>("[data-debug-device]");
         const idTarget = DOM.container.querySelector<HTMLElement>("[data-debug-device-id]");
-        const sourceTarget = DOM.container.querySelector<HTMLElement>(
-            "[data-debug-device-source]",
-        );
+        const sourceTarget = DOM.container.querySelector<HTMLElement>("[data-debug-device-source]");
         if (!target) return;
         const now = Date.now();
         if (!force && now - playbackDeviceDebugUpdatedAt < 2000) return;
@@ -638,7 +650,9 @@ async function startFullscape() {
         metadataAnimations.forEach((animation) => animation.cancel());
         metadataAnimations = [];
         DOM.container
-            .querySelectorAll<HTMLElement>("#fullscape-title-text-track, #fullscape-secondary-meta-track")
+            .querySelectorAll<HTMLElement>(
+                "#fullscape-title-text-track, #fullscape-secondary-meta-track",
+            )
             .forEach((track) => {
                 track.style.removeProperty("transform");
             });
@@ -651,12 +665,16 @@ async function startFullscape() {
             cancelMetadataAnimations();
             const targets = [
                 {
-                    viewport: DOM.container.querySelector<HTMLElement>("#fullscape-title-text-viewport"),
+                    viewport: DOM.container.querySelector<HTMLElement>(
+                        "#fullscape-title-text-viewport",
+                    ),
                     track: DOM.container.querySelector<HTMLElement>("#fullscape-title-text-track"),
                 },
                 {
                     viewport: DOM.container.querySelector<HTMLElement>("#fullscape-secondary-meta"),
-                    track: DOM.container.querySelector<HTMLElement>("#fullscape-secondary-meta-track"),
+                    track: DOM.container.querySelector<HTMLElement>(
+                        "#fullscape-secondary-meta-track",
+                    ),
                 },
             ].filter(
                 (
@@ -744,7 +762,10 @@ async function startFullscape() {
         applyLyricsScale();
 
         Spicetify.Player.removeEventListener("songchange", handleSongChange);
-        Spicetify.Player.removeEventListener("onplaypause", updatePlayerControlsWithoutResyncEffect);
+        Spicetify.Player.removeEventListener(
+            "onplaypause",
+            updatePlayerControlsWithoutResyncEffect,
+        );
         Spicetify.Player.removeEventListener("onplaypause", updatePlayingIcon);
         Spicetify.Player.removeEventListener("onplaypause", updatePlaybackLayout);
         document.removeEventListener("fullscreenchange", fullscreenChangeListener);
@@ -760,7 +781,7 @@ async function startFullscape() {
             handleLyricsQueueUpdate,
         );
         window.removeEventListener("resize", resizeEvents);
-        UpNext.upNextShown = false;
+        UpNext.teardown();
 
         cancelResize();
         if (metadataFrameId !== null) {
@@ -845,7 +866,6 @@ async function startFullscape() {
         if (CFM.get("playerControls") !== "never") {
             DOM.play = DOM.container.querySelector("#fullscape-play")!;
             DOM.play.onclick = () => {
-                Utils.fadeAnimation(DOM.play);
                 Spicetify.Player.togglePlay();
             };
             DOM.nextControl = DOM.container.querySelector("#fullscape-next")!;
@@ -872,10 +892,7 @@ async function startFullscape() {
             .slice(1)
             .map((part) => encodeURIComponent(part))
             .join("/")}`;
-        deactivate();
-        setTimeout(() => {
-            Spicetify.Platform.History.push(formattedUri);
-        }, 100);
+        void deactivate().then(() => Spicetify.Platform.History.push(formattedUri));
     }
 
     /**
@@ -938,8 +955,10 @@ async function startFullscape() {
         // update all the things on cover load
         DOM.coverImg.onload = () => {
             if (sequence !== infoSequence) return;
+            const previousArtwork = DOM.cover.style.backgroundImage;
+            const previousTitle = DOM.title.getAttribute("uri");
             DOM.cover.style.backgroundImage = `url("${DOM.coverImg.src}")`;
-            Cover.updateImage();
+            Cover.updateImage(previousArtwork);
             Queue.landIncoming();
             DOM.title.innerText = songName || "";
             Lyrics.updateTitleLanguage();
@@ -969,6 +988,12 @@ async function startFullscape() {
             }
             updateMetadataOverflow();
             updateLyricsBounds();
+            if (previousTitle && previousTitle !== DOM.title.getAttribute("uri")) {
+                animateFeedback(DOM.container.querySelector("#fullscape-details"), [
+                    { opacity: 0.35 },
+                    { opacity: 1 },
+                ]);
+            }
         };
 
         // Placeholder
@@ -1064,8 +1089,10 @@ async function startFullscape() {
     }
 
     let activationSequence = 0;
+    let deactivationPromise: Promise<void> | null = null;
 
     async function activate() {
+        if (deactivationPromise) await deactivationPromise;
         Cover.attach();
         Queue.attach(DOM.queue!);
         Spicetify.Platform.PlayerAPI._events.addListener("queue_update", Queue.scheduleUpdate);
@@ -1121,6 +1148,7 @@ async function startFullscape() {
             );
         }
         document.querySelector(".Root__top-container")?.append(DOM.style, DOM.container);
+        animateFeedback(DOM.container, [{ opacity: 0 }, { opacity: 1 }]);
         updatePlaybackLayout({
             data: { is_paused: !Spicetify.Player.isPlaying() },
         });
@@ -1156,7 +1184,26 @@ async function startFullscape() {
         Spicetify.Mousetrap.bind("q", toggleQueue);
     }
 
-    async function deactivate() {
+    function deactivate(): Promise<void> {
+        if (deactivationPromise) return deactivationPromise;
+        deactivationPromise = deactivateDisplay().finally(() => {
+            deactivationPromise = null;
+        });
+        return deactivationPromise;
+    }
+
+    async function deactivateDisplay() {
+        if (DOM.container.isConnected && !prefersReducedMotion()) {
+            const opacity = getComputedStyle(DOM.container).opacity;
+            cancelFeedback(DOM.container);
+            const animation = DOM.container.animate([{ opacity }, { opacity: 0 }], {
+                duration: MOTION.feedback,
+                easing: MOTION.ease,
+                fill: "forwards",
+            });
+            await animation.finished.catch(() => undefined);
+            animation.cancel();
+        }
         Cover.teardown();
         Queue.teardown();
         Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", Queue.scheduleUpdate);
@@ -1168,6 +1215,7 @@ async function startFullscape() {
         cancelPlaybackTimelineResync(false);
 
         Background.stop();
+        UpNext.teardown();
         Spicetify.Player.removeEventListener("songchange", handleSongChange);
         Spicetify.Player.removeEventListener("onplaypause", updatePlaybackLayout);
         window.removeEventListener("focus", handleSpotifyForegroundChange);

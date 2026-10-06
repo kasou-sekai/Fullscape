@@ -11,8 +11,8 @@
     }
     left: 0;
     top: 0;
-    --transition-duration: 0.8s;
-    --transition-function: ease-in-out;
+    --transition-duration: var(--fs-motion-layout);
+    --transition-function: var(--fs-motion-ease);
     --main-color: 255, 255, 255;
     --contrast-color: 0, 0, 0;
     --primary-color: rgba(var(--main-color), 1);
@@ -59,15 +59,18 @@
     #fullscape-title svg,
     #fullscape-artist svg,
     #fullscape-album svg {
-        transition: all var(--transition-duration) var(--transition-function);
+        transition:
+            transform var(--transition-duration) var(--transition-function),
+            opacity var(--fs-motion-content) var(--fs-motion-ease),
+            color var(--fs-motion-content) ease;
         display: var(--icons-display);
     }
     #fullscape-title-text-viewport,
     .fullscape-artist-list span:not(.fullscape-artist-separator),
     #fullscape-album span {
         transition:
-            transform 180ms ease-out,
-            padding-inline 180ms ease-out;
+            transform var(--fs-motion-feedback) ease-out,
+            padding-inline var(--fs-motion-feedback) ease-out;
         transform-origin: center;
     }
     .fullscape-artist-list span:not(.fullscape-artist-separator),
@@ -121,58 +124,6 @@
         height: 1.5px;
     }
     */
-    @keyframes fadeUp {
-        0% {
-            opacity: 0;
-            transform: translateY(-10px);
-        }
-        to {
-            opacity: 0.8;
-            transform: translateY(0);
-        }
-    }
-    @keyframes fadeDo {
-        0% {
-            opacity: 0;
-            transform: translateY(10px);
-        }
-        to {
-            opacity: 0.8;
-            transform: translateY(0);
-        }
-    }
-    @keyframes fadeRi {
-        0% {
-            opacity: 0;
-            transform: translateX(10px);
-        }
-        to {
-            opacity: 0.8;
-            transform: translateX(0);
-        }
-    }
-    @keyframes fadeLe {
-        0% {
-            opacity: 0;
-            transform: translateX(-10px);
-        }
-        to {
-            opacity: 0.8;
-            transform: translateX(0);
-        }
-    }
-    .fade-do {
-        animation: fadeDo 0.5s cubic-bezier(0.3, 0, 0, 1);
-    }
-    .fade-up {
-        animation: fadeUp 0.5s cubic-bezier(0.3, 0, 0, 1);
-    }
-    .fade-ri {
-        animation: fadeRi 0.5s cubic-bezier(0.3, 0, 0, 1);
-    }
-    .fade-le {
-        animation: fadeLe 0.5s cubic-bezier(0.3, 0, 0, 1);
-    }
     button.dot-after {
         padding-bottom: 3px !important;
     }
@@ -213,7 +164,7 @@
         opacity: 0;
         pointer-events: none;
         transition:
-            transform 0.75s ease-in-out,
+            transform var(--fs-motion-layout) var(--fs-motion-ease),
             opacity 0.25s ease-in-out;
         transform: translateX(calc(100% + 40px));
     }
@@ -244,7 +195,7 @@
     #fad-lyrics-container {
         transition:
             transform var(--transition-duration) var(--transition-function),
-            opacity 180ms ease;
+            opacity var(--fs-motion-feedback) ease;
         position: absolute;
         right: var(--right-margin-lyrics);
         width: 50%;
@@ -343,7 +294,7 @@
             .rnp-lyrics-line-content {
             scale: 1.02 !important;
             transform-origin: center center;
-            transition: scale 180ms ease-out !important;
+            transition: scale var(--fs-motion-feedback) ease-out !important;
         }
         .rnp-lyrics-line:not(.rnp-lyrics-line-outside) {
             will-change: transform, filter, opacity;
@@ -359,7 +310,7 @@
             max-width: 100%;
             line-height: inherit;
             transform-origin: center center;
-            transition: scale 180ms ease-out;
+            transition: scale var(--fs-motion-feedback) ease-out;
             will-change: scale;
         }
         .rnp-lyrics-line-content > div {
@@ -617,7 +568,9 @@
     &.lyrics-unavailable,
     &.lyrics-hide-force {
         #fad-lyrics-container {
-            transform: translateX(1000px) scale3d(0.1, 0.1, 0.1) rotate(45deg);
+            transform: translateX(24px);
+            opacity: 0;
+            pointer-events: none;
         }
     }
     #fullscape-foreground {
@@ -630,12 +583,15 @@
         align-items: center;
         justify-content: center;
         color: var(--primary-color);
-        transition: all var(--transition-duration) var(--transition-function);
+        transition:
+            transform var(--transition-duration) var(--transition-function),
+            opacity var(--fs-motion-content) var(--fs-motion-ease),
+            color var(--fs-motion-content) ease;
     }
     #fullscape-art {
         transform: scale(1);
         transform-origin: center;
-        transition: transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+        transition: transform 0.32s var(--fs-motion-ease);
     }
     &.playback-paused #fullscape-art {
         transform: scale(0.86);
@@ -719,7 +675,7 @@
         display: flex;
         flex-direction: row;
         align-items: center;
-        transition: opacity 1s ease-in-out;
+        transition: opacity var(--fs-motion-content) var(--fs-motion-ease);
         column-gap: 18px;
     }
     #fullscape-background,
@@ -854,10 +810,12 @@
         cursor: pointer;
         position: relative;
         transition:
-            all 0.3s var(--transition-function),
-            transform 0.1s var(--transition-function);
+            background-color var(--fs-motion-feedback) var(--transition-function),
+            color var(--fs-motion-feedback) var(--transition-function),
+            opacity var(--fs-motion-feedback) var(--transition-function),
+            transform var(--fs-motion-feedback) var(--transition-function);
         &:hover {
-            transform: scale(1.2);
+            transform: scale(1.06);
         }
         &.button-active {
             background: var(--theme-background-color) !important;
@@ -888,7 +846,7 @@
     }
     #fullscape-foreground svg {
         fill: var(--primary-color);
-        transition: all 0.3s var(--transition-function);
+        transition: fill var(--fs-motion-content) var(--transition-function);
     }
     &.themed-icons #fullscape-foreground svg {
         fill: var(--theme-main-color);
@@ -898,7 +856,7 @@
         fill: var(--primary-color) !important;
     }
     .fullscape-background-fade {
-        transition: background-image var(--fs-transition) linear;
+        // Artwork crossfades use decoded overlay layers in Cover and UpNext.
     }
     @media (prefers-reduced-motion: reduce) {
         #fullscape-title-text-track,
@@ -1001,7 +959,7 @@ body {
         gap: 8px;
         opacity: 0;
         pointer-events: none;
-        transition: opacity 220ms ease;
+        transition: opacity var(--fs-motion-content) var(--fs-motion-ease);
         &.is-visible,
         &:has(:focus-visible) {
             opacity: 1;
@@ -1021,9 +979,9 @@ body {
             background: rgba(255, 255, 255, 0.09);
             cursor: pointer;
             transition:
-                background 160ms ease,
-                color 160ms ease,
-                transform 160ms ease;
+                background var(--fs-motion-feedback) ease,
+                color var(--fs-motion-feedback) ease,
+                transform var(--fs-motion-feedback) ease;
             &:hover {
                 background: rgba(255, 255, 255, 0.19);
             }
@@ -1053,6 +1011,61 @@ body {
         .fullscape-lyrics-tools,
         .fullscape-lyrics-tools button {
             transition: none;
+        }
+    }
+}
+
+#fullscape-display {
+    .fullscape-button:active {
+        transform: scale(0.94);
+    }
+    .rnp-lyrics-line-translated[hidden] {
+        display: none;
+    }
+    .rnp-lyrics-line.active .rnp-lyrics-line-content > div {
+        transition:
+            color var(--fs-motion-feedback) ease,
+            opacity var(--fs-motion-content) ease;
+    }
+    #fullscape-up-next-cover {
+        position: relative;
+        overflow: hidden;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    #fullscape-display {
+        &,
+        *,
+        *::before,
+        *::after {
+            transition-duration: 0.01ms !important;
+            transition-delay: 0ms !important;
+            animation: none !important;
+            scroll-behavior: auto !important;
+        }
+        #fullscape-art {
+            transform: none !important;
+        }
+        #fullscape-title-text-track,
+        #fullscape-secondary-meta-track,
+        #upNextTitleTrack,
+        .queue-track-title,
+        .queue-track-artist {
+            transform: none !important;
+        }
+        .rnp-karaoke-word {
+            --karaoke-lift: 0em !important;
+            --karaoke-scale: 1 !important;
+            --karaoke-glow: 0 !important;
+        }
+        .rnp-karaoke-word > span {
+            text-shadow: none !important;
+        }
+        .rnp-karaoke-ruby > rt {
+            transform: none !important;
+        }
+        .fullscape-artwork-previous {
+            display: none;
         }
     }
 }

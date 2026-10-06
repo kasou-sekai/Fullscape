@@ -19,7 +19,11 @@
         box-shadow:
             0 0 24px rgb(0 0 0 / 28%),
             0 0 56px rgb(0 0 0 / 16%);
-        transition: transform 320ms cubic-bezier(0.22, 1.18, 0.36, 1);
+        transition: transform var(--fs-motion-layout) var(--fs-motion-spring);
+        &.is-pressing {
+            transition-duration: 80ms;
+            transition-timing-function: linear;
+        }
         &:focus-visible {
             outline: 2px solid currentColor;
             outline-offset: 6px;
@@ -27,7 +31,7 @@
     }
     > :not(canvas, #fullscape-foreground, .fullscape-cover-viewer),
     #fullscape-details {
-        transition: opacity 300ms ease;
+        transition: opacity var(--fs-motion-content) var(--fs-motion-ease);
     }
     &.fullscape-cover-expanded {
         > :not(canvas, #fullscape-foreground, .fullscape-cover-viewer),
@@ -61,7 +65,7 @@
             background: rgb(0 0 0 / 22%);
             opacity: 0;
             pointer-events: none;
-            transition: opacity 300ms ease;
+            transition: opacity var(--fs-motion-content) var(--fs-motion-ease);
         }
         &.is-open::before {
             opacity: 1;
@@ -92,4 +96,14 @@
     #fullscape-display .fullscape-cover-viewer.is-open::before {
         opacity: 0;
     }
+}
+
+#fullscape-display .fullscape-artwork-previous {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background-size: contain;
+    background-position: center;
+    background-repeat: no-repeat;
+    pointer-events: none;
 }

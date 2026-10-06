@@ -4,7 +4,7 @@
     flex-direction: column;
     align-items: stretch;
     direction: ltr;
-    transition: opacity 1s ease-in-out;
+    transition: opacity var(--fs-motion-content) var(--fs-motion-ease);
     #fullscape-progress-bar {
         width: 100%;
         height: 10px;
@@ -16,7 +16,7 @@
         align-items: center;
         transform: scale(1);
         transform-origin: center;
-        transition: transform 180ms ease-out;
+        transition: transform var(--fs-motion-feedback) ease-out;
         &:hover {
             transform: scale(1.02);
         }
@@ -30,7 +30,9 @@
         border-radius: inherit;
         background: var(--primary-color);
         opacity: 0.7;
-        will-change: width;
+        width: 100%;
+        transform-origin: left center;
+        will-change: transform;
     }
 
     #fullscape-progress-times {
