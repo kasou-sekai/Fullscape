@@ -10,6 +10,7 @@
         height: 10px;
         border-radius: 999px;
         background: rgba(var(--main-color), 0.35);
+        overflow: hidden;
         cursor: pointer;
         margin: 10px 0 7px;
         display: flex;
@@ -30,9 +31,9 @@
         border-radius: inherit;
         background: var(--primary-color);
         opacity: 0.7;
-        width: 100%;
-        transform-origin: left center;
-        will-change: transform;
+        // Keep the end caps circular: scaling the fill also scales its radius.
+        flex: 0 0 auto;
+        width: 0;
     }
 
     #fullscape-progress-times {

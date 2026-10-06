@@ -955,10 +955,10 @@ async function startFullscape() {
         // update all the things on cover load
         DOM.coverImg.onload = () => {
             if (sequence !== infoSequence) return;
-            const previousArtwork = DOM.cover.style.backgroundImage;
+            const previousArtwork = Cover.artworkSource;
             const previousTitle = DOM.title.getAttribute("uri");
             DOM.cover.style.backgroundImage = `url("${DOM.coverImg.src}")`;
-            Cover.updateImage(previousArtwork);
+            Cover.updateImage(previousArtwork, Queue.hasIncomingArtwork);
             Queue.landIncoming();
             DOM.title.innerText = songName || "";
             Lyrics.updateTitleLanguage();

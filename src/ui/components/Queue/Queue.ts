@@ -644,6 +644,10 @@ export class Queue {
         }
     }
 
+    static get hasIncomingArtwork() {
+        return this.incoming !== null;
+    }
+
     static cancelHandoff() {
         this.incoming = null;
         this.cancelFlight();

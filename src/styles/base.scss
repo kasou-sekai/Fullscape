@@ -163,9 +163,8 @@
         z-index: 50;
         opacity: 0;
         pointer-events: none;
-        transition:
-            transform var(--fs-motion-layout) var(--fs-motion-ease),
-            opacity 0.25s ease-in-out;
+        // UpNext animates this pose explicitly, including first-mount entry.
+        transition: none;
         transform: translateX(calc(100% + 40px));
     }
     #fullscape-up-next-cover {
@@ -1064,8 +1063,7 @@ body {
         .rnp-karaoke-ruby > rt {
             transform: none !important;
         }
-        .fullscape-artwork-previous {
-            display: none;
-        }
+        .fullscape-artwork-previous { display: none; }
+        .fullscape-artwork-incoming { opacity: 1 !important; transform: none !important; }
     }
 }

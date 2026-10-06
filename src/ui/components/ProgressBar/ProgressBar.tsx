@@ -37,7 +37,10 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
         progressRef.current = progress;
         const percentage =
             durationRef.current > 0 ? Math.min(1, Math.max(0, progress / durationRef.current)) : 0;
-        if (fillRef.current) fillRef.current.style.transform = `scaleX(${percentage})`;
+        if (fillRef.current) {
+            fillRef.current.style.width = `${percentage * 100}%`;
+            fillRef.current.style.minWidth = percentage > 0 ? "10px" : "0";
+        }
         setProgress((previous) =>
             Math.floor(previous / 1000) === Math.floor(progress / 1000) &&
             Math.floor((durationRef.current - previous) / 1000) ===
@@ -261,7 +264,10 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
                 <div
                     id="fullscape-progress-bar-inner"
                     ref={fillRef}
-                    style={{ transform: `scaleX(${progressPercentage / 100})` }}
+                    style={{
+                        width: `${progressPercentage}%`,
+                        minWidth: progressPercentage > 0 ? "10px" : "0",
+                    }}
                 />
             </div>
             <div id="fullscape-progress-times">

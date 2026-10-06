@@ -82,3 +82,22 @@ test("hiding or exiting invalidates an artwork request before it can publish", a
         assert.equal(DOM.upNextPrimaryText.innerText, "");
     }
 });
+
+test("Up Next flies in from offscreen and does not restart while already visible", () => {
+    globalThis.window.matchMedia = () => ({ matches: false });
+    const calls = [];
+    DOM.upNextContainer.animate = (frames, options) => {
+        calls.push({ frames, options });
+        return { finished: Promise.resolve(), cancel() {} };
+    };
+    UpNext.showUpNext();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].frames[0].transform, "translateX(calc(100% + 40px))");
+    assert.equal(calls[0].frames[1].transform, "translateX(0px)");
+    assert.equal(calls[0].options.duration, 520);
+    UpNext.showUpNext();
+    assert.equal(calls.length, 1);
+    UpNext.hideUpNext();
+    assert.equal(calls[1].frames[1].transform, "translateX(calc(100% + 40px))");
+    globalThis.window.matchMedia = () => ({ matches: true });
+});

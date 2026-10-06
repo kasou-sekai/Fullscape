@@ -29,12 +29,16 @@
             outline-offset: 6px;
         }
     }
-    > :not(canvas, #fullscape-foreground, .fullscape-cover-viewer),
+    > :not(canvas, #fullscape-foreground, .fullscape-cover-viewer, #fullscape-upnext-container),
     #fullscape-details {
         transition: opacity var(--fs-motion-content) var(--fs-motion-ease);
     }
     &.fullscape-cover-expanded {
-        > :not(canvas, #fullscape-foreground, .fullscape-cover-viewer),
+        #fullscape-upnext-container {
+            opacity: 0 !important;
+            pointer-events: none;
+        }
+        > :not(canvas, #fullscape-foreground, .fullscape-cover-viewer, #fullscape-upnext-container),
         #fullscape-details {
             opacity: 0 !important;
             pointer-events: none;
@@ -98,7 +102,8 @@
     }
 }
 
-#fullscape-display .fullscape-artwork-previous {
+#fullscape-display .fullscape-artwork-previous,
+#fullscape-display .fullscape-artwork-incoming {
     position: absolute;
     inset: 0;
     border-radius: inherit;

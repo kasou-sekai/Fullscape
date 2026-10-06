@@ -12,6 +12,9 @@ export class Cover {
     private static source = "";
     private static artworkFade: Animation | null = null;
     private static previousArtwork: HTMLElement | null = null;
+    private static incomingArtwork: HTMLElement | null = null;
+    private static incomingAnimation: Animation | null = null;
+    private static targetArtwork = "";
     private static pointerFrame: number | null = null;
 
     private static get strings() {
@@ -87,27 +90,56 @@ export class Cover {
         );
     }
 
-    static updateImage(previousSource = "") {
+    static get artworkSource() {
+        return this.targetArtwork || DOM.cover.style.backgroundImage;
+    }
+
+    static updateImage(previousSource = "", queueHandoff = false) {
         this.dismiss();
+        const nextSource = DOM.cover.style.backgroundImage;
         this.clearArtworkFade();
+        DOM.cover.style.backgroundImage = nextSource;
         if (
             this.source &&
             previousSource &&
             previousSource !== DOM.cover.style.backgroundImage &&
-            !DOM.container.classList.contains("side-view-queue") &&
+            !queueHandoff &&
             !prefersReducedMotion()
         ) {
             const layer = document.createElement("div");
             layer.className = "fullscape-artwork-previous";
             layer.setAttribute("aria-hidden", "true");
             layer.style.backgroundImage = previousSource;
-            DOM.cover.append(layer);
+            const incoming = document.createElement("div");
+            incoming.className = "fullscape-artwork-incoming";
+            incoming.setAttribute("aria-hidden", "true");
+            incoming.style.backgroundImage = nextSource;
+            DOM.cover.append(layer, incoming);
             this.previousArtwork = layer;
-            const animation = layer.animate([{ opacity: 1 }, { opacity: 0 }], {
-                duration: MOTION.layout,
-                easing: MOTION.ease,
-                fill: "forwards",
-            });
+            this.incomingArtwork = incoming;
+            this.targetArtwork = nextSource;
+            // Both decoded images own the transition, avoiding the new base image
+            // showing through the old layer before the incoming motion begins.
+            DOM.cover.style.backgroundImage = "none";
+            this.incomingAnimation = incoming.animate(
+                [
+                    { opacity: 0, transform: "translateY(18px) scale(0.96)" },
+                    { opacity: 1, transform: "translateY(0) scale(1)" },
+                ],
+                { duration: MOTION.handoff, easing: MOTION.ease, fill: "forwards" },
+            );
+            void this.incomingAnimation.finished.catch(() => undefined);
+            const animation = layer.animate(
+                [
+                    { opacity: 1, transform: "translateY(0) scale(1)" },
+                    { opacity: 0, transform: "translateY(-12px) scale(1.025)" },
+                ],
+                {
+                    duration: MOTION.handoff,
+                    easing: MOTION.ease,
+                    fill: "forwards",
+                },
+            );
             this.artworkFade = animation;
             void animation.finished
                 .catch(() => undefined)
@@ -255,8 +287,14 @@ export class Cover {
     private static clearArtworkFade() {
         this.artworkFade?.cancel();
         this.artworkFade = null;
+        this.incomingAnimation?.cancel();
+        this.incomingAnimation = null;
         this.previousArtwork?.remove();
         this.previousArtwork = null;
+        this.incomingArtwork?.remove();
+        this.incomingArtwork = null;
+        if (this.targetArtwork && DOM.cover) DOM.cover.style.backgroundImage = this.targetArtwork;
+        this.targetArtwork = "";
     }
 
     static teardown() {

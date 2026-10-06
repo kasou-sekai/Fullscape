@@ -21,6 +21,7 @@ export class UpNext {
     private static scrollKey = "";
     private static artworkLayer: HTMLElement | null = null;
     private static artworkAnimation: Animation | null = null;
+    private static transitionAnimation: Animation | null = null;
     private static showTimer: ReturnType<typeof setTimeout> | null = null;
 
     static async updateUpNextInfo() {
@@ -132,10 +133,37 @@ export class UpNext {
         }
     }
 
+    private static animateVisibility(visible: boolean) {
+        const element = DOM.upNextContainer;
+        const current =
+            typeof getComputedStyle === "function" ? getComputedStyle(element) : element.style;
+        // Read the interrupted pose before cancelling, so reversals remain continuous.
+        const from = {
+            transform: current.transform || this.hiddenTransform,
+            opacity: current.opacity || "0",
+        };
+        this.transitionAnimation?.cancel();
+        this.transitionAnimation = null;
+        const transform = visible ? this.visibleTransform : this.hiddenTransform;
+        const opacity = visible ? "1" : "0";
+        element.style.transform = transform;
+        element.style.opacity = opacity;
+        element.style.pointerEvents = visible ? "auto" : "none";
+        if (prefersReducedMotion() || typeof element.animate !== "function") return;
+        const animation = element.animate([from, { transform, opacity }], {
+            duration: visible ? MOTION.handoff : MOTION.layout,
+            easing: MOTION.ease,
+        });
+        this.transitionAnimation = animation;
+        void animation.finished
+            .catch(() => undefined)
+            .then(() => {
+                if (this.transitionAnimation === animation) this.transitionAnimation = null;
+            });
+    }
+
     static showUpNext() {
-        DOM.upNextContainer.style.transform = this.visibleTransform;
-        DOM.upNextContainer.style.opacity = "1";
-        DOM.upNextContainer.style.pointerEvents = "auto";
+        if (!this.upNextShown) this.animateVisibility(true);
         this.upNextShown = true;
         this.setupScrollingAnimation();
     }
@@ -143,10 +171,8 @@ export class UpNext {
     static hideUpNext() {
         this.sequence++;
         this.clearArtwork();
+        if (this.upNextShown) this.animateVisibility(false);
         this.upNextShown = false;
-        DOM.upNextContainer.style.transform = this.hiddenTransform;
-        DOM.upNextContainer.style.opacity = "0";
-        DOM.upNextContainer.style.pointerEvents = "none";
         this.resetUpNextAnimation();
     }
 
@@ -185,6 +211,13 @@ export class UpNext {
     }
 
     static teardown() {
+        this.transitionAnimation?.cancel();
+        this.transitionAnimation = null;
+        if (DOM.upNextContainer) {
+            DOM.upNextContainer.style.transform = this.hiddenTransform;
+            DOM.upNextContainer.style.opacity = "0";
+            DOM.upNextContainer.style.pointerEvents = "none";
+        }
         this.sequence++;
         if (this.showTimer) clearTimeout(this.showTimer);
         clearTimeout(this.upnextTimer);
