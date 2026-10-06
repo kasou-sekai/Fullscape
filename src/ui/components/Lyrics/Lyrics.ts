@@ -194,6 +194,7 @@ export class Lyrics {
 
     static teardown() {
         this.stopLoop();
+        DOM.container.classList.remove("lyrics-has-translation");
         this.cancelKaraokeAnimations();
         this.resetLyricsInteraction(false);
         this.lines = [];
@@ -1154,6 +1155,7 @@ export class Lyrics {
 
     private static renderStatus(text: string, unavailable: boolean) {
         if (!this.container) return;
+        DOM.container.classList.remove("lyrics-has-translation");
         this.stopResizeObserver();
         this.cancelKaraokeAnimations();
         this.resetLyricsInteraction(false);
@@ -1205,6 +1207,10 @@ export class Lyrics {
         this.stopLoop();
         this.isSynced = nextIsSynced;
         this.lines = lines;
+        DOM.container.classList.toggle(
+            "lyrics-has-translation",
+            lines.some((line) => Boolean(line.translation?.trim()) && line.translation?.trim() !== "//"),
+        );
         this.dictionaryFurigana = [];
         this.renderedLyricsSignature = signature;
         this.dictionaryFuriganaRequestSignature = null;

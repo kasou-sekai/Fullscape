@@ -974,10 +974,10 @@ body {
 
 #fullscape-display {
     .apple-system-symbol {
-        display: inline-block;
+        display: block;
         flex: 0 0 auto;
-        width: 48px;
-        height: 48px;
+        width: 28px;
+        height: 28px;
         background: currentColor;
         mask: var(--symbol) center / contain no-repeat;
         -webkit-mask: var(--symbol) center / contain no-repeat;
@@ -1000,12 +1000,14 @@ body {
         button {
             display: grid;
             place-items: center;
+            box-sizing: border-box;
+            flex: 0 0 44px;
             width: 44px;
             height: 44px;
             padding: 0;
             border: 0;
             border-radius: 50%;
-            color: rgba(255, 255, 255, 0.8);
+            color: rgba(255, 255, 255, 0.95);
             background: rgba(255, 255, 255, 0.09);
             cursor: pointer;
             transition:
@@ -1031,6 +1033,11 @@ body {
                 cursor: default;
             }
         }
+    }
+    &:not(.lyrics-active) #fullscape-translation,
+    &:not(.lyrics-has-translation) #fullscape-translation,
+    &.side-view-queue #fullscape-translation {
+        display: none;
     }
     @media (prefers-reduced-motion: reduce) {
         .fullscape-lyrics-tools,
