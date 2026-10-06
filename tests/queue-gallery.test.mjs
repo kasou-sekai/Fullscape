@@ -53,6 +53,7 @@ class Node {
     };
     append(...nodes) {
         for (const node of nodes) {
+            if (node.parent) node.parent.children = node.parent.children.filter((child) => child !== node);
             node.parent = this;
             this.children.push(node);
         }
@@ -249,6 +250,54 @@ test("the next card is promoted in place so it can animate to the featured slot"
         tiles[0].querySelector(".queue-lead-copy").parent,
         tiles[0].querySelector(".queue-motion-layer"),
     );
+});
+test("hover scrolls only clipped queue text immediately and resets it on leave", () => {
+    const tile = DOM.queue.querySelectorAll(".queue-tile")[1];
+    const titleViewport = tile.querySelector(".queue-track-title-viewport");
+    const artistViewport = tile.querySelector(".queue-track-artist-viewport");
+    const title = tile.querySelector(".queue-track-title");
+    const artist = tile.querySelector(".queue-track-artist");
+    titleViewport.firstElementChild = title;
+    artistViewport.firstElementChild = artist;
+    titleViewport.clientWidth = artistViewport.clientWidth = 100;
+    title.scrollWidth = 220;
+    artist.scrollWidth = 80;
+    title.style.removeProperty = artist.style.removeProperty = () => {};
+    let hovered = true;
+    tile.matches = () => hovered;
+    let animation, calls = 0, cancels = 0;
+    title.animate = (frames, options) => {
+        calls++;
+        animation = { currentTime: 0, cancel: () => { cancels++; }, frames, options };
+        return animation;
+    };
+    const originalFrame = globalThis.requestAnimationFrame;
+    const frames = [];
+    globalThis.requestAnimationFrame = (callback) => { frames.push(callback); return frames.length; };
+    try {
+        tile.onpointerenter();
+        frames.shift()();
+        assert.equal(calls, 1);
+        assert.equal(animation.currentTime, 3000);
+        assert.equal(animation.options.iterations, Infinity);
+        assert.equal(animation.frames[2].transform, "translateX(-125px)");
+        hovered = false;
+        tile.onpointerleave();
+        assert.equal(cancels, 1);
+        title.scrollWidth = 100;
+        hovered = true;
+        tile.onpointerenter();
+        frames.shift()();
+        assert.equal(calls, 1, "a title that fits must stay still");
+        title.scrollWidth = 220;
+        tile.onpointerenter();
+        hovered = false;
+        frames.shift()();
+        assert.equal(calls, 1, "leaving before measurement must not start scrolling");
+    } finally {
+        if (originalFrame) globalThis.requestAnimationFrame = originalFrame;
+        else delete globalThis.requestAnimationFrame;
+    }
 });
 test("failed playback never starts a cover handoff", async () => {
     QueueAdapter.play = async () => ({ ok: false });

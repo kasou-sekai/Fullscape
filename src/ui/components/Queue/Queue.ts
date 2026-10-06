@@ -373,7 +373,6 @@ export class Queue {
         const displayTitle = this.displayTitle(entry.title);
         tile.dataset.titleLength = String([...displayTitle].length);
         tile.setAttribute("aria-label", `${this.strings.playNow}: ${displayTitle} — ${artist}`);
-        tile.title = `${displayTitle} — ${artist}`;
         const image = document.createElement("img");
         image.className = "queue-artwork";
         image.alt = "";
@@ -439,9 +438,12 @@ export class Queue {
 
     private static startTileOverflow(tile: HTMLElement) {
         this.cancelTileOverflow(tile);
+        if (tile.classList.contains("queue-tile-lead")) return;
         if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
         requestAnimationFrame(() => {
-            if (!tile.matches(":hover, :focus-visible")) return;
+            if (!tile.isConnected || tile.classList.contains("queue-tile-lead") ||
+                !tile.matches(":hover, :focus-visible")) return;
+            this.cancelTileOverflow(tile);
             const measurements = Array.from(
                 tile.querySelectorAll<HTMLElement>(
                     ".queue-track-title-viewport, .queue-track-artist-viewport",
@@ -461,9 +463,12 @@ export class Queue {
             const timing = getOverflowScrollTiming(maxOverflow);
             const animations = measurements
                 .filter(({ overflow }) => overflow > 1)
-                .map(({ track, overflow }) =>
-                    createOverflowScrollAnimation(track, overflow, timing),
-                );
+                .map(({ track, overflow }) => {
+                    const animation = createOverflowScrollAnimation(track, overflow, timing);
+                    // Hover is the cue to start moving; retain the shared speed and edge pauses.
+                    animation.currentTime = timing.duration * timing.leaveLeftOffset;
+                    return animation;
+                });
             this.tileOverflowAnimations.set(tile, animations);
         });
     }

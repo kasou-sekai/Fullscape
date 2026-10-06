@@ -199,6 +199,9 @@
     }
     .queue-tile-lead {
         container-type: inline-size;
+        .queue-artwork-frame::after {
+            content: none;
+        }
     }
     .queue-tile-lead .queue-track-title,
     .queue-tile-lead .queue-track-artist {

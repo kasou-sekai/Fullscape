@@ -67,15 +67,13 @@ async function startFullscape() {
     function updateLyricsTools() {
         const translation = DOM.container.querySelector<HTMLButtonElement>("#fullscape-translation");
         if (translation) {
-            translation.title = LOCALE.startsWith("zh") ? "歌词翻译" : "Lyrics translation";
-            translation.setAttribute("aria-label", translation.title);
+            translation.setAttribute("aria-label", LOCALE.startsWith("zh") ? "歌词翻译" : "Lyrics translation");
             translation.setAttribute("aria-pressed", String(Boolean(CFM.get("showLyricsTranslation"))));
             translation.disabled = showingQueue || !CFM.get("lyricsDisplay");
         }
         if (DOM.sideView) {
             DOM.sideView.innerHTML = showingQueue ? APPLE_SYMBOLS.lyrics : APPLE_SYMBOLS.list;
-            DOM.sideView.title = showingQueue ? translations[LOCALE].sideView.showLyrics : translations[LOCALE].sideView.showQueue;
-            DOM.sideView.setAttribute("aria-label", DOM.sideView.title);
+            DOM.sideView.setAttribute("aria-label", showingQueue ? translations[LOCALE].sideView.showLyrics : translations[LOCALE].sideView.showQueue);
             DOM.sideView.setAttribute("aria-pressed", String(showingQueue));
         }
     }

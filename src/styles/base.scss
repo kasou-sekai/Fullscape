@@ -1020,9 +1020,9 @@ body {
             &:active {
                 transform: scale(0.94);
             }
+            &:focus,
             &:focus-visible {
-                outline: 2px solid white;
-                outline-offset: 4px;
+                outline: none;
             }
             &[aria-pressed="true"] {
                 background: rgba(255, 255, 255, 0.9);
