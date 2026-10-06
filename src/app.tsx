@@ -942,6 +942,7 @@ async function startFullscape() {
             Cover.updateImage();
             Queue.landIncoming();
             DOM.title.innerText = songName || "";
+            Lyrics.updateTitleLanguage();
             DOM.title.setAttribute("uri", Spicetify.Player.data?.item?.uri || "");
 
             // combine artist in a list with each span and separated by comma

@@ -1,4 +1,5 @@
 import CFM from "../../../utils/config";
+import { applyTextLanguage } from "../../../utils/text-presentation";
 import translations from "../../../resources/strings";
 import { DOM } from "../../elements";
 import Utils from "../../../utils/utils";
@@ -59,12 +60,16 @@ export class UpNext {
                 DOM.upNextCover.style.backgroundImage = `url("${upnextImage.src}")`;
                 DOM.upNextPrimaryText.innerText = songName + "  •  " + next_artist;
                 DOM.upNextSecondaryText.innerText = songName + "  •  " + next_artist;
+                applyTextLanguage(DOM.upNextPrimaryText);
+                applyTextLanguage(DOM.upNextSecondaryText);
                 resolve();
             };
             upnextImage.onerror = () => {
                 DOM.upNextCover.style.backgroundImage = `url("${ICONS.OFFLINE_SVG}")`;
                 DOM.upNextPrimaryText.innerText = songName + "  •  " + next_artist;
                 DOM.upNextSecondaryText.innerText = songName + "  •  " + next_artist;
+                applyTextLanguage(DOM.upNextPrimaryText);
+                applyTextLanguage(DOM.upNextSecondaryText);
                 resolve();
             };
         });

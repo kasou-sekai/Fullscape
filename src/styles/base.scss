@@ -24,6 +24,34 @@
     --theme-main-color: rgba(var(--theme-color), 1);
     --lyrics-font-scale: 1.15;
     --lyrics-base-font-size: 24px;
+    // Shared by song titles, original/karaoke lyrics and independently tagged translations.
+    [data-text-language] {
+        font-feature-settings: "locl";
+    }
+    [data-text-language="zh-CN"] {
+        font-family: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC",
+            "Noto Sans SC", "Source Han Sans SC", "Source Han Sans CN", "Hiragino Sans GB",
+            "Heiti SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Droid Sans Fallback", "SimHei",
+            "Arial Unicode MS", sans-serif;
+    }
+    [data-text-language="zh-TW"] {
+        font-family: "PingFang TC", "Microsoft JhengHei UI", "Microsoft JhengHei",
+            "Noto Sans CJK TC", "Noto Sans TC", "Source Han Sans TC", "Source Han Sans TW",
+            "Heiti TC", "STHeiti TC", "WenQuanYi Zen Hei", "Droid Sans Fallback", "Arial Unicode MS",
+            sans-serif;
+    }
+    [data-text-language="ja"] {
+        font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic",
+            "Meiryo", "Noto Sans CJK JP", "Noto Sans JP", "Source Han Sans JP", sans-serif;
+    }
+    [data-text-language="ko"] {
+        font-family: "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", "Noto Sans KR",
+            "Source Han Sans KR", "NanumGothic", sans-serif;
+    }
+    [data-text-language="en"] {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial,
+            "Noto Sans", sans-serif;
+    }
     &.themed-buttons {
         --theme-background-color: rgba(var(--theme-color), 0.6);
         --theme-hover-color: rgba(var(--theme-color), 0.3);
@@ -394,25 +422,7 @@
         }
         .rnp-lyrics-line-translated {
             font-size: 0.66em;
-            font-family: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC",
-                "Noto Sans SC", "Source Han Sans SC", "Source Han Sans CN", "Hiragino Sans GB",
-                "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Droid Sans Fallback", "SimHei",
-                "Arial Unicode MS", sans-serif;
             font-weight: 400;
-        }
-        .rnp-lyrics-script-simplified .rnp-lyrics-line-content > div {
-            font-family: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC",
-                "Noto Sans SC", "Source Han Sans SC", "Source Han Sans CN", "Hiragino Sans GB",
-                "Heiti SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Droid Sans Fallback",
-                "SimHei", "Arial Unicode MS", sans-serif;
-            font-feature-settings: "locl";
-        }
-        .rnp-lyrics-script-traditional .rnp-lyrics-line-content > div {
-            font-family: "PingFang TC", "Microsoft JhengHei UI", "Microsoft JhengHei",
-                "Noto Sans CJK TC", "Noto Sans TC", "Source Han Sans TC", "Source Han Sans TW",
-                "Heiti TC", "STHeiti TC", "WenQuanYi Zen Hei", "Droid Sans Fallback",
-                "Arial Unicode MS", sans-serif;
-            font-feature-settings: "locl";
         }
         .rnp-lyrics-script-simplified .rnp-lyrics-line-content > .rnp-lyrics-line-original,
         .rnp-lyrics-script-simplified .rnp-lyrics-line-content > .rnp-lyrics-line-karaoke,
@@ -423,9 +433,9 @@
                 opacity 0.4s ease,
                 text-shadow 0.45s ease;
         }
-        .rnp-lyrics-script-simplified rt,
-        .rnp-lyrics-script-traditional rt {
-            font-family: "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", "Noto Sans JP", sans-serif;
+        rt {
+            font-family: "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", "Noto Sans CJK JP",
+                "Noto Sans JP", sans-serif;
         }
         .rnp-lyrics-line-content > .rnp-lyrics-line-karaoke {
             line-height: 1.32;

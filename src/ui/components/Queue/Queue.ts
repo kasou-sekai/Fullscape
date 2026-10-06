@@ -11,6 +11,7 @@ import "./styles.scss";
 import { layoutQueue } from "./layout";
 import { getQueueTileMotion } from "./motion";
 import Utils from "../../../utils/utils";
+import { applyTextLanguage } from "../../../utils/text-presentation";
 
 type ArtworkOrigin = { uri: string; src: string; rect: DOMRect };
 type LayoutDestination = {
@@ -389,6 +390,7 @@ export class Queue {
         const title = document.createElement("span");
         title.className = "queue-track-title";
         title.textContent = displayTitle;
+        applyTextLanguage(title);
         const subtitle = document.createElement("span");
         subtitle.className = "queue-track-artist";
         subtitle.textContent = artist;

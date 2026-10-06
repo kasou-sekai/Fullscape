@@ -31,8 +31,12 @@ import {
     convertChineseText,
     convertFuriganaRenderData,
     getChineseLyricsPresentation,
+    getTranslationPresentation,
 } from "../../../utils/chinese-conversion";
 import type { LyricsChineseConversion } from "../../../utils/chinese-conversion";
+
+import { detectTextLanguage } from "../../../utils/text-language";
+import { applyTextLanguage, getTextLanguageTag } from "../../../utils/text-presentation";
 
 type LyricLine = EnhancedLyricLine;
 type LyricsTrack = TrackInfo & {
@@ -1305,6 +1309,14 @@ export class Lyrics {
         this.renderLines();
     }
 
+    static updateTitleLanguage() {
+        if (!DOM.title) return;
+        const context = this.isCurrentTrack(Spicetify.Player.data?.item?.uri ?? "")
+            ? detectTextLanguage(this.lines.map((line) => line.text).join("\n"))
+            : "unknown";
+        applyTextLanguage(DOM.title, context);
+    }
+
     private static renderLines() {
         if (!this.container) return;
         this.resetLyricsInteraction(false);
@@ -1320,18 +1332,20 @@ export class Lyrics {
         );
         const chineseScript = chinesePresentation.displayScript;
         const scriptClass = chineseScript ? ` rnp-lyrics-script-${chineseScript}` : "";
-        const language =
-            chineseScript === "simplified"
-                ? ' lang="zh-CN"'
-                : chineseScript === "traditional"
-                  ? ' lang="zh-TW"'
-                  : "";
+        const songLanguage = detectTextLanguage(originalLyricsText);
+        const songLanguageTag = getTextLanguageTag(
+            originalLyricsText,
+            songLanguage,
+            chinesePresentation.conversion,
+        );
+        const language = ` lang="${songLanguageTag}"`;
+        this.updateTitleLanguage();
         const body = this.lines
             .map(
                 (line, idx) =>
                     `<div class="rnp-lyrics-line${line.time !== null ? " rnp-lyrics-line-seekable" : ""}" data-index="${idx}" data-time="${line.time ?? ""}">
                         <div class="rnp-lyrics-line-content">
-                            ${this.renderLineContent(line, idx, chinesePresentation.conversion)}
+                            ${this.renderLineContent(line, idx, chinesePresentation.conversion, songLanguage, songLanguageTag)}
                         </div>
                     </div>`,
             )
@@ -1377,11 +1391,22 @@ export class Lyrics {
         line: LyricLine,
         lineIndex: number,
         chineseConversion: LyricsChineseConversion,
+        songLanguage: ReturnType<typeof detectTextLanguage>,
+        songLanguageTag: string,
     ) {
+        const detectedLineLanguage = getTextLanguageTag(line.text, songLanguage, chineseConversion);
+        const lineLanguage =
+            detectedLineLanguage.startsWith("zh") && songLanguageTag.startsWith("zh")
+                ? songLanguageTag
+                : detectedLineLanguage;
+        const originalConversion = detectedLineLanguage.startsWith("zh")
+            ? chineseConversion
+            : "original";
+        const languageAttributes = `lang="${lineLanguage}" data-text-language="${lineLanguage}"`;
         const showKaraoke = Boolean(CFM.get("karaokeLyrics")) && this.hasKaraokeText(line);
         const words = (line.words ?? []).map((word) => ({
             ...word,
-            text: convertChineseText(word.text, chineseConversion),
+            text: convertChineseText(word.text, originalConversion),
         }));
         const providedFurigana = parseFuriganaMarkup(line.text, line.furigana);
         const dictionaryFurigana = this.dictionaryFurigana[lineIndex];
@@ -1394,22 +1419,26 @@ export class Lyrics {
                   ),
               }
             : providedFurigana;
-        const furigana = convertFuriganaRenderData(renderFurigana, chineseConversion);
+        const furigana = convertFuriganaRenderData(renderFurigana, originalConversion);
         const visibleAnnotations = CFM.get("showLyricsFurigana") ? furigana.annotations : [];
         const karaokeText = words.map((word) => word.text).join("");
         const annotations = karaokeText === furigana.text ? visibleAnnotations : [];
         const furiganaClass = annotations.length ? " rnp-lyrics-has-furigana" : "";
         const original = showKaraoke
-            ? `<div class="rnp-lyrics-line-karaoke${furiganaClass}">${this.renderKaraokeLine(words, annotations)}</div>`
-            : `<div class="rnp-lyrics-line-original${visibleAnnotations.length ? " rnp-lyrics-has-furigana" : ""}">${this.formatLyricText(furigana.text, visibleAnnotations)}</div>`;
+            ? `<div class="rnp-lyrics-line-karaoke${furiganaClass}" ${languageAttributes}>${this.renderKaraokeLine(words, annotations)}</div>`
+            : `<div class="rnp-lyrics-line-original${visibleAnnotations.length ? " rnp-lyrics-has-furigana" : ""}" ${languageAttributes}>${this.formatLyricText(furigana.text, visibleAnnotations)}</div>`;
 
         const romanization =
             CFM.get("showLyricsRomanization") && line.romanization
-                ? `<div class="rnp-lyrics-line-romaji">${this.escapeHtml(convertChineseText(line.romanization, chineseConversion))}</div>`
+                ? `<div class="rnp-lyrics-line-romaji" lang="en" data-text-language="en">${this.escapeHtml(convertChineseText(line.romanization, originalConversion))}</div>`
                 : "";
+        const translated = getTranslationPresentation(
+            line.translation ?? "",
+            this.getChineseConversion(),
+        );
         const translation =
             CFM.get("showLyricsTranslation") && line.translation && line.translation.trim() !== "//"
-                ? `<div class="rnp-lyrics-line-translated">${this.escapeHtml(convertChineseText(line.translation, chineseConversion))}</div>`
+                ? `<div class="rnp-lyrics-line-translated" lang="${translated.language}" data-text-language="${translated.language}">${this.escapeHtml(translated.text)}</div>`
                 : "";
 
         return `${original}${romanization}${translation}`;
@@ -1588,7 +1617,7 @@ export class Lyrics {
             );
             const segmentEnd = segment.start + segment.text.length;
             if (activeAnnotation && segmentEnd >= activeAnnotation.end) {
-                semanticWord += `</span><rt data-time="${annotationStartTime}" data-duration="${Math.max(
+                semanticWord += `</span><rt lang="ja" data-time="${annotationStartTime}" data-duration="${Math.max(
                     80,
                     annotationEndTime - annotationStartTime,
                 )}">${this.escapeHtml(activeAnnotation.reading)}</rt></ruby>`;
@@ -1787,7 +1816,7 @@ export class Lyrics {
                             (item) => item.start === absoluteStart && item.end === absoluteEnd,
                         );
                         const content = annotation
-                            ? `<ruby class="rnp-furigana-ruby"><span class="rnp-furigana-base">${this.escapeHtml(word)}</span><rt>${this.escapeHtml(annotation.reading)}</rt></ruby>`
+                            ? `<ruby class="rnp-furigana-ruby"><span class="rnp-furigana-base">${this.escapeHtml(word)}</span><rt lang="ja">${this.escapeHtml(annotation.reading)}</rt></ruby>`
                             : this.escapeHtml(word);
                         return `<span class="rnp-lyrics-semantic-word">${content}</span>`;
                     })
