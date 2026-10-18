@@ -1,6 +1,7 @@
 import * as React from "react";
 import "./styles.scss";
 import { SeekbarProps } from "../../../types/fullscape";
+import { prefersReducedMotion } from "../../../utils/motion";
 import classNames from "classnames";
 
 const SeekableProgressBar = ({ state }: { state: string }) => {
@@ -15,6 +16,8 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
     const progSlider = React.useRef(null) as React.MutableRefObject<HTMLDivElement | null>;
 
     const [visibility, setVisibility] = React.useState(true);
+    const visibleRef = React.useRef(true);
+    const fillRef = React.useRef<HTMLDivElement>(null);
 
     const progressTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const animationFrame = React.useRef<number | null>(null);
@@ -26,9 +29,42 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
         timestamp: performance.now(),
         isPlaying: Spicetify.Player.isPlaying(),
     });
-    progressRef.current = curProgress;
+
     durationRef.current = curDuration;
     changingProgressRef.current = changingProgress;
+
+    const paintProgress = (progress: number) => {
+        progressRef.current = progress;
+        const percentage =
+            durationRef.current > 0 ? Math.min(1, Math.max(0, progress / durationRef.current)) : 0;
+        if (fillRef.current) {
+            fillRef.current.style.width = `${percentage * 100}%`;
+            fillRef.current.style.minWidth = percentage > 0 ? "10px" : "0";
+        }
+        setProgress((previous) =>
+            Math.floor(previous / 1000) === Math.floor(progress / 1000) &&
+            Math.floor((durationRef.current - previous) / 1000) ===
+                Math.floor((durationRef.current - progress) / 1000)
+                ? previous
+                : progress,
+        );
+    };
+    const stopAnimation = () => {
+        if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
+        animationFrame.current = null;
+    };
+    const resumeAnimation = () => {
+        if (
+            !visibleRef.current ||
+            document.hidden ||
+            !playbackAnchor.current.isPlaying ||
+            prefersReducedMotion()
+        ) {
+            stopAnimation();
+        } else if (animationFrame.current === null) {
+            animationFrame.current = requestAnimationFrame(animateProgress);
+        }
+    };
 
     const onMouseDown = (evt: MouseEvent) => {
         if (evt.button == 0) {
@@ -36,16 +72,29 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
             const newData = {
                 isChanging: true,
                 data: {
-                    begin: evt.offsetX,
-                    positionCoord: evt.offsetX,
+                    begin: Math.min(
+                        sliderWidth,
+                        Math.max(
+                            0,
+                            evt.clientX -
+                                (progSlider.current?.getBoundingClientRect().left ?? evt.clientX),
+                        ),
+                    ),
+                    positionCoord: Math.min(
+                        sliderWidth,
+                        Math.max(
+                            0,
+                            evt.clientX -
+                                (progSlider.current?.getBoundingClientRect().left ?? evt.clientX),
+                        ),
+                    ),
                     beginClient: evt.clientX,
                     sliderDimen: sliderWidth,
                 },
             };
             const newPercentage = newData.data.positionCoord / sliderWidth;
             const progress = newPercentage * durationRef.current;
-            progressRef.current = progress;
-            setProgress(progress);
+            paintProgress(progress);
             changingProgressRef.current = newData;
             setChangingProgress(newData);
         }
@@ -63,9 +112,8 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
                 isChanging: true,
                 data: { ...changing.data, positionCoord: newPosX },
             };
-            progressRef.current = progress;
+            paintProgress(progress);
             changingProgressRef.current = nextChanging;
-            setProgress(progress);
             setChangingProgress(nextChanging);
         }
         if (state === "mousemove") {
@@ -81,6 +129,7 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
                 timestamp: performance.now(),
                 isPlaying: Spicetify.Player.isPlaying(),
             };
+            if (state === "mousemove") hideProgressBar();
             const stopped = { isChanging: false, data: null };
             changingProgressRef.current = stopped;
             setChangingProgress(stopped);
@@ -91,9 +140,17 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
         if (progressTimer.current) {
             clearTimeout(progressTimer.current);
         }
+        visibleRef.current = true;
         setVisibility(true);
+        resumeAnimation();
         progressTimer.current = setTimeout(() => {
+            if (changingProgressRef.current.isChanging) {
+                hideProgressBar();
+                return;
+            }
+            visibleRef.current = false;
             setVisibility(false);
+            stopAnimation();
         }, timeout);
     };
 
@@ -123,19 +180,19 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
             isPlaying,
         };
         if (!changingProgressRef.current.isChanging) {
-            progressRef.current = progress;
-            setProgress(progress);
+            paintProgress(progress);
         }
+        resumeAnimation();
     };
     const animateProgress = (timestamp: number) => {
+        animationFrame.current = null;
         if (!changingProgressRef.current.isChanging) {
             const anchor = playbackAnchor.current;
             const elapsed = anchor.isPlaying ? timestamp - anchor.timestamp : 0;
             const progress = Math.min(durationRef.current, Math.max(0, anchor.progress + elapsed));
-            progressRef.current = progress;
-            setProgress(progress);
+            paintProgress(progress);
         }
-        animationFrame.current = requestAnimationFrame(animateProgress);
+        resumeAnimation();
     };
     //Using spotify internal songchange event listener
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -149,8 +206,9 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
             timestamp: performance.now(),
             isPlaying: Spicetify.Player.isPlaying(),
         };
-        setProgress(progress);
+        paintProgress(progress);
         setDuration(duration);
+        resumeAnimation();
     };
     const updatePlaybackState = (evt?: Event) => {
         const playbackEvent = evt as
@@ -164,20 +222,20 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
             isPlaying: typeof isPaused === "boolean" ? !isPaused : Spicetify.Player.isPlaying(),
         };
         if (!changingProgressRef.current.isChanging) {
-            progressRef.current = progress;
-            setProgress(progress);
+            paintProgress(progress);
         }
+        resumeAnimation();
     };
 
     React.useEffect(() => {
-        // console.log("Progress Effect called");
         if (state === "mousemove") {
             hideProgressBar();
         } else {
+            visibleRef.current = true;
             setVisibility(true);
         }
         syncProgress();
-        animationFrame.current = requestAnimationFrame(animateProgress);
+        document.addEventListener("visibilitychange", syncProgress);
         const syncInterval = setInterval(syncProgress, 1000);
 
         Spicetify.Player.addEventListener("songchange", updateDuration);
@@ -185,7 +243,8 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
         setDragListener();
         return () => {
             clearInterval(syncInterval);
-            if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);
+            document.removeEventListener("visibilitychange", syncProgress);
+            stopAnimation();
             if (progressTimer.current) clearTimeout(progressTimer.current);
             Spicetify.Player.removeEventListener("songchange", updateDuration);
             Spicetify.Player.removeEventListener("onplaypause", updatePlaybackState);
@@ -202,7 +261,14 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
                 id="fullscape-progress-bar"
                 ref={progSlider}
                 className={classNames({ dragging: changingProgress.isChanging })}>
-                <div id="fullscape-progress-bar-inner" style={{ width: `${progressPercentage}%` }} />
+                <div
+                    id="fullscape-progress-bar-inner"
+                    ref={fillRef}
+                    style={{
+                        width: `${progressPercentage}%`,
+                        minWidth: progressPercentage > 0 ? "10px" : "0",
+                    }}
+                />
             </div>
             <div id="fullscape-progress-times">
                 <div className="progress-number" id="fullscape-elapsed">

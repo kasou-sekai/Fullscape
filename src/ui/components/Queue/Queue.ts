@@ -1,3 +1,4 @@
+import { MOTION } from "../../../utils/motion";
 import CFM from "../../../utils/config";
 import translations from "../../../resources/strings";
 import ICONS from "../../../constants";
@@ -11,6 +12,7 @@ import "./styles.scss";
 import { layoutQueue } from "./layout";
 import { getQueueTileMotion } from "./motion";
 import Utils from "../../../utils/utils";
+import { applyTextLanguage } from "../../../utils/text-presentation";
 
 type ArtworkOrigin = { uri: string; src: string; rect: DOMRect };
 type LayoutDestination = {
@@ -22,6 +24,8 @@ type LayoutDestination = {
 export class Queue {
     private static container: HTMLElement | null = null;
     private static revision = "";
+    private static layoutAnimations = new Map<HTMLElement, Animation>();
+    private static removedTiles = new Set<HTMLElement>();
     private static layoutObserver: ResizeObserver | null = null;
     private static observedGallery: HTMLElement | null = null;
     private static tileOverflowAnimations = new WeakMap<HTMLElement, Animation[]>();
@@ -29,187 +33,6 @@ export class Queue {
     private static scrollFrame: number | null = null;
     private static scrollListener: (() => void) | null = null;
     private static layoutDestinations = new WeakMap<HTMLElement, LayoutDestination>();
-    private static canonicalQueue: QueueEntry[] = [];
-    private static lastAppliedQueue: string[] = [];
-    private static queueOrderInitialized = false;
-    private static queueOrderLayout = "";
-    private static failedQueueOrderLayout = "";
-    private static queueReorderTimer: ReturnType<typeof setTimeout> | null = null;
-    private static queueReorderInProgress = false;
-    private static queueOrderGeneration = 0;
-    private static pendingQueueLayout: ReturnType<typeof layoutQueue> | null = null;
-
-    private static queueEntryKey(entry: QueueEntry) {
-        return `${entry.uid}\u0000${entry.uri}`;
-    }
-
-    /** Keep a stable source order while the native queue is temporarily sorted for this layout. */
-    private static reconcileCanonicalQueue(entries: QueueEntry[]) {
-        const currentKeys = entries.map((entry) => this.queueEntryKey(entry));
-        if (!this.queueOrderInitialized) {
-            this.canonicalQueue = [...entries];
-            this.lastAppliedQueue = currentKeys;
-            this.queueOrderInitialized = true;
-            return;
-        }
-
-        const currentByKey = new Map(entries.map((entry) => [this.queueEntryKey(entry), entry]));
-        const previousSet = new Set(this.lastAppliedQueue);
-        const existingInCurrentOrder = currentKeys.filter((key) => previousSet.has(key));
-        const survivingPreviousOrder = this.lastAppliedQueue.filter((key) => currentByKey.has(key));
-        const naturalQueueChange = existingInCurrentOrder.every(
-            (key, index) => key === survivingPreviousOrder[index],
-        );
-        const orderChanged =
-            currentKeys.length !== this.lastAppliedQueue.length ||
-            currentKeys.some((key, index) => key !== this.lastAppliedQueue[index]);
-
-        if (naturalQueueChange) {
-            const canonicalKeys = new Set(
-                this.canonicalQueue.map((entry) => this.queueEntryKey(entry)),
-            );
-            this.canonicalQueue = this.canonicalQueue
-                .filter((entry) => currentByKey.has(this.queueEntryKey(entry)))
-                .map((entry) => currentByKey.get(this.queueEntryKey(entry)))
-                .filter((entry): entry is QueueEntry => Boolean(entry));
-            entries.forEach((entry) => {
-                if (!canonicalKeys.has(this.queueEntryKey(entry))) this.canonicalQueue.push(entry);
-            });
-        } else {
-            // An external/manual reorder becomes the new source order.
-            this.canonicalQueue = [...entries];
-            this.queueOrderLayout = "";
-        }
-        if (orderChanged) this.queueOrderLayout = "";
-        this.lastAppliedQueue = currentKeys;
-    }
-
-    private static scheduleResponsiveQueueOrder(layout: ReturnType<typeof layoutQueue>) {
-        if (!QueueAdapter.canReorder()) return;
-        this.pendingQueueLayout = layout;
-        if (this.queueReorderTimer) clearTimeout(this.queueReorderTimer);
-        this.queueReorderTimer = setTimeout(() => {
-            this.queueReorderTimer = null;
-            void this.applyResponsiveQueueOrder();
-        }, 120);
-    }
-
-    private static async applyResponsiveQueueOrder() {
-        if (this.queueReorderInProgress) return;
-        const layout = this.pendingQueueLayout;
-        this.pendingQueueLayout = null;
-        if (!layout) return;
-
-        let snapshot;
-        try {
-            snapshot = QueueAdapter.read();
-        } catch (error) {
-            console.warn("[Fullscape] Unable to read queue before responsive reordering.", error);
-            return;
-        }
-        const entries = [...snapshot.next, ...snapshot.later].filter((entry) => !entry.isCurrent);
-        this.reconcileCanonicalQueue(entries);
-        if (
-            entries.length !== layout.tiles.length ||
-            !entries.length ||
-            entries.some((entry) => !entry.hasSpotifyUid) ||
-            new Set(entries.map((entry) => entry.uid)).size !== entries.length ||
-            (Array.isArray(Spicetify.Queue?.nextTracks) &&
-                Spicetify.Queue.nextTracks.length !== entries.length)
-        )
-            return;
-
-        const target = layout.readingOrder
-            .map((index) => this.canonicalQueue[index])
-            .filter((entry): entry is QueueEntry => Boolean(entry));
-        if (target.length !== layout.readingOrder.length) return;
-        const targetKeys = target.map((entry) => this.queueEntryKey(entry));
-        const layoutSignature = JSON.stringify([layout.columns, targetKeys]);
-        if (
-            layoutSignature === this.queueOrderLayout ||
-            layoutSignature === this.failedQueueOrderLayout
-        )
-            return;
-
-        const current = [...entries];
-        if (targetKeys.every((key, index) => key === this.queueEntryKey(current[index]))) {
-            this.lastAppliedQueue = targetKeys;
-            this.queueOrderLayout = layoutSignature;
-            return;
-        }
-
-        this.queueReorderInProgress = true;
-        const generation = this.queueOrderGeneration;
-        let reordered = true;
-        try {
-            const working = [...current];
-            for (let targetIndex = 0; targetIndex < target.length; targetIndex++) {
-                const key = targetKeys[targetIndex];
-                const currentIndex = working.findIndex(
-                    (entry) => this.queueEntryKey(entry) === key,
-                );
-                if (currentIndex < 0) {
-                    reordered = false;
-                    break;
-                }
-                if (currentIndex === targetIndex) continue;
-                const result = await QueueAdapter.reorder(working[currentIndex], targetIndex);
-                if (!result.ok || generation !== this.queueOrderGeneration) {
-                    reordered = false;
-                    break;
-                }
-                const [entry] = working.splice(currentIndex, 1);
-                working.splice(targetIndex, 0, entry);
-            }
-
-            if (reordered) {
-                this.lastAppliedQueue = targetKeys;
-                this.queueOrderLayout = layoutSignature;
-                this.failedQueueOrderLayout = "";
-            } else {
-                // Best-effort rollback keeps a partially failed host mutation from being left behind.
-                for (let targetIndex = 0; targetIndex < current.length; targetIndex++) {
-                    const key = this.queueEntryKey(current[targetIndex]);
-                    const live = QueueAdapter.read();
-                    const liveEntries = [...live.next, ...live.later];
-                    const currentIndex = liveEntries.findIndex(
-                        (entry) => this.queueEntryKey(entry) === key,
-                    );
-                    if (currentIndex >= 0 && currentIndex !== targetIndex) {
-                        const rollback = await QueueAdapter.reorder(
-                            liveEntries[currentIndex],
-                            targetIndex,
-                        );
-                        if (!rollback.ok) break;
-                    }
-                }
-                if (generation === this.queueOrderGeneration) {
-                    const restored = QueueAdapter.read();
-                    this.reconcileCanonicalQueue([...restored.next, ...restored.later]);
-                }
-            }
-        } catch (error) {
-            console.warn("[Fullscape] Unable to adapt queue order to the cover layout.", error);
-            reordered = false;
-        } finally {
-            this.queueReorderInProgress = false;
-            if (!reordered) {
-                this.queueOrderLayout = "";
-                if (generation === this.queueOrderGeneration)
-                    this.failedQueueOrderLayout = layoutSignature;
-            }
-            if (generation === this.queueOrderGeneration) {
-                this.update(true);
-                if (this.pendingQueueLayout)
-                    this.scheduleResponsiveQueueOrder(this.pendingQueueLayout);
-            } else if (this.container) {
-                this.update(true);
-                if (this.pendingQueueLayout)
-                    this.scheduleResponsiveQueueOrder(this.pendingQueueLayout);
-            }
-        }
-    }
-
     private static displayTitle(title: string) {
         return CFM.get("trimTitle") ? Utils.trimTitle(title) : title;
     }
@@ -257,7 +80,7 @@ export class Queue {
                 });
             });
             tiles.forEach((tile, index) => {
-                const position = layout.tiles[index];
+                const position = layout.tiles[layout.readingOrder[index]];
                 Object.assign(tile.style, {
                     left: `${position.x}px`,
                     top: `${position.y}px`,
@@ -274,7 +97,6 @@ export class Queue {
             layout = layoutQueue(width, tiles.length, captionHeight);
             applyLayout(layout);
         }
-        this.scheduleResponsiveQueueOrder(layout);
     }
 
     private static teardownScrollAnimations() {
@@ -367,7 +189,19 @@ export class Queue {
         this.refreshTimers = [250, 900].map((delay) => setTimeout(() => this.update(), delay));
     }
 
+    private static cancelLayoutAnimations() {
+        this.layoutAnimations.forEach((animation) => animation.cancel());
+        this.layoutAnimations.clear();
+        this.removedTiles.forEach((tile) => tile.remove());
+        this.removedTiles.clear();
+        this.layoutDestinations = new WeakMap();
+    }
+
     static teardown() {
+        this.cancelLayoutAnimations();
+        this.container
+            ?.querySelectorAll<HTMLElement>(".queue-tile")
+            .forEach((tile) => this.cancelTileOverflow(tile));
         this.layoutObserver?.disconnect();
         this.layoutObserver = null;
         this.observedGallery = null;
@@ -376,14 +210,8 @@ export class Queue {
         this.refreshTimers = [];
         if (this.updateTimer) clearTimeout(this.updateTimer);
         if (this.selectionTimer) clearTimeout(this.selectionTimer);
-        if (this.queueReorderTimer) clearTimeout(this.queueReorderTimer);
         this.updateTimer = null;
         this.selectionTimer = null;
-        this.queueReorderTimer = null;
-        this.pendingQueueLayout = null;
-        this.queueOrderGeneration++;
-        this.failedQueueOrderLayout = "";
-        this.failedQueueOrderLayout = "";
         this.selected = null;
         this.incoming = null;
         this.cancelFlight();
@@ -406,13 +234,12 @@ export class Queue {
 
     static update(force = false) {
         const container = this.container;
-        if (!container || this.queueReorderInProgress) return;
+        if (!container) return;
         try {
             const snapshot = QueueAdapter.read();
             const entries = [...snapshot.next, ...snapshot.later].filter(
                 (entry) => !entry.isCurrent,
             );
-            this.reconcileCanonicalQueue(entries);
             const revision = JSON.stringify(
                 entries.map((entry) => [
                     entry.uid,
@@ -431,6 +258,7 @@ export class Queue {
             )?.dataset.uid;
             const oldTiles = Array.from(container.querySelectorAll<HTMLElement>(".queue-tile"));
             const previous = new Map(oldTiles.map((tile) => [tile, tile.getBoundingClientRect()]));
+            this.cancelLayoutAnimations();
             const availableByUid = new Map<string, HTMLElement[]>();
             const availableByUri = new Map<string, HTMLElement[]>();
             oldTiles.forEach((tile) => {
@@ -504,6 +332,25 @@ export class Queue {
                     const before = previous.get(tile);
                     const after = tile.getBoundingClientRect();
                     if (
+                        !before &&
+                        after.width &&
+                        after.top < bounds.bottom &&
+                        after.bottom > bounds.top
+                    ) {
+                        const entering = tile.animate([{ opacity: 0 }, { opacity: 1 }], {
+                            duration: MOTION.content,
+                            easing: MOTION.ease,
+                        });
+                        this.layoutAnimations.set(tile, entering);
+                        void entering.finished
+                            .catch(() => undefined)
+                            .then(() => {
+                                if (this.layoutAnimations.get(tile) === entering)
+                                    this.layoutAnimations.delete(tile);
+                            });
+                        return;
+                    }
+                    if (
                         !before?.width ||
                         !after.width ||
                         (before.top > bounds.bottom && after.top > bounds.bottom) ||
@@ -522,13 +369,60 @@ export class Queue {
                             },
                             { transform: "none", transformOrigin: "top left" },
                         ],
-                        { duration: 320, easing: "cubic-bezier(.2,.75,.2,1)" },
+                        { duration: MOTION.layout, easing: MOTION.ease },
                     );
+                    this.layoutAnimations.set(tile, layoutAnimation);
                     void layoutAnimation.finished
                         .catch(() => undefined)
                         .then(() => {
+                            if (this.layoutAnimations.get(tile) !== layoutAnimation) return;
+                            this.layoutAnimations.delete(tile);
                             this.layoutDestinations.delete(tile);
                             if (this.scrollGallery === gallery) this.updateScrollProgress(gallery);
+                        });
+                });
+                const retained = new Set(
+                    Array.from(wall.querySelectorAll<HTMLElement>(".queue-tile")),
+                );
+                oldTiles.forEach((tile) => {
+                    if (retained.has(tile)) return;
+                    this.cancelTileOverflow(tile);
+                    const rect = previous.get(tile);
+                    if (
+                        !rect ||
+                        rect.bottom < bounds.top ||
+                        rect.top > bounds.bottom ||
+                        tile.dataset.uri === Spicetify.Player.data?.item?.uri ||
+                        typeof tile.cloneNode !== "function"
+                    )
+                        return;
+                    const ghost = tile.cloneNode(true) as HTMLElement;
+                    ghost.setAttribute("aria-hidden", "true");
+                    ghost.tabIndex = -1;
+                    Object.assign(ghost.style, {
+                        position: "fixed",
+                        left: `${rect.left}px`,
+                        top: `${rect.top}px`,
+                        width: `${rect.width}px`,
+                        height: `${rect.height}px`,
+                        transform: "none",
+                        pointerEvents: "none",
+                        zIndex: "4",
+                    });
+                    DOM.container.append(ghost);
+                    this.removedTiles.add(ghost);
+                    const leaving = ghost.animate([{ opacity: 1 }, { opacity: 0 }], {
+                        duration: MOTION.feedback,
+                        easing: MOTION.ease,
+                        fill: "forwards",
+                    });
+                    this.layoutAnimations.set(ghost, leaving);
+                    void leaving.finished
+                        .catch(() => undefined)
+                        .then(() => {
+                            this.layoutAnimations.delete(ghost);
+                            this.removedTiles.delete(ghost);
+                            ghost.remove();
                         });
                 });
                 this.updateScrollProgress(gallery);
@@ -562,7 +456,6 @@ export class Queue {
         const displayTitle = this.displayTitle(entry.title);
         tile.dataset.titleLength = String([...displayTitle].length);
         tile.setAttribute("aria-label", `${this.strings.playNow}: ${displayTitle} — ${artist}`);
-        tile.title = `${displayTitle} — ${artist}`;
         const image = document.createElement("img");
         image.className = "queue-artwork";
         image.alt = "";
@@ -579,6 +472,7 @@ export class Queue {
         const title = document.createElement("span");
         title.className = "queue-track-title";
         title.textContent = displayTitle;
+        applyTextLanguage(title);
         const subtitle = document.createElement("span");
         subtitle.className = "queue-track-artist";
         subtitle.textContent = artist;
@@ -628,9 +522,16 @@ export class Queue {
 
     private static startTileOverflow(tile: HTMLElement) {
         this.cancelTileOverflow(tile);
+        if (tile.classList.contains("queue-tile-lead")) return;
         if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
         requestAnimationFrame(() => {
-            if (!tile.matches(":hover, :focus-visible")) return;
+            if (
+                !tile.isConnected ||
+                tile.classList.contains("queue-tile-lead") ||
+                !tile.matches(":hover, :focus-visible")
+            )
+                return;
+            this.cancelTileOverflow(tile);
             const measurements = Array.from(
                 tile.querySelectorAll<HTMLElement>(
                     ".queue-track-title-viewport, .queue-track-artist-viewport",
@@ -650,9 +551,12 @@ export class Queue {
             const timing = getOverflowScrollTiming(maxOverflow);
             const animations = measurements
                 .filter(({ overflow }) => overflow > 1)
-                .map(({ track, overflow }) =>
-                    createOverflowScrollAnimation(track, overflow, timing),
-                );
+                .map(({ track, overflow }) => {
+                    const animation = createOverflowScrollAnimation(track, overflow, timing);
+                    // Hover is the cue to start moving; retain the shared speed and edge pauses.
+                    animation.currentTime = timing.duration * timing.leaveLeftOffset;
+                    return animation;
+                });
             this.tileOverflowAnimations.set(tile, animations);
         });
     }
@@ -740,6 +644,10 @@ export class Queue {
         }
     }
 
+    static get hasIncomingArtwork() {
+        return this.incoming !== null;
+    }
+
     static cancelHandoff() {
         this.incoming = null;
         this.cancelFlight();
@@ -802,7 +710,7 @@ export class Queue {
             if (this.flight !== flight) return;
         }
         this.oldArtwork?.animate([{ opacity: 1 }, { opacity: 0 }], {
-            duration: 380,
+            duration: MOTION.layout,
             fill: "forwards",
         });
         const animation = flight.animate(
@@ -812,7 +720,7 @@ export class Queue {
                     transform: `translate3d(${target.left - incoming.rect.left}px,${target.top - incoming.rect.top}px,0) scale(${target.width / incoming.rect.width},${target.height / incoming.rect.height})`,
                 },
             ],
-            { duration: 520, easing: "cubic-bezier(.22,.75,.18,1)", fill: "forwards" },
+            { duration: MOTION.handoff, easing: MOTION.ease, fill: "forwards" },
         );
         this.animation = animation;
         void animation.finished

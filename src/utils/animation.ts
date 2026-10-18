@@ -1,3 +1,4 @@
+import { prefersReducedMotion } from "./motion";
 import Kawarp from "@kawarp/core";
 import { BeatResponsePreset, Settings } from "../types/fullscape";
 import { AudioAnalysis, getAudioAnalysis, getAudioMotion } from "../services/audio-analysis";
@@ -373,11 +374,16 @@ export function animatedRotatedCanvas(back: HTMLCanvasElement, bgImg: HTMLImageE
 
     function draw(timestamp: number) {
         if (!isAnimationRunning || generation !== rotationGeneration) return;
-        if (timestamp - lastFrameTime < frameInterval) {
+        if (
+            lastFrameTime &&
+            (document.hidden || prefersReducedMotion() || timestamp - lastFrameTime < frameInterval)
+        ) {
             rotationFrameId = requestAnimationFrame(draw);
             return;
         }
-        const elapsedFrames = lastFrameTime ? (timestamp - lastFrameTime) / (1000 / 60) : 1;
+        const elapsedFrames = lastFrameTime
+            ? Math.min(64, timestamp - lastFrameTime) / (1000 / 60)
+            : 1;
         lastFrameTime = timestamp;
         ctx.clearRect(0, 0, back.width, back.height);
 
@@ -393,7 +399,7 @@ export function animatedRotatedCanvas(back: HTMLCanvasElement, bgImg: HTMLImageE
         ctx.drawImage(bgImg, -radius, -radius, radius * 2, radius * 2);
         ctx.restore();
 
-        rotationAngle += rotationSpeed * elapsedFrames;
+        if (!prefersReducedMotion()) rotationAngle += rotationSpeed * elapsedFrames;
         rotationFrameId = requestAnimationFrame(draw);
     }
     rotationFrameId = requestAnimationFrame(draw);

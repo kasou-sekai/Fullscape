@@ -11,8 +11,8 @@
     }
     left: 0;
     top: 0;
-    --transition-duration: 0.8s;
-    --transition-function: ease-in-out;
+    --transition-duration: var(--fs-motion-layout);
+    --transition-function: var(--fs-motion-ease);
     --main-color: 255, 255, 255;
     --contrast-color: 0, 0, 0;
     --primary-color: rgba(var(--main-color), 1);
@@ -24,6 +24,34 @@
     --theme-main-color: rgba(var(--theme-color), 1);
     --lyrics-font-scale: 1.15;
     --lyrics-base-font-size: 24px;
+    // Shared by song titles, original/karaoke lyrics and independently tagged translations.
+    [data-text-language] {
+        font-feature-settings: "locl";
+    }
+    [data-text-language="zh-CN"] {
+        font-family: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC",
+            "Noto Sans SC", "Source Han Sans SC", "Source Han Sans CN", "Hiragino Sans GB",
+            "Heiti SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Droid Sans Fallback", "SimHei",
+            "Arial Unicode MS", sans-serif;
+    }
+    [data-text-language="zh-TW"] {
+        font-family: "PingFang TC", "Microsoft JhengHei UI", "Microsoft JhengHei",
+            "Noto Sans CJK TC", "Noto Sans TC", "Source Han Sans TC", "Source Han Sans TW",
+            "Heiti TC", "STHeiti TC", "WenQuanYi Zen Hei", "Droid Sans Fallback", "Arial Unicode MS",
+            sans-serif;
+    }
+    [data-text-language="ja"] {
+        font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic",
+            "Meiryo", "Noto Sans CJK JP", "Noto Sans JP", "Source Han Sans JP", sans-serif;
+    }
+    [data-text-language="ko"] {
+        font-family: "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans CJK KR", "Noto Sans KR",
+            "Source Han Sans KR", "NanumGothic", sans-serif;
+    }
+    [data-text-language="en"] {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial,
+            "Noto Sans", sans-serif;
+    }
     &.themed-buttons {
         --theme-background-color: rgba(var(--theme-color), 0.6);
         --theme-hover-color: rgba(var(--theme-color), 0.3);
@@ -31,15 +59,18 @@
     #fullscape-title svg,
     #fullscape-artist svg,
     #fullscape-album svg {
-        transition: all var(--transition-duration) var(--transition-function);
+        transition:
+            transform var(--transition-duration) var(--transition-function),
+            opacity var(--fs-motion-content) var(--fs-motion-ease),
+            color var(--fs-motion-content) ease;
         display: var(--icons-display);
     }
     #fullscape-title-text-viewport,
     .fullscape-artist-list span:not(.fullscape-artist-separator),
     #fullscape-album span {
         transition:
-            transform 180ms ease-out,
-            padding-inline 180ms ease-out;
+            transform var(--fs-motion-feedback) ease-out,
+            padding-inline var(--fs-motion-feedback) ease-out;
         transform-origin: center;
     }
     .fullscape-artist-list span:not(.fullscape-artist-separator),
@@ -93,58 +124,6 @@
         height: 1.5px;
     }
     */
-    @keyframes fadeUp {
-        0% {
-            opacity: 0;
-            transform: translateY(-10px);
-        }
-        to {
-            opacity: 0.8;
-            transform: translateY(0);
-        }
-    }
-    @keyframes fadeDo {
-        0% {
-            opacity: 0;
-            transform: translateY(10px);
-        }
-        to {
-            opacity: 0.8;
-            transform: translateY(0);
-        }
-    }
-    @keyframes fadeRi {
-        0% {
-            opacity: 0;
-            transform: translateX(10px);
-        }
-        to {
-            opacity: 0.8;
-            transform: translateX(0);
-        }
-    }
-    @keyframes fadeLe {
-        0% {
-            opacity: 0;
-            transform: translateX(-10px);
-        }
-        to {
-            opacity: 0.8;
-            transform: translateX(0);
-        }
-    }
-    .fade-do {
-        animation: fadeDo 0.5s cubic-bezier(0.3, 0, 0, 1);
-    }
-    .fade-up {
-        animation: fadeUp 0.5s cubic-bezier(0.3, 0, 0, 1);
-    }
-    .fade-ri {
-        animation: fadeRi 0.5s cubic-bezier(0.3, 0, 0, 1);
-    }
-    .fade-le {
-        animation: fadeLe 0.5s cubic-bezier(0.3, 0, 0, 1);
-    }
     #fullscape-progress-container {
         --theme-main-color: rgba(var(--main-color), 1);
     }
@@ -169,9 +148,8 @@
         z-index: 50;
         opacity: 0;
         pointer-events: none;
-        transition:
-            transform 0.75s ease-in-out,
-            opacity 0.25s ease-in-out;
+        // UpNext animates this pose explicitly, including first-mount entry.
+        transition: none;
         transform: translateX(calc(100% + 40px));
     }
     #fullscape-up-next-cover {
@@ -201,7 +179,7 @@
     #fad-lyrics-container {
         transition:
             transform var(--transition-duration) var(--transition-function),
-            opacity 180ms ease;
+            opacity var(--fs-motion-feedback) ease;
         position: absolute;
         right: var(--right-margin-lyrics);
         width: 50%;
@@ -300,7 +278,7 @@
             .rnp-lyrics-line-content {
             scale: 1.02 !important;
             transform-origin: center center;
-            transition: scale 180ms ease-out !important;
+            transition: scale var(--fs-motion-feedback) ease-out !important;
         }
         .rnp-lyrics-line:not(.rnp-lyrics-line-outside) {
             will-change: transform, filter, opacity;
@@ -316,7 +294,7 @@
             max-width: 100%;
             line-height: inherit;
             transform-origin: center center;
-            transition: scale 180ms ease-out;
+            transition: scale var(--fs-motion-feedback) ease-out;
             will-change: scale;
         }
         .rnp-lyrics-line-content > div {
@@ -379,25 +357,7 @@
         }
         .rnp-lyrics-line-translated {
             font-size: 0.66em;
-            font-family: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC",
-                "Noto Sans SC", "Source Han Sans SC", "Source Han Sans CN", "Hiragino Sans GB",
-                "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Droid Sans Fallback", "SimHei",
-                "Arial Unicode MS", sans-serif;
             font-weight: 400;
-        }
-        .rnp-lyrics-script-simplified .rnp-lyrics-line-content > div {
-            font-family: "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC",
-                "Noto Sans SC", "Source Han Sans SC", "Source Han Sans CN", "Hiragino Sans GB",
-                "Heiti SC", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei", "Droid Sans Fallback",
-                "SimHei", "Arial Unicode MS", sans-serif;
-            font-feature-settings: "locl";
-        }
-        .rnp-lyrics-script-traditional .rnp-lyrics-line-content > div {
-            font-family: "PingFang TC", "Microsoft JhengHei UI", "Microsoft JhengHei",
-                "Noto Sans CJK TC", "Noto Sans TC", "Source Han Sans TC", "Source Han Sans TW",
-                "Heiti TC", "STHeiti TC", "WenQuanYi Zen Hei", "Droid Sans Fallback",
-                "Arial Unicode MS", sans-serif;
-            font-feature-settings: "locl";
         }
         .rnp-lyrics-script-simplified .rnp-lyrics-line-content > .rnp-lyrics-line-original,
         .rnp-lyrics-script-simplified .rnp-lyrics-line-content > .rnp-lyrics-line-karaoke,
@@ -408,9 +368,9 @@
                 opacity 0.4s ease,
                 text-shadow 0.45s ease;
         }
-        .rnp-lyrics-script-simplified rt,
-        .rnp-lyrics-script-traditional rt {
-            font-family: "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", "Noto Sans JP", sans-serif;
+        rt {
+            font-family: "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", "Noto Sans CJK JP",
+                "Noto Sans JP", sans-serif;
         }
         .rnp-lyrics-line-content > .rnp-lyrics-line-karaoke {
             line-height: 1.32;
@@ -592,7 +552,9 @@
     &.lyrics-unavailable,
     &.lyrics-hide-force {
         #fad-lyrics-container {
-            transform: translateX(1000px) scale3d(0.1, 0.1, 0.1) rotate(45deg);
+            transform: translateX(24px);
+            opacity: 0;
+            pointer-events: none;
         }
     }
     #fullscape-foreground {
@@ -605,12 +567,15 @@
         align-items: center;
         justify-content: center;
         color: var(--primary-color);
-        transition: all var(--transition-duration) var(--transition-function);
+        transition:
+            transform var(--transition-duration) var(--transition-function),
+            opacity var(--fs-motion-content) var(--fs-motion-ease),
+            color var(--fs-motion-content) ease;
     }
     #fullscape-art {
         transform: scale(1);
         transform-origin: center;
-        transition: transform 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+        transition: transform 0.32s var(--fs-motion-ease);
     }
     &.playback-paused #fullscape-art {
         transform: scale(0.86);
@@ -694,7 +659,7 @@
         display: flex;
         flex-direction: row;
         align-items: center;
-        transition: opacity 1s ease-in-out;
+        transition: opacity var(--fs-motion-content) var(--fs-motion-ease);
         column-gap: 18px;
     }
     #fullscape-background,
@@ -829,10 +794,12 @@
         cursor: pointer;
         position: relative;
         transition:
-            all 0.3s var(--transition-function),
-            transform 0.1s var(--transition-function);
+            background-color var(--fs-motion-feedback) var(--transition-function),
+            color var(--fs-motion-feedback) var(--transition-function),
+            opacity var(--fs-motion-feedback) var(--transition-function),
+            transform var(--fs-motion-feedback) var(--transition-function);
         &:hover {
-            transform: scale(1.2);
+            transform: scale(1.06);
         }
         &.button-active {
             background: var(--theme-background-color) !important;
@@ -863,7 +830,7 @@
     }
     #fullscape-foreground svg {
         fill: var(--primary-color);
-        transition: all 0.3s var(--transition-function);
+        transition: fill var(--fs-motion-content) var(--transition-function);
     }
     &.themed-icons #fullscape-foreground svg {
         fill: var(--theme-main-color);
@@ -873,7 +840,7 @@
         fill: var(--primary-color) !important;
     }
     .fullscape-background-fade {
-        transition: background-image var(--fs-transition) linear;
+        // Artwork crossfades use decoded overlay layers in Cover and UpNext.
     }
     @media (prefers-reduced-motion: reduce) {
         #fullscape-title-text-track,
@@ -926,10 +893,10 @@ body {
 
 #fullscape-display {
     .apple-system-symbol {
-        display: inline-block;
+        display: block;
         flex: 0 0 auto;
-        width: 48px;
-        height: 48px;
+        width: 28px;
+        height: 28px;
         background: currentColor;
         mask: var(--symbol) center / contain no-repeat;
         -webkit-mask: var(--symbol) center / contain no-repeat;
@@ -943,7 +910,7 @@ body {
         gap: 8px;
         opacity: 0;
         pointer-events: none;
-        transition: opacity 220ms ease;
+        transition: opacity var(--fs-motion-content) var(--fs-motion-ease);
         &.is-visible,
         &:has(:focus-visible) {
             opacity: 1;
@@ -952,27 +919,29 @@ body {
         button {
             display: grid;
             place-items: center;
+            box-sizing: border-box;
+            flex: 0 0 44px;
             width: 44px;
             height: 44px;
             padding: 0;
             border: 0;
             border-radius: 50%;
-            color: rgba(255, 255, 255, 0.8);
+            color: rgba(255, 255, 255, 0.95);
             background: rgba(255, 255, 255, 0.09);
             cursor: pointer;
             transition:
-                background 160ms ease,
-                color 160ms ease,
-                transform 160ms ease;
+                background var(--fs-motion-feedback) ease,
+                color var(--fs-motion-feedback) ease,
+                transform var(--fs-motion-feedback) ease;
             &:hover {
                 background: rgba(255, 255, 255, 0.19);
             }
             &:active {
                 transform: scale(0.94);
             }
+            &:focus,
             &:focus-visible {
-                outline: 2px solid white;
-                outline-offset: 4px;
+                outline: none;
             }
             &[aria-pressed="true"] {
                 background: rgba(255, 255, 255, 0.9);
@@ -984,10 +953,69 @@ body {
             }
         }
     }
+    &:not(.lyrics-active) #fullscape-translation,
+    &:not(.lyrics-has-translation) #fullscape-translation,
+    &.side-view-queue #fullscape-translation {
+        display: none;
+    }
     @media (prefers-reduced-motion: reduce) {
         .fullscape-lyrics-tools,
         .fullscape-lyrics-tools button {
             transition: none;
         }
+    }
+}
+
+#fullscape-display {
+    .fullscape-button:active {
+        transform: scale(0.94);
+    }
+    .rnp-lyrics-line-translated[hidden] {
+        display: none;
+    }
+    .rnp-lyrics-line.active .rnp-lyrics-line-content > div {
+        transition:
+            color var(--fs-motion-feedback) ease,
+            opacity var(--fs-motion-content) ease;
+    }
+    #fullscape-up-next-cover {
+        position: relative;
+        overflow: hidden;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    #fullscape-display {
+        &,
+        *,
+        *::before,
+        *::after {
+            transition-duration: 0.01ms !important;
+            transition-delay: 0ms !important;
+            animation: none !important;
+            scroll-behavior: auto !important;
+        }
+        #fullscape-art {
+            transform: none !important;
+        }
+        #fullscape-title-text-track,
+        #fullscape-secondary-meta-track,
+        #upNextTitleTrack,
+        .queue-track-title,
+        .queue-track-artist {
+            transform: none !important;
+        }
+        .rnp-karaoke-word {
+            --karaoke-lift: 0em !important;
+            --karaoke-scale: 1 !important;
+            --karaoke-glow: 0 !important;
+        }
+        .rnp-karaoke-word > span {
+            text-shadow: none !important;
+        }
+        .rnp-karaoke-ruby > rt {
+            transform: none !important;
+        }
+        .fullscape-artwork-previous { display: none; }
+        .fullscape-artwork-incoming { opacity: 1 !important; transform: none !important; }
     }
 }

@@ -13,6 +13,7 @@ const appModules = {
     "./constants/apple-system-symbols": "export const APPLE_SYMBOLS = {};",
     "./constants": "export default {}; export const CLASSES_TO_ADD = [];",
     "./utils/utils": "export default { allNotExist: () => [], isModeActivated: () => false };",
+    "./utils/motion": "export const initializeMotionTokens = () => {}; export const animateFeedback = () => {}; export const cancelFeedback = () => {}; export const prefersReducedMotion = () => true; export const MOTION = {};",
     "./utils/selectors": "export default { getExtraBarSelector: () => null };",
     "./resources/strings": 'export default { "en-US": { sideView: {} } };',
     "./utils/overflow-scroll":
@@ -29,7 +30,7 @@ const appModules = {
         "export const Queue = { teardown() {}, attach() {}, cancelHandoff() {}, scheduleUpdate() {} };",
     "./ui/components/Cover/Cover": "export const Cover = { teardown() {}, attach() {} };",
     "./ui/components/UpNext/UpNext":
-        "export const UpNext = { updateUpNext() {}, updateUpNextShow() {} };",
+        "export const UpNext = { updateUpNext() {}, updateUpNextShow() {}, teardown() {} };",
     "./ui/components/PlayerControls/PlayerControls":
         "export const PlayerControls = { showLyricsTools() {}, updatePlayerControls() {}, hidePlayerControls() {} };",
     "./utils/background": "export const Background = { stop() {}, updateBackground() {} };",

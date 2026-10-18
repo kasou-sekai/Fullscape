@@ -1,3 +1,4 @@
+import { animateFeedback, frameSmoothing, prefersReducedMotion } from "../../../utils/motion";
 import { DOM } from "../../elements";
 import CFM from "../../../utils/config";
 import {
@@ -31,8 +32,12 @@ import {
     convertChineseText,
     convertFuriganaRenderData,
     getChineseLyricsPresentation,
+    getTranslationPresentation,
 } from "../../../utils/chinese-conversion";
 import type { LyricsChineseConversion } from "../../../utils/chinese-conversion";
+
+import { detectTextLanguage } from "../../../utils/text-language";
+import { applyTextLanguage, getTextLanguageTag } from "../../../utils/text-presentation";
 
 type LyricLine = EnhancedLyricLine;
 type LyricsTrack = TrackInfo & {
@@ -188,6 +193,7 @@ export class Lyrics {
 
     static teardown() {
         this.stopLoop();
+        DOM.container.classList.remove("lyrics-has-translation");
         this.cancelKaraokeAnimations();
         this.resetLyricsInteraction(false);
         this.lines = [];
@@ -1081,6 +1087,7 @@ export class Lyrics {
 
     private static renderStatus(text: string, unavailable: boolean) {
         if (!this.container) return;
+        DOM.container.classList.remove("lyrics-has-translation");
         this.stopResizeObserver();
         this.cancelKaraokeAnimations();
         this.resetLyricsInteraction(false);
@@ -1110,6 +1117,10 @@ export class Lyrics {
         else DOM.container.classList.remove("lyrics-unavailable");
         this.stopLoop();
         this.container.innerHTML = `<div class="lyrics-wrapper"><div class="lyrics-status">${this.escapeHtml(text)}</div></div>`;
+        animateFeedback(this.container.querySelector(".lyrics-status"), [
+            { opacity: 0 },
+            { opacity: 1 },
+        ]);
     }
 
     private static applyLines(lines: LyricLine[]) {
@@ -1132,6 +1143,12 @@ export class Lyrics {
         this.stopLoop();
         this.isSynced = nextIsSynced;
         this.lines = lines;
+        DOM.container.classList.toggle(
+            "lyrics-has-translation",
+            lines.some(
+                (line) => Boolean(line.translation?.trim()) && line.translation?.trim() !== "//",
+            ),
+        );
         this.dictionaryFurigana = [];
         this.renderedLyricsSignature = signature;
         this.dictionaryFuriganaRequestSignature = null;
@@ -1223,7 +1240,25 @@ export class Lyrics {
 
     static toggleTranslation() {
         CFM.set("showLyricsTranslation", !CFM.get("showLyricsTranslation"));
-        this.renderLines();
+        if (!this.lyricsRoot) return;
+        const visible = Boolean(CFM.get("showLyricsTranslation"));
+        this.lyricsRoot
+            .querySelectorAll<HTMLElement>(".rnp-lyrics-line-translated")
+            .forEach((node) => {
+                node.hidden = !visible;
+                if (visible) animateFeedback(node, [{ opacity: 0 }, { opacity: 1 }]);
+            });
+        this.measureHeights();
+        this.applyTransforms();
+        this.updateInterludeDots(this.getSynchronizedPlaybackProgress());
+    }
+
+    static updateTitleLanguage() {
+        if (!DOM.title) return;
+        const context = this.isCurrentTrack(Spicetify.Player.data?.item?.uri ?? "")
+            ? detectTextLanguage(this.lines.map((line) => line.text).join("\n"))
+            : "unknown";
+        applyTextLanguage(DOM.title, context);
     }
 
     private static renderLines() {
@@ -1241,18 +1276,20 @@ export class Lyrics {
         );
         const chineseScript = chinesePresentation.displayScript;
         const scriptClass = chineseScript ? ` rnp-lyrics-script-${chineseScript}` : "";
-        const language =
-            chineseScript === "simplified"
-                ? ' lang="zh-CN"'
-                : chineseScript === "traditional"
-                  ? ' lang="zh-TW"'
-                  : "";
+        const songLanguage = detectTextLanguage(originalLyricsText);
+        const songLanguageTag = getTextLanguageTag(
+            originalLyricsText,
+            songLanguage,
+            chinesePresentation.conversion,
+        );
+        const language = ` lang="${songLanguageTag}"`;
+        this.updateTitleLanguage();
         const body = this.lines
             .map(
                 (line, idx) =>
                     `<div class="rnp-lyrics-line${line.time !== null ? " rnp-lyrics-line-seekable" : ""}" data-index="${idx}" data-time="${line.time ?? ""}">
                         <div class="rnp-lyrics-line-content">
-                            ${this.renderLineContent(line, idx, chinesePresentation.conversion)}
+                            ${this.renderLineContent(line, idx, chinesePresentation.conversion, songLanguage, songLanguageTag)}
                         </div>
                     </div>`,
             )
@@ -1267,6 +1304,7 @@ export class Lyrics {
                 </div>
             </div>`;
         this.lyricsRoot = this.container.querySelector(".rnp-lyrics") as HTMLElement;
+        animateFeedback(this.lyricsRoot, [{ opacity: 0 }, { opacity: 1 }]);
         this.lineNodes = Array.from(
             this.container.querySelectorAll<HTMLElement>(".rnp-lyrics-line"),
         );
@@ -1298,11 +1336,22 @@ export class Lyrics {
         line: LyricLine,
         lineIndex: number,
         chineseConversion: LyricsChineseConversion,
+        songLanguage: ReturnType<typeof detectTextLanguage>,
+        songLanguageTag: string,
     ) {
+        const detectedLineLanguage = getTextLanguageTag(line.text, songLanguage, chineseConversion);
+        const lineLanguage =
+            detectedLineLanguage.startsWith("zh") && songLanguageTag.startsWith("zh")
+                ? songLanguageTag
+                : detectedLineLanguage;
+        const originalConversion = detectedLineLanguage.startsWith("zh")
+            ? chineseConversion
+            : "original";
+        const languageAttributes = `lang="${lineLanguage}" data-text-language="${lineLanguage}"`;
         const showKaraoke = Boolean(CFM.get("karaokeLyrics")) && this.hasKaraokeText(line);
         const words = (line.words ?? []).map((word) => ({
             ...word,
-            text: convertChineseText(word.text, chineseConversion),
+            text: convertChineseText(word.text, originalConversion),
         }));
         const providedFurigana = parseFuriganaMarkup(line.text, line.furigana);
         const dictionaryFurigana = this.dictionaryFurigana[lineIndex];
@@ -1315,22 +1364,26 @@ export class Lyrics {
                   ),
               }
             : providedFurigana;
-        const furigana = convertFuriganaRenderData(renderFurigana, chineseConversion);
+        const furigana = convertFuriganaRenderData(renderFurigana, originalConversion);
         const visibleAnnotations = CFM.get("showLyricsFurigana") ? furigana.annotations : [];
         const karaokeText = words.map((word) => word.text).join("");
         const annotations = karaokeText === furigana.text ? visibleAnnotations : [];
         const furiganaClass = annotations.length ? " rnp-lyrics-has-furigana" : "";
         const original = showKaraoke
-            ? `<div class="rnp-lyrics-line-karaoke${furiganaClass}">${this.renderKaraokeLine(words, annotations)}</div>`
-            : `<div class="rnp-lyrics-line-original${visibleAnnotations.length ? " rnp-lyrics-has-furigana" : ""}">${this.formatLyricText(furigana.text, visibleAnnotations)}</div>`;
+            ? `<div class="rnp-lyrics-line-karaoke${furiganaClass}" ${languageAttributes}>${this.renderKaraokeLine(words, annotations)}</div>`
+            : `<div class="rnp-lyrics-line-original${visibleAnnotations.length ? " rnp-lyrics-has-furigana" : ""}" ${languageAttributes}>${this.formatLyricText(furigana.text, visibleAnnotations)}</div>`;
 
         const romanization =
             CFM.get("showLyricsRomanization") && line.romanization
-                ? `<div class="rnp-lyrics-line-romaji">${this.escapeHtml(convertChineseText(line.romanization, chineseConversion))}</div>`
+                ? `<div class="rnp-lyrics-line-romaji" lang="en" data-text-language="en">${this.escapeHtml(convertChineseText(line.romanization, originalConversion))}</div>`
                 : "";
+        const translated = getTranslationPresentation(
+            line.translation ?? "",
+            this.getChineseConversion(),
+        );
         const translation =
-            CFM.get("showLyricsTranslation") && line.translation && line.translation.trim() !== "//"
-                ? `<div class="rnp-lyrics-line-translated">${this.escapeHtml(convertChineseText(line.translation, chineseConversion))}</div>`
+            line.translation && line.translation.trim() !== "//"
+                ? `<div ${CFM.get("showLyricsTranslation") ? "" : "hidden"} class="rnp-lyrics-line-translated" lang="${translated.language}" data-text-language="${translated.language}">${this.escapeHtml(translated.text)}</div>`
                 : "";
 
         return `${original}${romanization}${translation}`;
@@ -1509,7 +1562,7 @@ export class Lyrics {
             );
             const segmentEnd = segment.start + segment.text.length;
             if (activeAnnotation && segmentEnd >= activeAnnotation.end) {
-                semanticWord += `</span><rt data-time="${annotationStartTime}" data-duration="${Math.max(
+                semanticWord += `</span><rt lang="ja" data-time="${annotationStartTime}" data-duration="${Math.max(
                     80,
                     annotationEndTime - annotationStartTime,
                 )}">${this.escapeHtml(activeAnnotation.reading)}</rt></ruby>`;
@@ -1708,7 +1761,7 @@ export class Lyrics {
                             (item) => item.start === absoluteStart && item.end === absoluteEnd,
                         );
                         const content = annotation
-                            ? `<ruby class="rnp-furigana-ruby"><span class="rnp-furigana-base">${this.escapeHtml(word)}</span><rt>${this.escapeHtml(annotation.reading)}</rt></ruby>`
+                            ? `<ruby class="rnp-furigana-ruby"><span class="rnp-furigana-base">${this.escapeHtml(word)}</span><rt lang="ja">${this.escapeHtml(annotation.reading)}</rt></ruby>`
                             : this.escapeHtml(word);
                         return `<span class="rnp-lyrics-semantic-word">${content}</span>`;
                     })
@@ -2005,11 +2058,7 @@ export class Lyrics {
                     ? null
                     : Math.max(0, plainLyricsNormalGap - this.INTERLUDE_NORMAL_EXTENSION_MS);
             const gapStart = previous
-                ? this.getLyricLineEnd(
-                      lines[previous.index],
-                      next.time,
-                      plainLyricsMinimumDuration,
-                  )
+                ? this.getLyricLineEnd(lines[previous.index], next.time, plainLyricsMinimumDuration)
                 : 0;
             const gapEnd = Math.max(gapStart, next.time);
             if (gapEnd - gapStart < this.INTERLUDE_MIN_GAP_MS) continue;
@@ -2046,10 +2095,7 @@ export class Lyrics {
         // remainder as the interlude.
         const fallbackDuration = Math.min(
             Math.max(0, nextTime - line.time),
-            Math.max(
-                this.INTERLUDE_FALLBACK_LINE_DURATION_MS,
-                plainLyricsMinimumDuration ?? 0,
-            ),
+            Math.max(this.INTERLUDE_FALLBACK_LINE_DURATION_MS, plainLyricsMinimumDuration ?? 0),
         );
         return Math.min(nextTime, line.time + fallbackDuration);
     }
@@ -2496,7 +2542,8 @@ export class Lyrics {
 
     private static scheduleManualScrollRender() {
         if (this.manualScrollFrame !== null) return;
-        const render = () => {
+        let previousTime = performance.now();
+        const render = (timestamp: number) => {
             this.manualScrollFrame = null;
             if (!this.manualScrollActive || !this.lines.length) return;
             const distance = this.manualScrollTargetPosition - this.manualScrollRenderPosition;
@@ -2505,7 +2552,10 @@ export class Lyrics {
                 this.applyTransforms();
                 return;
             }
-            this.manualScrollRenderPosition += distance * 0.28;
+            this.manualScrollRenderPosition += prefersReducedMotion()
+                ? distance
+                : distance * frameSmoothing(timestamp - previousTime);
+            previousTime = timestamp;
             this.applyTransforms();
             this.manualScrollFrame = requestAnimationFrame(render);
         };
@@ -2783,10 +2833,7 @@ export class Lyrics {
                 }
             } else if (anchorIndex < 0 && nextTransform && this.interludeNode) {
                 const interludeTop = nextTransform.top - interludeLineGap - interludeHeight;
-                this.interludeNode.style.setProperty(
-                    "--interlude-height",
-                    `${interludeHeight}px`,
-                );
+                this.interludeNode.style.setProperty("--interlude-height", `${interludeHeight}px`);
                 this.interludeNode.style.top = "0";
                 this.interludeNode.style.transform = `translate3d(0, ${interludeTop}px, 0) scale(var(--interlude-scale, 0))`;
             }
@@ -2807,11 +2854,17 @@ export class Lyrics {
             const wasOutsideViewport = node.classList.contains("rnp-lyrics-line-outside");
             node.classList.toggle("rnp-lyrics-line-outside", outsideViewport);
             const enteredViewport = wasOutsideViewport && !outsideViewport;
-            const duration = skipAnimation || this.manualScrollActive || enteredViewport ? 0 : 520;
+            const duration =
+                skipAnimation ||
+                prefersReducedMotion() ||
+                this.manualScrollActive ||
+                enteredViewport
+                    ? 0
+                    : 520;
             node.style.setProperty("--lyrics-line-transform-duration", `${duration}ms`);
             node.style.setProperty(
                 "--lyrics-line-transform-delay",
-                `${skipAnimation || this.manualScrollActive ? 0 : t.delay}ms`,
+                `${skipAnimation || prefersReducedMotion() || this.manualScrollActive ? 0 : t.delay}ms`,
             );
             const isHovered = this.lyricsInteractionActive && node === this.hoveredLine;
             node.style.transformOrigin = "left center";

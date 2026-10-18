@@ -30,7 +30,11 @@ const originalCanReorder = QueueAdapter.canReorder.bind(QueueAdapter);
 const originalReorder = QueueAdapter.reorder.bind(QueueAdapter);
 class Node {
     children = [];
-    style = {};
+    style = {
+        removeProperty(name) {
+            delete this[name];
+        },
+    };
     dataset = {};
     attributes = {};
     className = "";
@@ -53,6 +57,7 @@ class Node {
     };
     append(...nodes) {
         for (const node of nodes) {
+            if (node.parent) node.parent.children = node.parent.children.filter((child) => child !== node);
             node.parent = this;
             this.children.push(node);
         }
@@ -101,7 +106,15 @@ class Node {
             resolve = a;
             reject = b;
         });
-        this.anim = { finished, cancel: () => reject(new Error("cancelled")), finish: resolve };
+        this.anim = {
+            finished,
+            cancelled: false,
+            cancel() {
+                this.cancelled = true;
+                reject(new Error("cancelled"));
+            },
+            finish: resolve,
+        };
         return this.anim;
     }
 }
@@ -163,39 +176,75 @@ test("gallery excludes the playing song and keeps the Up Next and Queue anchors"
         ["a", "b"],
     );
 });
-test("wide responsive layout reorders the native queue to the visual reading sequence", async () => {
-    Queue.teardown();
+test("responsive artwork positions follow playback order without mutating Spotify's queue", async () => {
     const originalOrder = "abcdefghijk".split("").map(entry);
-    let liveOrder = [...originalOrder];
+    let reorderCalls = 0;
+    QueueAdapter.read = () => ({ next: originalOrder.slice(0, 3), later: originalOrder.slice(3) });
     QueueAdapter.canReorder = () => true;
-    QueueAdapter.read = () => ({
-        revision: liveOrder.map((track) => track.uid).join("|"),
-        current: entry("old"),
-        next: liveOrder.slice(0, 3),
-        later: liveOrder.slice(3),
-    });
-    QueueAdapter.reorder = async (track, targetIndex) => {
-        const currentIndex = liveOrder.findIndex((candidate) => candidate.uid === track.uid);
-        if (currentIndex < 0) return { ok: false };
-        const [moved] = liveOrder.splice(currentIndex, 1);
-        liveOrder.splice(targetIndex, 0, moved);
-        return { ok: true };
-    };
-
+    QueueAdapter.reorder = async () => { reorderCalls++; return { ok: true }; };
     Queue.attach(DOM.queue);
-    await new Promise((resolve) => setTimeout(resolve, 180));
-    assert.deepEqual(
-        liveOrder.map((track) => track.uid),
-        ["a", "b", "c", "f", "g", "d", "e", "j", "k", "h", "i"],
+
+    const position = (tile) => [parseFloat(tile.style.left), parseFloat(tile.style.top)];
+    const ids = () => DOM.queue.querySelectorAll(".queue-tile").map((tile) => tile.dataset.uid);
+    const byId = (id) => DOM.queue.querySelectorAll(".queue-tile").find((tile) => tile.dataset.uid === id);
+    // The first two right-hand rows must contain the next four consecutive tracks.
+    assert.equal(position(byId("b"))[0], position(byId("d"))[0]);
+    assert.equal(position(byId("c"))[0], position(byId("e"))[0]);
+    assert.ok(position(byId("d"))[1] > position(byId("b"))[1]);
+    assert.ok(position(byId("e"))[1] > position(byId("c"))[1]);
+    assert.equal(position(byId("f"))[0], 0);
+    assert.ok(
+        position(byId("d"))[1] + parseFloat(byId("d").style.width) <=
+            position(byId("a"))[1] + parseFloat(byId("a").style.width),
     );
+    assert.deepEqual(
+        ids(),
+        originalOrder.map((track) => track.uid),
+    );
+
+    const lanes = () => {
+        const groups = new Map();
+        for (const tile of DOM.queue.querySelectorAll(".queue-tile")) {
+            const [x] = position(tile);
+            if (!groups.has(x)) groups.set(x, []);
+            groups.get(x).push(tile);
+        }
+        return [...groups.entries()]
+            .sort(([a], [b]) => a - b)
+            .map(([, tiles]) =>
+                tiles
+                    .sort((a, b) => position(a)[1] - position(b)[1])
+                    .map((tile) => tile.dataset.uid),
+            );
+    };
+    DOM.queue.querySelector(".queue-gallery").clientWidth = 1116;
+    Queue.layoutGallery();
+    assert.deepEqual(lanes(), [
+        ["a", "f", "j"],
+        ["g", "k"],
+        ["b", "d", "h"],
+        ["c", "e", "i"],
+    ]);
+
+    DOM.queue.querySelector(".queue-gallery").clientWidth = 576;
+    Queue.layoutGallery();
+    assert.deepEqual(lanes(), [
+        ["a", "d", "g"],
+        ["b", "e", "h", "j"],
+        ["c", "f", "i", "k"],
+    ]);
 
     DOM.queue.querySelector(".queue-gallery").clientWidth = 416;
     Queue.layoutGallery();
-    await new Promise((resolve) => setTimeout(resolve, 180));
+    assert.equal(position(byId("c"))[0], 0);
+    assert.ok(position(byId("c"))[1] > position(byId("a"))[1]);
+    assert.equal(position(byId("d"))[0], position(byId("b"))[0]);
     assert.deepEqual(
-        liveOrder.map((track) => track.uid),
-        ["a", "b", "d", "c", "f", "e", "h", "g", "j", "i", "k"],
+        ids(),
+        originalOrder.map((track) => track.uid),
     );
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    assert.equal(reorderCalls, 0);
 });
 test("queue updates retain unchanged card nodes instead of reloading every cover", () => {
     QueueAdapter.read = () => ({
@@ -227,6 +276,61 @@ test("the next card is promoted in place so it can animate to the featured slot"
         tiles[0].querySelector(".queue-lead-copy").parent,
         tiles[0].querySelector(".queue-motion-layer"),
     );
+});
+test("hover scrolls only clipped queue text immediately and resets it on leave", () => {
+    const tile = DOM.queue.querySelectorAll(".queue-tile")[1];
+    const titleViewport = tile.querySelector(".queue-track-title-viewport");
+    const artistViewport = tile.querySelector(".queue-track-artist-viewport");
+    const title = tile.querySelector(".queue-track-title");
+    const artist = tile.querySelector(".queue-track-artist");
+    titleViewport.firstElementChild = title;
+    artistViewport.firstElementChild = artist;
+    titleViewport.clientWidth = artistViewport.clientWidth = 100;
+    title.scrollWidth = 220;
+    artist.scrollWidth = 80;
+    title.style.removeProperty = artist.style.removeProperty = () => {};
+    let hovered = true;
+    tile.matches = () => hovered;
+    let animation, calls = 0, cancels = 0;
+    title.animate = (frames, options) => {
+        calls++;
+        animation = {
+            currentTime: 0,
+            cancel: () => {
+                cancels++;
+            },
+            frames,
+            options,
+        };
+        return animation;
+    };
+    const originalFrame = globalThis.requestAnimationFrame;
+    const frames = [];
+    globalThis.requestAnimationFrame = (callback) => { frames.push(callback); return frames.length; };
+    try {
+        tile.onpointerenter();
+        frames.shift()();
+        assert.equal(calls, 1);
+        assert.equal(animation.currentTime, 3000);
+        assert.equal(animation.options.iterations, Infinity);
+        assert.equal(animation.frames[2].transform, "translateX(-125px)");
+        hovered = false;
+        tile.onpointerleave();
+        assert.equal(cancels, 1);
+        title.scrollWidth = 100;
+        hovered = true;
+        tile.onpointerenter();
+        frames.shift()();
+        assert.equal(calls, 1, "a title that fits must stay still");
+        title.scrollWidth = 220;
+        tile.onpointerenter();
+        hovered = false;
+        frames.shift()();
+        assert.equal(calls, 1, "leaving before measurement must not start scrolling");
+    } finally {
+        if (originalFrame) globalThis.requestAnimationFrame = originalFrame;
+        else delete globalThis.requestAnimationFrame;
+    }
 });
 test("failed playback never starts a cover handoff", async () => {
     QueueAdapter.play = async () => ({ ok: false });
@@ -272,4 +376,13 @@ test("reduced motion and a stale artwork load do not leave overlays", () => {
     Spicetify.Player.data.item.uri = "b";
     Queue.landIncoming();
     assert.equal(DOM.container.querySelectorAll(".queue-artwork-flight").length, 0);
+});
+
+test("queue teardown cancels an in-flight layout animation", () => {
+    const tile = DOM.queue.querySelectorAll(".queue-tile")[1];
+    const animation = tile.anim;
+    assert.ok(animation);
+    Queue.teardown();
+    assert.equal(animation.cancelled, true);
+    assert.equal(DOM.queue.children.length, 0);
 });

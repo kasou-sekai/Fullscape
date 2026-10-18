@@ -1,5 +1,6 @@
 import CFM from "../../../utils/config";
 import translations from "../../../resources/strings";
+import { MOTION, prefersReducedMotion } from "../../../utils/motion";
 import { DOM } from "../../elements";
 
 /** Cover interactions live as long as the current display markup. */
@@ -9,6 +10,12 @@ export class Cover {
     private static animation: Animation | null = null;
     private static closing = false;
     private static source = "";
+    private static artworkFade: Animation | null = null;
+    private static previousArtwork: HTMLElement | null = null;
+    private static incomingArtwork: HTMLElement | null = null;
+    private static incomingAnimation: Animation | null = null;
+    private static targetArtwork = "";
+    private static pointerFrame: number | null = null;
 
     private static get strings() {
         return (translations[CFM.getGlobal("locale") as string] || translations["en-US"]).cover;
@@ -49,10 +56,22 @@ export class Cover {
                 : `perspective(900px) rotateX(${-y * 5}deg) rotateY(${x * 5}deg) scale(0.975)`;
         };
         hitbox.addEventListener("pointerenter", press, options);
-        hitbox.addEventListener("pointermove", press, options);
+        hitbox.addEventListener(
+            "pointermove",
+            (event) => {
+                if (this.pointerFrame !== null) cancelAnimationFrame(this.pointerFrame);
+                this.pointerFrame = requestAnimationFrame(() => {
+                    this.pointerFrame = null;
+                    press(event);
+                });
+            },
+            options,
+        );
         hitbox.addEventListener(
             "pointerleave",
             () => {
+                if (this.pointerFrame !== null) cancelAnimationFrame(this.pointerFrame);
+                this.pointerFrame = null;
                 cover.style.transform = "";
                 cover.classList.remove("is-pressing");
             },
@@ -71,8 +90,63 @@ export class Cover {
         );
     }
 
-    static updateImage() {
+    static get artworkSource() {
+        return this.targetArtwork || DOM.cover.style.backgroundImage;
+    }
+
+    static updateImage(previousSource = "", queueHandoff = false) {
         this.dismiss();
+        const nextSource = DOM.cover.style.backgroundImage;
+        this.clearArtworkFade();
+        DOM.cover.style.backgroundImage = nextSource;
+        if (
+            this.source &&
+            previousSource &&
+            previousSource !== DOM.cover.style.backgroundImage &&
+            !queueHandoff &&
+            !prefersReducedMotion()
+        ) {
+            const layer = document.createElement("div");
+            layer.className = "fullscape-artwork-previous";
+            layer.setAttribute("aria-hidden", "true");
+            layer.style.backgroundImage = previousSource;
+            const incoming = document.createElement("div");
+            incoming.className = "fullscape-artwork-incoming";
+            incoming.setAttribute("aria-hidden", "true");
+            incoming.style.backgroundImage = nextSource;
+            DOM.cover.append(layer, incoming);
+            this.previousArtwork = layer;
+            this.incomingArtwork = incoming;
+            this.targetArtwork = nextSource;
+            // Both decoded images own the transition, avoiding the new base image
+            // showing through the old layer before the incoming motion begins.
+            DOM.cover.style.backgroundImage = "none";
+            this.incomingAnimation = incoming.animate(
+                [
+                    { opacity: 0, transform: "translateY(18px) scale(0.96)" },
+                    { opacity: 1, transform: "translateY(0) scale(1)" },
+                ],
+                { duration: MOTION.handoff, easing: MOTION.ease, fill: "forwards" },
+            );
+            void this.incomingAnimation.finished.catch(() => undefined);
+            const animation = layer.animate(
+                [
+                    { opacity: 1, transform: "translateY(0) scale(1)" },
+                    { opacity: 0, transform: "translateY(-12px) scale(1.025)" },
+                ],
+                {
+                    duration: MOTION.handoff,
+                    easing: MOTION.ease,
+                    fill: "forwards",
+                },
+            );
+            this.artworkFade = animation;
+            void animation.finished
+                .catch(() => undefined)
+                .then(() => {
+                    if (this.artworkFade === animation) this.clearArtworkFade();
+                });
+        }
         this.source = DOM.coverImg.src;
         const ratio = DOM.coverImg.naturalWidth / DOM.coverImg.naturalHeight || 1;
         DOM.cover.parentElement.style.width = `${Math.min(1, ratio) * 100}%`;
@@ -128,7 +202,7 @@ export class Cover {
         const from = `translate(${rect.left - target.left}px, ${rect.top - target.top}px) scale(${rect.width / target.width}, ${rect.height / target.height})`;
         this.animation = image.animate([{ transform: from }, { transform: "none" }], {
             duration: this.duration(),
-            easing: "cubic-bezier(0.22, 1.18, 0.36, 1)",
+            easing: MOTION.spring,
         });
         cover.style.visibility = "hidden";
         cover.style.transform = "";
@@ -155,7 +229,7 @@ export class Cover {
     }
 
     private static duration() {
-        return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 380;
+        return prefersReducedMotion() ? 0 : MOTION.layout;
     }
 
     static close() {
@@ -180,7 +254,7 @@ export class Cover {
             ],
             {
                 duration: this.duration(),
-                easing: "cubic-bezier(0.22, 1.18, 0.36, 1)",
+                easing: MOTION.spring,
                 fill: "forwards",
             },
         );
@@ -210,7 +284,23 @@ export class Cover {
         }
     }
 
+    private static clearArtworkFade() {
+        this.artworkFade?.cancel();
+        this.artworkFade = null;
+        this.incomingAnimation?.cancel();
+        this.incomingAnimation = null;
+        this.previousArtwork?.remove();
+        this.previousArtwork = null;
+        this.incomingArtwork?.remove();
+        this.incomingArtwork = null;
+        if (this.targetArtwork && DOM.cover) DOM.cover.style.backgroundImage = this.targetArtwork;
+        this.targetArtwork = "";
+    }
+
     static teardown() {
+        if (this.pointerFrame !== null) cancelAnimationFrame(this.pointerFrame);
+        this.pointerFrame = null;
+        this.clearArtworkFade();
         this.dismiss();
         this.events?.abort();
         this.events = null;

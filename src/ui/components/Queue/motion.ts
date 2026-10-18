@@ -20,9 +20,9 @@ export function getQueueTileMotion(
     const progress = linearProgress * linearProgress * (3 - 2 * linearProgress);
     return {
         progress,
-        scaleX: 0.08 + progress * 0.92,
-        scaleY: 0.015 + progress * 0.985,
-        blur: (1 - progress) * 16,
+        scaleX: 0.94 + progress * 0.06,
+        scaleY: 0.94 + progress * 0.06,
+        blur: (1 - progress) * 4,
         translateY: (clippedAtTop ? -14 : 14) * (1 - progress),
         origin: clippedAtTop ? "center bottom" : "center top",
     };

@@ -1,6 +1,7 @@
 import OpenCC from "opencc-js";
 import type { ConverterFunction } from "opencc-js";
 import type { FuriganaRenderData } from "./furigana";
+import { detectTextLanguage } from "./text-language";
 
 export type LyricsChineseConversion = "original" | "simplified" | "traditional";
 export type ChineseScript = Exclude<LyricsChineseConversion, "original">;
@@ -35,21 +36,15 @@ export function normalizeChineseForMatch(text: string) {
 }
 
 export function isChineseLyrics(text: string) {
-    const hanCount = text.match(/\p{Script=Han}/gu)?.length ?? 0;
-    const kanaCount = text.match(/[\p{Script=Hiragana}\p{Script=Katakana}]/gu)?.length ?? 0;
-    const hangulCount = text.match(/\p{Script=Hangul}/gu)?.length ?? 0;
-    const latinCount = text.match(/\p{Script=Latin}/gu)?.length ?? 0;
+    return detectTextLanguage(text) === "zh";
+}
 
-    if (hanCount < 4) return false;
-
-    // Inspect the complete lyrics rather than isolated lines. Kana and Hangul
-    // are strong song-level signals for Japanese and Korean respectively, while
-    // the Latin ratio prevents a few CJK characters in otherwise English lyrics
-    // from selecting a Chinese font.
-    const isLikelyJapanese = kanaCount >= 4 && kanaCount * 5 >= hanCount;
-    const isLikelyKorean = hangulCount >= 4 && hangulCount * 5 >= hanCount;
-    const isMostlyLatin = latinCount > hanCount * 5;
-    return !isLikelyJapanese && !isLikelyKorean && !isMostlyLatin;
+export function getTranslationPresentation(text: string, target: LyricsChineseConversion) {
+    const conversion = target === "traditional" ? "traditional" : "simplified";
+    return {
+        text: convertChineseText(text, conversion),
+        language: conversion === "traditional" ? "zh-TW" : "zh-CN",
+    };
 }
 
 export function getChineseLyricsPresentation(

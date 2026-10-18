@@ -1,4 +1,6 @@
+import { MOTION, prefersReducedMotion } from "../../../utils/motion";
 import CFM from "../../../utils/config";
+import { applyTextLanguage } from "../../../utils/text-presentation";
 import translations from "../../../resources/strings";
 import { DOM } from "../../elements";
 import Utils from "../../../utils/utils";
@@ -15,8 +17,15 @@ export class UpNext {
     private static readonly visibleTransform = "translateX(0px)";
     private static readonly hiddenTransform = "translateX(calc(100% + 40px))";
     private static scrollAnimation: Animation | null = null;
+    private static sequence = 0;
+    private static scrollKey = "";
+    private static artworkLayer: HTMLElement | null = null;
+    private static artworkAnimation: Animation | null = null;
+    private static transitionAnimation: Animation | null = null;
+    private static showTimer: ReturnType<typeof setTimeout> | null = null;
 
     static async updateUpNextInfo() {
+        const sequence = ++this.sequence;
         const LOCALE = CFM.getGlobal("locale") as Config["locale"];
         DOM.upNextLabel.innerText = translations[LOCALE].upnext.toUpperCase();
         let metadata: Spicetify.Metadata = {};
@@ -46,27 +55,55 @@ export class UpNext {
         }
         const next_image = metadata.image_xlarge_url;
         const upnextImage = new Image();
-        if (next_image) {
-            upnextImage.src = next_image;
-        } else {
-            if (metadata.image_url) upnextImage.src = metadata.image_url;
-            else {
-                upnextImage.src = ICONS.OFFLINE_SVG;
+        return new Promise<boolean>((resolve) => {
+            let applied = false;
+            const apply = (source: string) => {
+                if (applied) return;
+                applied = true;
+                if (sequence !== this.sequence) {
+                    resolve(false);
+                    return;
+                }
+                const previous = DOM.upNextCover.style.backgroundImage;
+                const next = `url("${source}")`;
+                this.clearArtwork();
+                DOM.upNextCover.style.backgroundImage = next;
+                if (previous && previous !== next && this.upNextShown && !prefersReducedMotion()) {
+                    const layer = document.createElement("div");
+                    layer.className = "fullscape-artwork-previous";
+                    layer.style.backgroundImage = previous;
+                    layer.setAttribute("aria-hidden", "true");
+                    DOM.upNextCover.append(layer);
+                    this.artworkLayer = layer;
+                    const animation = layer.animate([{ opacity: 1 }, { opacity: 0 }], {
+                        duration: MOTION.content,
+                        easing: MOTION.ease,
+                        fill: "forwards",
+                    });
+                    this.artworkAnimation = animation;
+                    void animation.finished
+                        .catch(() => undefined)
+                        .then(() => {
+                            if (this.artworkAnimation === animation) this.clearArtwork();
+                        });
+                }
+                DOM.upNextPrimaryText.innerText = (songName || "") + "  •  " + next_artist;
+                DOM.upNextSecondaryText.innerText = "";
+                applyTextLanguage(DOM.upNextPrimaryText);
+                applyTextLanguage(DOM.upNextSecondaryText);
+                resolve(true);
+            };
+            upnextImage.onload = () => apply(upnextImage.src);
+            upnextImage.onerror = () => apply(ICONS.OFFLINE_SVG);
+            if (next_image) {
+                upnextImage.src = next_image;
+            } else {
+                if (metadata.image_url) upnextImage.src = metadata.image_url;
+                else {
+                    upnextImage.src = ICONS.OFFLINE_SVG;
+                }
             }
-        }
-        return new Promise<void>((resolve) => {
-            upnextImage.onload = () => {
-                DOM.upNextCover.style.backgroundImage = `url("${upnextImage.src}")`;
-                DOM.upNextPrimaryText.innerText = songName + "  •  " + next_artist;
-                DOM.upNextSecondaryText.innerText = songName + "  •  " + next_artist;
-                resolve();
-            };
-            upnextImage.onerror = () => {
-                DOM.upNextCover.style.backgroundImage = `url("${ICONS.OFFLINE_SVG}")`;
-                DOM.upNextPrimaryText.innerText = songName + "  •  " + next_artist;
-                DOM.upNextSecondaryText.innerText = songName + "  •  " + next_artist;
-                resolve();
-            };
+            if (upnextImage.complete && upnextImage.naturalWidth > 0) apply(upnextImage.src);
         });
     }
 
@@ -90,31 +127,60 @@ export class UpNext {
         }
 
         if (shouldShow) {
-            await this.updateUpNextInfo();
-            this.showUpNext();
+            if (await this.updateUpNextInfo()) this.showUpNext();
         } else {
             this.hideUpNext();
         }
     }
 
+    private static animateVisibility(visible: boolean) {
+        const element = DOM.upNextContainer;
+        const current =
+            typeof getComputedStyle === "function" ? getComputedStyle(element) : element.style;
+        // Read the interrupted pose before cancelling, so reversals remain continuous.
+        const from = {
+            transform: current.transform || this.hiddenTransform,
+            opacity: current.opacity || "0",
+        };
+        this.transitionAnimation?.cancel();
+        this.transitionAnimation = null;
+        const transform = visible ? this.visibleTransform : this.hiddenTransform;
+        const opacity = visible ? "1" : "0";
+        element.style.transform = transform;
+        element.style.opacity = opacity;
+        element.style.pointerEvents = visible ? "auto" : "none";
+        if (prefersReducedMotion() || typeof element.animate !== "function") return;
+        const animation = element.animate([from, { transform, opacity }], {
+            duration: visible ? MOTION.handoff : MOTION.layout,
+            easing: MOTION.ease,
+        });
+        this.transitionAnimation = animation;
+        void animation.finished
+            .catch(() => undefined)
+            .then(() => {
+                if (this.transitionAnimation === animation) this.transitionAnimation = null;
+            });
+    }
+
     static showUpNext() {
-        DOM.upNextContainer.style.transform = this.visibleTransform;
-        DOM.upNextContainer.style.opacity = "1";
-        DOM.upNextContainer.style.pointerEvents = "auto";
+        if (!this.upNextShown) this.animateVisibility(true);
         this.upNextShown = true;
         this.setupScrollingAnimation();
     }
 
     static hideUpNext() {
+        this.sequence++;
+        this.clearArtwork();
+        if (this.upNextShown) this.animateVisibility(false);
         this.upNextShown = false;
-        DOM.upNextContainer.style.transform = this.hiddenTransform;
-        DOM.upNextContainer.style.opacity = "0";
-        DOM.upNextContainer.style.pointerEvents = "none";
         this.resetUpNextAnimation();
     }
 
     static setupScrollingAnimation() {
+        const key = DOM.upNextPrimaryText.innerText + ":" + DOM.upNextTitleViewport.clientWidth;
+        if (key === this.scrollKey && this.scrollAnimation) return;
         this.resetUpNextAnimation();
+        this.scrollKey = key;
         const overflow = Math.ceil(
             DOM.upNextPrimaryText.offsetWidth - DOM.upNextTitleViewport.clientWidth,
         );
@@ -128,6 +194,7 @@ export class UpNext {
     }
 
     static resetUpNextAnimation() {
+        this.scrollKey = "";
         this.scrollAnimation?.cancel();
         this.scrollAnimation = null;
         DOM.upNextPrimaryText.style.paddingRight = "0px";
@@ -136,9 +203,37 @@ export class UpNext {
         DOM.upNextSecondaryText.innerText = "";
     }
 
+    private static clearArtwork() {
+        this.artworkAnimation?.cancel();
+        this.artworkAnimation = null;
+        this.artworkLayer?.remove();
+        this.artworkLayer = null;
+    }
+
+    static teardown() {
+        this.transitionAnimation?.cancel();
+        this.transitionAnimation = null;
+        if (DOM.upNextContainer) {
+            DOM.upNextContainer.style.transform = this.hiddenTransform;
+            DOM.upNextContainer.style.opacity = "0";
+            DOM.upNextContainer.style.pointerEvents = "none";
+        }
+        this.sequence++;
+        if (this.showTimer) clearTimeout(this.showTimer);
+        clearTimeout(this.upnextTimer);
+        this.showTimer = null;
+        this.clearArtwork();
+        this.scrollAnimation?.cancel();
+        this.scrollAnimation = null;
+        this.scrollKey = "";
+        this.upNextShown = false;
+    }
+
     static updateUpNextShow() {
         if (CFM.get("upnextDisplay") === "smart") {
-            setTimeout(() => {
+            if (this.showTimer) clearTimeout(this.showTimer);
+            this.showTimer = setTimeout(() => {
+                this.showTimer = null;
                 const timetogo = Utils.getShowTime(
                     CFM.get("upnextTimeToShow") as Settings["upnextTimeToShow"],
                 );
@@ -152,20 +247,17 @@ export class UpNext {
                     ) {
                         this.updateUpNext();
                     }
-                    this.upNextShown = true;
                 } else {
                     this.hideUpNext();
                     if (Spicetify.Player.isPlaying()) {
                         this.upnextTimer = setTimeout(() => {
                             this.updateUpNext();
-                            this.upNextShown = true;
                         }, timetogo);
                     }
                 }
             }, 100);
         } else if (CFM.get("upnextDisplay") === "always" && !this.upNextShown) {
             this.updateUpNext();
-            this.upNextShown = true;
         }
     }
 }
