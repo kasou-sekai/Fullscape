@@ -28,6 +28,9 @@ jobs:
             - name: Run static checks
               run: npm run check
 
+            - name: Run regression tests
+              run: npm test
+
             - name: Build extension
               run: npm run build-local
 

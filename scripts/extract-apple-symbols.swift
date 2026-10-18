@@ -3,7 +3,7 @@ import AppKit
 let out = CommandLine.arguments[1]
 let rasterSize = 256
 let outputSize = 128
-for name in ["translate", "quote.bubble.fill", "list.bullet", "ellipsis"] {
+for name in ["translate", "quote.bubble.fill", "list.bullet"] {
     guard let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)?
         .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 96, weight: .semibold)),
         let source = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: rasterSize,

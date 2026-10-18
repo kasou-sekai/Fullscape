@@ -22,7 +22,6 @@ import { Config, Settings } from "./types/fullscape";
 import { createOverflowScrollAnimation, getOverflowScrollTiming } from "./utils/overflow-scroll";
 
 import { getHtmlContent } from "./services/html-creator";
-import { initMoustrapRecord } from "./services/mousetrap-record";
 import { startSharedBridgePresence } from "./services/lyrics-cache";
 import { ReleaseUpdater } from "./services/release-updater";
 
@@ -57,7 +56,6 @@ async function startFullscape() {
     }
 
     // Start from here
-    initMoustrapRecord(Spicetify.Mousetrap);
     DOM.init();
     startSharedBridgePresence();
 
@@ -741,6 +739,7 @@ async function startFullscape() {
     }
 
     function render() {
+        LOCALE = CFM.getGlobal("locale") as Config["locale"];
         cancelPlaybackTimelineResync();
         playbackDeviceDebugUpdatedAt = 0;
         playbackDeviceDebugRequest = null;
@@ -772,6 +771,7 @@ async function startFullscape() {
         window.removeEventListener("focus", handleSpotifyForegroundChange);
         document.removeEventListener("visibilitychange", handleSpotifyForegroundChange);
 
+        Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", Queue.scheduleUpdate);
         Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", updateUpNext);
         Spicetify.Platform.PlayerAPI._events.removeListener("update", updateUpNextShow);
         Spicetify.Player.removeEventListener("onprogress", handlePlaybackTimelineProgress);
@@ -805,9 +805,9 @@ async function startFullscape() {
        }
        `;
 
-        if (CFM.get("lyricsDisplay")) {
-            Lyrics.teardown();
-        }
+        const progressRoot = DOM.container.querySelector("#fullscape-progress-parent");
+        if (progressRoot) ReactDOM.unmountComponentAtNode(progressRoot);
+        Lyrics.teardown();
         Cover.teardown();
         Queue.teardown();
         DOM.container.innerHTML = getHtmlContent();
@@ -1251,8 +1251,8 @@ async function startFullscape() {
                 "queue_update",
                 handleLyricsQueueUpdate,
             );
-            Lyrics.teardown();
         }
+        Lyrics.teardown();
         document.body.classList.remove(...CLASSES_TO_ADD);
         UpNext.upNextShown = false;
         if (CFM.get("enableFullscreen")) {

@@ -306,6 +306,7 @@ function isValidEntry(entry: LyricsCacheEntry, trackUri: string, kind: LyricsCac
 }
 
 async function setSharedCachedLyrics(entry: LyricsCacheEntry) {
+    if (!CFM.get("sharedLyricsBridge")) return;
     try {
         const response = await fetchBridge(SHARED_CACHE_ENDPOINT, {
             method: "POST",

@@ -307,9 +307,14 @@ export class Queue {
             wall.append(upNextLabel, heading);
             for (const [index, entry] of entries.entries()) {
                 const isUpNext = index === 0;
-                const tile = takeMatch(entry) || this.createTile(entry, index, isUpNext);
+                const tile = (takeMatch(entry) ||
+                    this.createTile(entry, index, isUpNext)) as HTMLButtonElement;
                 this.setTileRole(tile, isUpNext);
                 tile.dataset.queueIndex = String(index);
+                tile.dataset.uid = entry.uid;
+                tile.dataset.uri = entry.uri;
+                const image = tile.querySelector<HTMLImageElement>("img");
+                if (image) tile.onclick = () => void this.select(entry, image, tile);
                 wall.append(tile);
             }
             gallery.append(wall);

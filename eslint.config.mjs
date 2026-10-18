@@ -50,10 +50,4 @@ export default [
             ],
         },
     },
-    {
-        files: ["src/services/mousetrap-record.ts"],
-        rules: {
-            "@typescript-eslint/no-this-alias": "off",
-        },
-    },
 ];

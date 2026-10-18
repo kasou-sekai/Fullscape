@@ -394,3 +394,22 @@ test("queue teardown cancels an in-flight layout animation", () => {
     assert.equal(animation.cancelled, true);
     assert.equal(DOM.queue.children.length, 0);
 });
+
+
+test("a reused artwork card targets the new live queue identity", async () => {
+    const tile = DOM.queue.querySelectorAll(".queue-tile")[1];
+    const replacement = { ...entry("b"), uid: "new-b" };
+    QueueAdapter.read = () => ({ next: [entry("a")], later: [replacement] });
+    Queue.update();
+    assert.equal(DOM.queue.querySelectorAll(".queue-tile")[1], tile);
+    assert.equal(tile.dataset.uid, "new-b");
+    let selected;
+    const originalSelect = Queue.select;
+    Queue.select = async (value) => { selected = value; };
+    try {
+        await tile.onclick();
+        assert.equal(selected, replacement);
+    } finally {
+        Queue.select = originalSelect;
+    }
+});

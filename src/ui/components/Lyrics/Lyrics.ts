@@ -171,6 +171,8 @@ export class Lyrics {
     private static refetchTimer: ReturnType<typeof setTimeout> | null = null;
     private static sharedSyncTimer: ReturnType<typeof setTimeout> | null = null;
     private static sharedSyncInFlight = false;
+    private static sharedSyncRunning = false;
+    private static sharedSyncGeneration = 0;
     private static sharedSyncMissCount = 0;
     private static lastSharedSyncSignature: string | null = null;
     private static renderedLyricsSignature: string | null = null;
@@ -284,7 +286,6 @@ export class Lyrics {
             this.renderStatus("Lyrics unavailable", true);
             return;
         }
-        this.loadInterludeTempo(trackUri);
         const bypassAutomaticSharedCache = force !== "none";
         if (bypassAutomaticSharedCache) this.stopSharedCacheSync();
         else this.startSharedCacheSync();
@@ -295,7 +296,14 @@ export class Lyrics {
             );
         }
         const track = this.getCurrentTrack(trackUri);
-        const cachedLines = this.getPreparedLyricsFromCache(track);
+        const cachedEntry = this.getPreparedLyricsEntryFromCache(track);
+        if (cachedEntry?.hidden) {
+            this.renderStatus("Lyrics unavailable", true);
+            this.clearRefetch();
+            return;
+        }
+        this.loadInterludeTempo(trackUri);
+        const cachedLines = cachedEntry ? this.linesForEntry(cachedEntry) : null;
         if (cachedLines !== null) {
             if (cachedLines.length) this.applyLines(cachedLines);
             else {
@@ -401,11 +409,16 @@ export class Lyrics {
     // ---- internal helpers ----
 
     private static getPreparedLyricsFromCache(track: LyricsTrack) {
+        const entry = this.getPreparedLyricsEntryFromCache(track);
+        return entry ? this.linesForEntry(entry) : null;
+    }
+
+    private static getPreparedLyricsEntryFromCache(track: LyricsTrack) {
         const kind: LyricsCacheKind = CFM.get("thirdPartyLyrics")
             ? this.getEnhancedCacheKind()
             : "spotify";
         const cached = getCachedLyricsFullEntry(track.uri, kind);
-        return cached && this.isPreferredCacheEntry(cached) ? this.linesForEntry(cached) : null;
+        return cached && this.isPreferredCacheEntry(cached) ? cached : null;
     }
 
     private static async getPreparedLyrics(
@@ -464,16 +477,19 @@ export class Lyrics {
         }
 
         let debugSnapshot: ThirdPartyLyricsDebug | undefined;
-        const releaseLease = await this.beginBridgeLease(track.uri);
-        const request = enhanceWithThirdPartyLyrics(
-            spotifyLines,
-            track,
-            relaxedMatching,
-            publishDebug,
-            (debug) => {
-                debugSnapshot = debug;
-            },
-        )
+        let releaseLease = () => {};
+        const request = (async () => {
+            releaseLease = await this.beginBridgeLease(track.uri);
+            return enhanceWithThirdPartyLyrics(
+                spotifyLines,
+                track,
+                relaxedMatching,
+                publishDebug,
+                (debug) => {
+                    debugSnapshot = debug;
+                },
+            );
+        })()
             .then((lines) => {
                 const sourceName = this.thirdPartySourceName(debugSnapshot);
                 const resolvedLines =
@@ -529,7 +545,10 @@ export class Lyrics {
         return "Spotify";
     }
 
-    private static async bestSharedPreferredEntry(track: LyricsTrack) {
+    private static async bestSharedPreferredEntry(
+        track: LyricsTrack,
+        isActive: () => boolean = () => true,
+    ) {
         // LyricShiori converts its current local selection to the requested
         // kind, so one request is sufficient for both replacement and offset
         // updates. Querying every cache kind would triple synchronous LRCS I/O.
@@ -540,6 +559,7 @@ export class Lyrics {
             false,
             this.cacheMetadataForTrack(track),
         );
+        if (!isActive()) return null;
         if (entry && consumeSharedManualReset(entry)) {
             if (this.isCurrentTrack(track.uri)) {
                 this.authoritativeRevision += 1;
@@ -668,11 +688,18 @@ export class Lyrics {
     }
 
     private static startSharedCacheSync() {
-        if (!CFM.get("sharedLyricsBridge") || this.sharedSyncTimer) return;
+        if (!CFM.get("sharedLyricsBridge") || this.sharedSyncRunning) return;
+        this.sharedSyncRunning = true;
+        const generation = ++this.sharedSyncGeneration;
         const poll = () => {
+            if (generation !== this.sharedSyncGeneration || !this.sharedSyncRunning) return;
             this.sharedSyncTimer = null;
-            void this.syncSharedCacheForCurrentTrack().finally(() => {
-                if (!CFM.get("sharedLyricsBridge") || !this.currentTrackUri) return;
+            void this.syncSharedCacheForCurrentTrack(generation).finally(() => {
+                if (generation !== this.sharedSyncGeneration || !this.sharedSyncRunning) return;
+                if (!CFM.get("sharedLyricsBridge") || !this.currentTrackUri) {
+                    this.stopSharedCacheSync();
+                    return;
+                }
                 const delay = Math.min(
                     this.SHARED_SYNC_POLL_MS * 2 ** this.sharedSyncMissCount,
                     this.SHARED_SYNC_MAX_POLL_MS,
@@ -684,6 +711,8 @@ export class Lyrics {
     }
 
     private static stopSharedCacheSync() {
+        this.sharedSyncRunning = false;
+        this.sharedSyncGeneration += 1;
         if (this.sharedSyncTimer) {
             clearTimeout(this.sharedSyncTimer);
             this.sharedSyncTimer = null;
@@ -693,7 +722,7 @@ export class Lyrics {
         this.lastSharedSyncSignature = null;
     }
 
-    private static async syncSharedCacheForCurrentTrack() {
+    private static async syncSharedCacheForCurrentTrack(generation = this.sharedSyncGeneration) {
         if (
             this.sharedSyncInFlight ||
             !CFM.get("lyricsDisplay") ||
@@ -706,8 +735,11 @@ export class Lyrics {
         this.sharedSyncInFlight = true;
         try {
             const track = this.getCurrentTrack(trackUri);
-            const entry = await this.bestSharedPreferredEntry(track);
-            if (!this.isCurrentTrack(trackUri)) return;
+            const entry = await this.bestSharedPreferredEntry(
+                track,
+                () => generation === this.sharedSyncGeneration,
+            );
+            if (generation !== this.sharedSyncGeneration || !this.isCurrentTrack(trackUri)) return;
             const signature = entry ? this.cacheEntrySignature(entry) : null;
             if (!signature) {
                 // Only publish local state after the bridge read has had a
@@ -731,7 +763,7 @@ export class Lyrics {
             this.lastSharedSyncSignature = signature;
             this.applySharedLyricsEntry(trackUri, entry);
         } finally {
-            this.sharedSyncInFlight = false;
+            if (generation === this.sharedSyncGeneration) this.sharedSyncInFlight = false;
         }
     }
 
@@ -907,9 +939,12 @@ export class Lyrics {
 
         const trackId = track.uri.split(":").pop();
         if (!trackId) return [];
-        const releaseLease = await this.beginBridgeLease(track.uri);
+        let releaseLease = () => {};
         const requestStartedAt = Date.now();
-        const request = this.getLyricsWithRetry(trackId, track.image)
+        const request = (async () => {
+            releaseLease = await this.beginBridgeLease(track.uri);
+            return this.getLyricsWithRetry(trackId, track.image);
+        })()
             .then((response) => {
                 const lines = this.normalizeLines(response.lyrics.lines);
                 const authoritative = getCachedLyricsFullEntry(track.uri, "spotify");
