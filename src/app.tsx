@@ -22,7 +22,6 @@ import { Config, Settings } from "./types/fullscape";
 import { createOverflowScrollAnimation, getOverflowScrollTiming } from "./utils/overflow-scroll";
 
 import { getHtmlContent } from "./services/html-creator";
-import { initMoustrapRecord } from "./services/mousetrap-record";
 import { startSharedBridgePresence } from "./services/lyrics-cache";
 import { ReleaseUpdater } from "./services/release-updater";
 
@@ -57,17 +56,16 @@ async function startFullscape() {
     }
 
     // Start from here
-    initMoustrapRecord(Spicetify.Mousetrap);
     DOM.init();
     startSharedBridgePresence();
 
-    if (CFM.getGlobal("activationTypes") !== "btns") {
+    // Keep a keyboard entry available when Spotify changes or delays its bottom bar.
+    if (CFM.getGlobal("activationTypes") !== "btns" || !HtmlSelectors.getExtraBarSelector()) {
         Spicetify.Mousetrap.bind("f", toggleFullscape);
     }
 
     function toggleFullscape() {
-        if (Utils.isModeActivated()) deactivate();
-        else activate();
+        return Utils.isModeActivated() ? deactivate() : activate();
     }
 
     let LOCALE: string = CFM.getGlobal("locale") as Config["locale"];
@@ -1147,7 +1145,9 @@ async function startFullscape() {
                 updatePlayerControlsWithoutResyncEffect,
             );
         }
-        document.querySelector(".Root__top-container")?.append(DOM.style, DOM.container);
+        // Recent Spotify layouts no longer expose the legacy root class.
+        const displayHost = document.querySelector(".Root__top-container") ?? document.body;
+        displayHost.append(DOM.style, DOM.container);
         animateFeedback(DOM.container, [{ opacity: 0 }, { opacity: 1 }]);
         updatePlaybackLayout({
             data: { is_paused: !Spicetify.Player.isPlaying() },
@@ -1324,29 +1324,38 @@ async function startFullscape() {
         UpNext.updateUpNextShow.bind(UpNext),
     );
 
-    const extraBar = HtmlSelectors.getExtraBarSelector() as HTMLElement;
-    if (CFM.getGlobal("hideSpotifyFullscreenButton")) {
-        const lastExtraBarItem = extraBar?.lastElementChild as HTMLElement | null;
-        if (
-            lastExtraBarItem?.classList.contains("control-button") ||
-            lastExtraBarItem?.title === "Full screen"
-        )
-            lastExtraBarItem.remove();
-    }
-    if (CFM.getGlobal("activationTypes") != "keys") {
-        const defButton = document.createElement("button");
-        defButton.classList.add("button");
-        defButton.id = "fullscape-default-button";
-        defButton.setAttribute("title", translations[LOCALE].fullscapeButtonDescription);
+    const mountEntryButton = () => {
+        const extraBar = HtmlSelectors.getExtraBarSelector();
+        if (!extraBar || document.getElementById("fullscape-default-button")) return;
+        if (CFM.getGlobal("hideSpotifyFullscreenButton")) {
+            const lastExtraBarItem = extraBar?.lastElementChild as HTMLElement | null;
+            if (
+                lastExtraBarItem?.classList.contains("control-button") ||
+                lastExtraBarItem?.title === "Full screen"
+            )
+                lastExtraBarItem.remove();
+        }
+        if (CFM.getGlobal("activationTypes") != "keys") {
+            const defButton = document.createElement("button");
+            defButton.classList.add("button");
+            defButton.id = "fullscape-default-button";
+            defButton.setAttribute("title", translations[LOCALE].fullscapeButtonDescription);
 
-        defButton.innerHTML = ICONS.FULLSCREEN;
-        defButton.onclick = toggleFullscape;
+            defButton.innerHTML = ICONS.FULLSCREEN;
+            defButton.onclick = toggleFullscape;
 
-        defButton.oncontextmenu = (evt) => {
-            evt.preventDefault();
-            ConfigManager.openConfig();
-        };
-        (extraBar as HTMLElement)?.append(defButton);
+            defButton.oncontextmenu = (evt) => {
+                evt.preventDefault();
+                ConfigManager.openConfig();
+            };
+            extraBar.append(defButton);
+        }
+    };
+    if (CFM.getGlobal("activationTypes") !== "keys") {
+        mountEntryButton();
+        // Spotify can mount or replace the player bar after extension startup.
+        const entryObserver = new MutationObserver(mountEntryButton);
+        entryObserver.observe(document.body, { childList: true, subtree: true });
     }
 
     render();

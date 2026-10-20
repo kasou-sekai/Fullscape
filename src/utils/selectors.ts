@@ -5,8 +5,8 @@ class HtmlSelectors {
     ];
     static getExtraBarSelector(): HTMLElement | null {
         for (const selector of this.EXTRA_BAR_SELECTORS) {
-            const element = document.querySelector(selector)?.childNodes[0];
-            if (element) return element as HTMLElement;
+            const bar = document.querySelector<HTMLElement>(selector);
+            if (bar) return (bar.firstElementChild as HTMLElement | null) ?? bar;
         }
         return null;
     }

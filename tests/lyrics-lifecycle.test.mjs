@@ -12,7 +12,6 @@ const appModules = {
     "react-dom": "export default { unmountComponentAtNode() {} };",
     "./constants/apple-system-symbols": "export const APPLE_SYMBOLS = {};",
     "./constants": "export default {}; export const CLASSES_TO_ADD = [];",
-    "./utils/utils": "export default { allNotExist: () => [], isModeActivated: () => false };",
     "./utils/motion": "export const initializeMotionTokens = () => {}; export const animateFeedback = () => {}; export const cancelFeedback = () => {}; export const prefersReducedMotion = () => true; export const MOTION = {};",
     "./utils/selectors": "export default { getExtraBarSelector: () => null };",
     "./resources/strings": 'export default { "en-US": { sideView: {} } };',
@@ -25,7 +24,7 @@ const appModules = {
         "export const ReleaseUpdater = { reportRuntimeVersion() {}, shouldStartBundledVersion: async () => true, consumeLoadFailure: () => null };",
     "./ui/components/ProgressBar/ProgressBar": "export default () => {};",
     "./ui/components/Config/Config":
-        "export const ConfigManager = { init(render, activate, deactivate) { globalThis.host.callbacks = { render, activate, deactivate }; } };",
+        "export const ConfigManager = { openConfig() {}, init(render, activate, deactivate) { globalThis.host.callbacks = { render, activate, deactivate }; } };",
     "./ui/components/Queue/Queue":
         "export const Queue = { teardown() {}, attach() {}, cancelHandoff() {}, scheduleUpdate() {} };",
     "./ui/components/Cover/Cover": "export const Cover = { teardown() {}, attach() {} };",
@@ -81,7 +80,7 @@ function createHost(playing) {
         children = new Map();
         isConnected = true;
         style = { setProperty: noop, removeProperty: noop };
-        classList = { add: noop, remove: noop, toggle: noop };
+        classList = { add: noop, remove: noop, toggle: noop, contains: () => false };
         markup = "";
         get innerHTML() {
             return this.markup;
@@ -94,6 +93,9 @@ function createHost(playing) {
         querySelector(selector) {
             if (!this.children.has(selector)) this.children.set(selector, new Element());
             return this.children.get(selector);
+        }
+        append(...nodes) {
+            this.appended = nodes;
         }
         querySelectorAll() {
             return [];
@@ -108,11 +110,13 @@ function createHost(playing) {
     let nextId = 0;
     const frames = new Map();
     const timers = new Map();
+    const shortcuts = new Map();
     const settings = {
         lyricsDisplay: true,
         sharedLyricsBridge: true,
         upnextDisplay: "never",
         playerControls: "never",
+        progressBarDisplay: "never",
     };
     const host = {
         DOM: { container: new Element(), style: new Element(), init: noop },
@@ -134,18 +138,19 @@ function createHost(playing) {
         fetch: async () => new Response(JSON.stringify({ token: "test", protocolVersion: 1 })),
         navigator: { language: "en-US" },
         localStorage: { getItem: () => null, setItem: noop },
-        document: { body: new Element(), querySelector: () => null, removeEventListener: noop },
-        window: { innerWidth: 1200, innerHeight: 800, removeEventListener: noop },
+        document: { body: new Element(), querySelector: () => null, addEventListener: noop, removeEventListener: noop },
+        window: { innerWidth: 1200, innerHeight: 800, addEventListener: noop, removeEventListener: noop },
         Spicetify: {
             CosmosAsync: { get: async () => null },
-            Mousetrap: { bind: noop, unbind: noop },
+            Mousetrap: { bind: (key, handler) => shortcuts.set(key, handler), unbind: (key) => shortcuts.delete(key) },
             Player: {
                 data: { item: { uri: "spotify:track:example" } },
                 isPlaying: () => playing,
                 getProgress: () => 10,
+                addEventListener: noop,
                 removeEventListener: noop,
             },
-            Platform: { PlayerAPI: { _events: { removeListener: noop } } },
+            Platform: { PlayerAPI: { _events: { addListener: noop, removeListener: noop } } },
         },
         requestAnimationFrame: (callback) => {
             const id = ++nextId;
@@ -166,10 +171,12 @@ function createHost(playing) {
         ...sandbox.module.exports,
         host,
         settings,
+        shortcuts,
         frames,
         timers,
         player: sandbox.Spicetify.Player,
         platform: sandbox.Spicetify.Platform,
+        body: sandbox.document.body,
     };
 }
 
@@ -286,4 +293,24 @@ test("a lyrics response arriving after disable cannot render or restart work", a
     assert.notEqual(host.DOM.lyrics, previousContainer);
     assert.equal(host.DOM.lyrics.innerHTML, "");
     await host.callbacks.deactivate();
+});
+
+// Use the real readiness check: there is no Spotify bottom bar in this host.
+test("registers F and completes rendering without a Spotify bottom bar or Mousetrap prototype", async () => {
+    const { main, host, shortcuts } = createHost(true);
+    await main();
+    assert.equal(typeof shortcuts.get("f"), "function");
+    assert.ok(host.DOM.title);
+    assert.ok(host.callbacks.activate);
+});
+
+test("F mounts the display on body when Spotify no longer has the legacy root", async () => {
+    const { main, host, shortcuts, settings, body } = createHost(true);
+    settings.lyricsDisplay = false;
+    await main();
+    await shortcuts.get("f")();
+    assert.deepEqual(body.appended, [host.DOM.style, host.DOM.container]);
+    assert.equal(typeof shortcuts.get("esc"), "function");
+    await shortcuts.get("esc")();
+    assert.equal(host.DOM.container.isConnected, false);
 });

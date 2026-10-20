@@ -1,13 +1,9 @@
 import { animateFeedback } from "./motion";
-import HtmlSelectors from "./selectors";
 import WebAPI from "../services/web-api";
 
 class Utils {
     static allNotExist() {
-        const extraBar = HtmlSelectors.getExtraBarSelector();
-
         const entriesToVerify = {
-            "Extra Bar Component": extraBar,
             "Spicetify CosmosAsync": Spicetify.CosmosAsync,
             "Spicetify Mousetrap": Spicetify.Mousetrap,
             "Spicetify Player": Spicetify.Player,
