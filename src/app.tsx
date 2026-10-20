@@ -1328,8 +1328,14 @@ async function startFullscape() {
         const extraBar = HtmlSelectors.getExtraBarSelector();
         if (!extraBar || document.getElementById("fullscape-default-button")) return;
         if (CFM.getGlobal("hideSpotifyFullscreenButton")) {
+            const fullscreenButton = extraBar.querySelector<HTMLElement>(
+                '[data-testid="fullscreen-mode-button"]',
+            );
             const lastExtraBarItem = extraBar?.lastElementChild as HTMLElement | null;
-            if (
+            if (fullscreenButton) {
+                // Keep the native node as an anchor for future bar replacements.
+                fullscreenButton.style.display = "none";
+            } else if (
                 lastExtraBarItem?.classList.contains("control-button") ||
                 lastExtraBarItem?.title === "Full screen"
             )
@@ -1339,7 +1345,9 @@ async function startFullscape() {
             const defButton = document.createElement("button");
             defButton.classList.add("button");
             defButton.id = "fullscape-default-button";
+            defButton.type = "button";
             defButton.setAttribute("title", translations[LOCALE].fullscapeButtonDescription);
+            defButton.setAttribute("aria-label", translations[LOCALE].fullscapeButtonDescription);
 
             defButton.innerHTML = ICONS.FULLSCREEN;
             defButton.onclick = toggleFullscape;

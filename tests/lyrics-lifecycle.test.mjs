@@ -13,7 +13,7 @@ const appModules = {
     "./constants/apple-system-symbols": "export const APPLE_SYMBOLS = {};",
     "./constants": "export default {}; export const CLASSES_TO_ADD = [];",
     "./utils/motion": "export const initializeMotionTokens = () => {}; export const animateFeedback = () => {}; export const cancelFeedback = () => {}; export const prefersReducedMotion = () => true; export const MOTION = {};",
-    "./utils/selectors": "export default { getExtraBarSelector: () => null };",
+    "./utils/selectors": "export default { getExtraBarSelector: () => globalThis.host.extraBar ?? null };",
     "./resources/strings": 'export default { "en-US": { sideView: {} } };',
     "./utils/overflow-scroll":
         "export const createOverflowScrollAnimation = () => {}; export const getOverflowScrollTiming = () => {};",
@@ -118,12 +118,15 @@ function createHost(playing) {
         playerControls: "never",
         progressBarDisplay: "never",
     };
+    const globalSettings = { locale: "en-US", activationTypes: "keys", autoLaunch: "never" };
     const host = {
+        globalSettings,
+        observers: [],
+        createElement: () => new Element(),
         DOM: { container: new Element(), style: new Element(), init: noop },
         config: {
             get: (key) => settings[key],
-            getGlobal: (key) =>
-                ({ locale: "en-US", activationTypes: "keys", autoLaunch: "never" })[key],
+            getGlobal: (key) => globalSettings[key],
         },
     };
     const sandbox = {
@@ -138,7 +141,18 @@ function createHost(playing) {
         fetch: async () => new Response(JSON.stringify({ token: "test", protocolVersion: 1 })),
         navigator: { language: "en-US" },
         localStorage: { getItem: () => null, setItem: noop },
-        document: { body: new Element(), querySelector: () => null, addEventListener: noop, removeEventListener: noop },
+        document: {
+            body: new Element(),
+            querySelector: () => null,
+            createElement: () => new Element(),
+            getElementById: (id) => host.extraBar?.appended?.find((node) => node.id === id) ?? null,
+            addEventListener: noop,
+            removeEventListener: noop,
+        },
+        MutationObserver: class {
+            constructor(callback) { host.observers.push(callback); }
+            observe() {}
+        },
         window: { innerWidth: 1200, innerHeight: 800, addEventListener: noop, removeEventListener: noop },
         Spicetify: {
             CosmosAsync: { get: async () => null },
@@ -313,4 +327,27 @@ test("F mounts the display on body when Spotify no longer has the legacy root", 
     assert.equal(typeof shortcuts.get("esc"), "function");
     await shortcuts.get("esc")();
     assert.equal(host.DOM.container.isConnected, false);
+});
+
+test("a delayed or replaced bottom bar gets one working button and keeps the F fallback", async () => {
+    const { main, host, shortcuts, settings, body } = createHost(true);
+    host.globalSettings.activationTypes = "btns";
+    settings.lyricsDisplay = false;
+    await main();
+    assert.equal(typeof shortcuts.get("f"), "function");
+    assert.equal(host.observers.length, 1);
+    host.extraBar = host.createElement();
+    host.observers[0]();
+    const firstButton = host.extraBar.appended[0];
+    assert.equal(firstButton.id, "fullscape-default-button");
+    assert.equal(firstButton.type, "button");
+    host.observers[0]();
+    assert.equal(host.extraBar.appended[0], firstButton);
+    host.extraBar = host.createElement();
+    host.observers[0]();
+    const replacementButton = host.extraBar.appended[0];
+    assert.notEqual(replacementButton, firstButton);
+    await replacementButton.onclick();
+    assert.deepEqual(body.appended, [host.DOM.style, host.DOM.container]);
+    await shortcuts.get("esc")();
 });
