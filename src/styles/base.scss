@@ -241,6 +241,10 @@
             opacity: 0.55;
         }
         .rnp-lyrics-line.rnp-lyrics-right {
+            // Keep the second voice away from the far edge of the lyric column.
+            --lyrics-duet-inset: clamp(20px, 5%, 48px);
+            width: calc(100% - 60px - var(--lyrics-left-bleed) - var(--lyrics-duet-inset));
+            max-width: calc(100% - 60px - var(--lyrics-left-bleed) - var(--lyrics-duet-inset));
             text-align: right;
             transform-origin: right center;
             > .rnp-lyrics-line-content {

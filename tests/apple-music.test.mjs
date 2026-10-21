@@ -91,3 +91,15 @@ test("rich validation rejects corrupt timing, excessive trees and unsafe typed a
         false,
     );
 });
+
+test("completed voices stay lit until the next start, including seeks into a gap", () => {
+    const next = { ...main, time: 20000, presentation: { ...main.presentation, end: 25 } };
+    const lines = api.groupRichLines([main, right, next]);
+    assert.deepEqual(api.activeRichLines(lines, 9000), []);
+    assert.deepEqual(api.activeRichLines(lines, 16000), [1]);
+    assert.deepEqual(api.activeRichLines(lines, 19999), [1]);
+    assert.deepEqual(api.activeRichLines(lines, 20000), [2]);
+    const duet = [main, { ...right, presentation: { ...right.presentation, end: 15 } }, next];
+    assert.deepEqual(api.activeRichLines(duet, 18000), [0, 1]);
+    assert.equal(api.richLineEnd(right), 16000);
+});

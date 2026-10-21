@@ -35,9 +35,23 @@ export function richLineEnd(line: EnhancedLyricLine) {
 }
 
 export function activeRichLines(lines: EnhancedLyricLine[], progress: number) {
-    return lines.flatMap((line, index) =>
+    const active = lines.flatMap((line, index) =>
         line.time !== null && line.time <= progress && progress < richLineEnd(line) ? [index] : [],
     );
+    if (active.length) return active;
+    // Keep the last completed voice lit through the gap, without extending its
+    // syllable timing or retaining older voices when another voice is singing.
+    let latestEnd = -Infinity;
+    let held: number[] = [];
+    lines.forEach((line, index) => {
+        if (line.time === null || line.time > progress) return;
+        const end = richLineEnd(line);
+        if (end > progress || end < latestEnd) return;
+        if (end > latestEnd) held = [];
+        latestEnd = end;
+        held.push(index);
+    });
+    return held;
 }
 
 export function validRichLines(lines: unknown): lines is EnhancedLyricLine[] {

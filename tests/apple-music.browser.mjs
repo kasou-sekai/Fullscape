@@ -104,7 +104,12 @@ test(
  getComputedStyle(wrapper).opacity; wrapper.getAnimations().forEach(animation=>animation.finish());
  const hidden=Number(getComputedStyle(wrapper).opacity);
  const collapsed=L.lineHeights[0];
- const result={before,opening,visible,base,expanded,simultaneous,end,origin,rightAligned,hasFrozenRows,frameCount:frames.length,lift:frames[20]['--karaoke-lift'],hidden,collapsed,preservedWordNodes};
+ const rightInset=L.lineNodes[0].offsetWidth-rightNode.offsetWidth;
+ progress=7500; L.updateActive(progress);
+ const held=[...L.richActive];const heldLit=rightNode.classList.contains('active');
+ progress=8000; L.updateActive(progress);
+ const following=[...L.richActive];
+ const result={before,opening,visible,base,expanded,simultaneous,end,origin,rightAligned,rightInset,held,heldLit,following,hasFrozenRows,frameCount:frames.length,lift:frames[20]['--karaoke-lift'],hidden,collapsed,preservedWordNodes};
  progress=2500;L.updateActive(progress);getComputedStyle(wrapper).opacity;wrapper.getAnimations().forEach(animation=>animation.finish());
  const oldLoad = L.loadSequence;
  const retainedWords = [...L.lineNodes[0].querySelectorAll('.rnp-karaoke-word')];
@@ -155,6 +160,10 @@ test(
             assert.deepEqual(value.simultaneous, [0, 1]);
             assert.equal(value.end, 6000);
             assert.equal(value.rightAligned, true);
+            assert.ok(value.rightInset >= 20 && value.rightInset <= 48, JSON.stringify(value));
+            assert.deepEqual(value.held, [1]);
+            assert.equal(value.heldLit, true);
+            assert.deepEqual(value.following, [2]);
             assert.equal(value.frameCount, 31);
             assert.equal(value.lift, "-0.07em");
             assert.equal(value.hidden, 0);
