@@ -14,11 +14,30 @@ export type RichPresentation = {
     isBackground: boolean;
     parentKey?: string;
     end?: number;
+    timingMode?: string;
     element: TimedTextElement;
 };
 
+export function hasAuthoredRichWordTiming(line: EnhancedLyricLine): boolean {
+    const presentation = line.presentation;
+    if (!presentation) return true;
+    if (["line", "none"].includes(presentation.timingMode?.toLowerCase())) return false;
+    const visit = (node: TimedTextElement, root = false): boolean => {
+        const attr = (key: string) =>
+            Object.entries(node.attributes).find(([name]) => name.split(":").pop() === key)?.[1];
+        if (!root && attr("role") === "x-bg") return false;
+        if (["text", "textContainer", "delimiter"].includes(attr("ruby"))) return false;
+        return (
+            (node.name === "span" && attr("role") !== "x-bg" && attr("begin") !== undefined) ||
+            node.children.some((child) => visit(child))
+        );
+    };
+    return visit(presentation.element, true);
+}
+
 /** Repair legacy rich caches whose timed spans omit the literal TTML gaps. */
 export function preserveRichUntimedText(line: EnhancedLyricLine): EnhancedLyricLine {
+    if (line.presentation && !hasAuthoredRichWordTiming(line)) return { ...line, words: undefined };
     const words = line.words;
     if (
         !line.presentation ||

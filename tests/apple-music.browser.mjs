@@ -21,7 +21,7 @@ test(
             const bundle = await build({
                 stdin: {
                     contents:
-                        'export {Lyrics} from "./src/ui/components/Lyrics/Lyrics"; export {groupRichLines} from "./src/services/lyrics-rich-document"; export {publishThirdPartyLyricsDebug} from "./src/services/third-party-lyrics";',
+                        'export {Lyrics} from "./src/ui/components/Lyrics/Lyrics"; export {groupRichLines} from "./src/services/lyrics-rich-document"; export {publishThirdPartyLyricsDebug} from "./src/services/third-party-lyrics"; export {lyricsPreferenceScore} from "./src/services/lyrics-preference";',
                     resolveDir: process.cwd(),
                 },
                 bundle: true,
@@ -87,6 +87,21 @@ test(
                     };
                 });
             }
+            let lineFixture = [];
+            if (process.env.FULLSCAPE_LINE_FIXTURE) {
+                const file = JSON.parse(readFileSync(process.env.FULLSCAPE_LINE_FIXTURE, "utf8"));
+                lineFixture = file.lines.map((line) => ({
+                    time: line.startMilliseconds,
+                    text: line.text,
+                    duration: line.durationMilliseconds,
+                    presentation: line.presentation,
+                    words: line.words.map((word) => ({
+                        time: word.startMilliseconds,
+                        duration: word.durationMilliseconds,
+                        text: word.text,
+                    })),
+                }));
+            }
             const html = `<!doctype html><meta charset="utf-8"><style>${css}
  #fullscape-display{display:block;background:#171421;color:white;width:1050px;height:900px}#fad-lyrics-container{width:950px;height:850px;--lyrics-base-font-size:48px;--lyrics-font-scale:1;--primary-color:white;--tertiary-color:#888;--secondary-color:#aaa;--main-color:255,255,255}.lyrics-wrapper,.rnp-lyrics{height:850px}#results{display:none}</style>
  <div id="fullscape-display"><div id="fad-lyrics-container"></div></div>
@@ -95,7 +110,7 @@ test(
  (async()=>{try{
  const L=Fixture.Lyrics;
  L.container=document.getElementById('fad-lyrics-container');
- const node={name:'p',attributes:{},children:[]};
+ const node={name:'p',attributes:{},children:[{name:'span',attributes:{begin:'1',end:'6'},children:[]}]};
  const presentation=(key,end,alignment='left')=>({key,end,alignment,isBackground:false,element:node});
  const main={time:1000,text:'Ocean voices in the morning',duration:5000,words:[{time:1000,duration:5000,text:'Ocean voices in the morning'}],presentation:presentation('L1',6)};
  const right={time:1800,text:'Answering voices sing together across the ocean and the sky',duration:5200,words:[{time:1800,duration:5200,text:'Answering voices sing together across the ocean and the sky'}],presentation:presentation('L2',7,'right')};
@@ -150,10 +165,15 @@ test(
  result.gapWidth=gapWidth;
  const spacingFixtures=${JSON.stringify(spacingFixtures).replace("<", "\u003c")};
  result.spacing=spacingFixtures.map(fixture=>{
+  L.appleCandidate=null;L.ordinaryCandidate=null;L.currentRichEntry=null;
   L.applyLines(Fixture.groupRichLines(fixture.lines));L.stopLoop();
-  const intact=L.lineNodes.every((node,index)=>node.querySelector('.rnp-lyrics-line-karaoke').textContent===fixture.lines[index].text);
+  const intact=L.lineNodes.every((node,index)=>node.querySelector('.rnp-lyrics-line-karaoke,.rnp-lyrics-line-original').textContent===fixture.lines[index].text);
   return {source:fixture.source,intact};
  });
+ const paragraph={...legacy,presentation:{...legacy.presentation,timingMode:'Line',element:{name:'p',attributes:{begin:'1',end:'6'},children:[]}}};
+ L.appleCandidate=null;L.ordinaryCandidate=null;L.applyRichEntry({kind:'enhanced',trackUri:'spotify:track:test',lines:[paragraph],sourceFamily:'apple-music'});L.stopLoop();
+ result.lineOnlyWords=L.lineNodes[0].querySelectorAll('.rnp-karaoke-word').length;
+ result.lineOnlyText=L.lineNodes[0].querySelector('.rnp-lyrics-line-original').textContent;
  const translated={...legacy,presentation:undefined,translation:'你好海洋'};
  L.appleCandidate=null;L.ordinaryCandidate=null;
  L.applyRichEntry({kind:'enhanced',trackUri:'spotify:track:test',metadata:{title:'Example',artist:'Artist'},lines:[legacy],sourceFamily:'apple-music'});L.stopLoop();
@@ -168,6 +188,11 @@ test(
  L.applyRichEntry({kind:'enhanced',trackUri:'spotify:track:test',lines:[legacy],sourceFamily:'apple-music'});L.stopLoop();
  result.explicitAppleWins=L.getDiagnostics().sourceFamily==='apple-music';
  globalThis.preferenceMode='auto';
+ const lineFixture=${JSON.stringify(lineFixture).replace("<", "\u003c")};
+ if(lineFixture.length){
+  L.appleCandidate=null;L.ordinaryCandidate=null;L.applyRichEntry({kind:'enhanced',trackUri:'spotify:track:test',lines:lineFixture,sourceFamily:'apple-music'});L.stopLoop();
+  result.lineFixture={lines:L.lineNodes.length,words:L.lineNodes.reduce((sum,node)=>sum+node.querySelectorAll('.rnp-karaoke-word').length,0),tier:Fixture.lyricsPreferenceScore(lineFixture,'apple-music')[0]};
+ }
  const actual=${JSON.stringify(actual).replace("<", "\u003c")};
  if(actual.length){
   const grouped=Fixture.groupRichLines(actual);let sample=0;let expected=[];
@@ -231,6 +256,10 @@ test(
             assert.equal(value.loadInvalidated, true);
             assert.equal(value.offsetRetainsNodes, true);
             assert.equal(value.displayedSource, "apple-music");
+            if (process.env.FULLSCAPE_LINE_FIXTURE)
+                assert.deepEqual(value.lineFixture, { lines: 48, words: 0, tier: 10 });
+            assert.equal(value.lineOnlyWords, 0);
+            assert.equal(value.lineOnlyText, "Hello ocean! Again");
             assert.equal(value.translatedWins, true);
             assert.equal(value.simpleAppleStaysBelowTranslation, true);
             assert.equal(value.richAppleWins, true);

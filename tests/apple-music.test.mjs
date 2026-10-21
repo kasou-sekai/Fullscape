@@ -24,7 +24,11 @@ const main = {
         isBackground: false,
         end: 15,
         alignment: "left",
-        element: { name: "p", attributes: {}, children: [] },
+        element: {
+            name: "p",
+            attributes: {},
+            children: [{ name: "span", attributes: { begin: "10", end: "15" }, children: [] }],
+        },
     },
 };
 const right = {
@@ -84,7 +88,11 @@ test("rich validation rejects corrupt timing, excessive trees and unsafe typed a
         api.validRichLines([{ ...main, words: [{ time: NaN, duration: 1, text: "a" }] }]),
         false,
     );
-    let tree = { name: "p", attributes: {}, children: [] };
+    let tree = {
+        name: "p",
+        attributes: {},
+        children: [{ name: "span", attributes: { begin: "10", end: "15" }, children: [] }],
+    };
     for (let i = 0; i < 70; i++) tree = { name: "span", attributes: {}, children: [tree] };
     assert.equal(
         api.validRichLines([{ ...main, presentation: { ...main.presentation, element: tree } }]),
@@ -139,4 +147,24 @@ test("legacy rich spans retain untimed spaces without changing syllable clocks",
     assert.equal(api.preserveRichUntimedText(chinese), chinese);
     const mismatched = { ...line, text: "different lyric" };
     assert.equal(api.preserveRichUntimedText(mismatched), mismatched);
+});
+
+test("paragraph-only Apple caches never synthesize word timing", () => {
+    const legacy = {
+        ...main,
+        words: [{ time: 10000, duration: 5000, text: main.text }],
+        presentation: {
+            ...main.presentation,
+            timingMode: "Line",
+            element: { name: "p", attributes: { begin: "10", end: "15" }, children: [] },
+        },
+    };
+    assert.equal(api.groupRichLines([legacy])[0].words, undefined);
+    assert.equal(
+        api.groupRichLines([
+            { ...legacy, presentation: { ...legacy.presentation, timingMode: undefined } },
+        ])[0].words,
+        undefined,
+    );
+    assert.equal(api.groupRichLines([main])[0].text, main.text);
 });

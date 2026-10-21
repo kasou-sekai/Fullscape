@@ -13,7 +13,11 @@ const { outputFiles } = await build({
 const api = await import(
     `data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString("base64")}`
 );
-const node = { name: "p", attributes: {}, children: [] };
+const node = {
+    name: "p",
+    attributes: {},
+    children: [{ name: "span", attributes: { begin: "10", end: "15" }, children: [] }],
+};
 const plain = { time: 10000, text: "Hello ocean", duration: 5000 };
 const word = { ...plain, words: [{ time: 10000, duration: 5000, text: plain.text }] };
 const apple = {
@@ -76,4 +80,24 @@ test("richness requires actual arrangement, including overlapping voices and sma
         api.lyricsPreferenceScore([{ ...apple, text: "君と世界のどこかで" }], "apple-music")[0],
         30,
     );
+});
+
+test("line timing and tiny same-voice overlaps do not qualify as syllables or rich arrangement", () => {
+    const paragraph = {
+        ...apple,
+        words: [{ time: 10000, duration: 5000, text: apple.text }],
+        presentation: {
+            ...apple.presentation,
+            timingMode: "Line",
+            agent: "v1",
+            element: { name: "p", attributes: { begin: "10", end: "15" }, children: [] },
+        },
+    };
+    const lines = [
+        paragraph,
+        { ...paragraph, time: 14799, presentation: { ...paragraph.presentation, end: 20 } },
+    ];
+    assert.equal(api.hasRichArrangement(lines), false);
+    assert.equal(api.lyricsPreferenceScore(lines, "apple-music")[0], 10);
+    assert.ok(api.compareLyricsPreference([word], lines, "standard", "apple-music") > 0);
 });

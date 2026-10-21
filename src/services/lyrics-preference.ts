@@ -1,3 +1,4 @@
+import { hasAuthoredRichWordTiming } from "./lyrics-rich-document";
 import { detectTextLanguage } from "../utils/text-language";
 import type { EnhancedLyricLine } from "./third-party-lyrics";
 import type { TimedTextElement } from "./lyrics-rich-document";
@@ -30,10 +31,20 @@ export function hasRichArrangement(lines: EnhancedLyricLine[]) {
         .filter((line) => !line.presentation?.isBackground && line.time !== null)
         .slice()
         .sort((a, b) => a.time - b.time);
-    let end = -Infinity;
+    let authoredEnd = -Infinity;
+    const voiceEnds = new Map<string, number>();
     for (const line of main) {
-        if (line.time < end) return true;
-        end = Math.max(end, (line.presentation?.end ?? 0) * 1000);
+        const authored = hasAuthoredRichWordTiming(line);
+        if (authored && authoredEnd - line.time > 1) return true;
+        const agent = line.presentation?.agent;
+        if (
+            agent &&
+            Array.from(voiceEnds).some(([voice, end]) => voice !== agent && end - line.time > 1)
+        )
+            return true;
+        const end = (line.presentation?.end ?? 0) * 1000;
+        if (authored) authoredEnd = Math.max(authoredEnd, end);
+        if (agent) voiceEnds.set(agent, Math.max(voiceEnds.get(agent) ?? -Infinity, end));
     }
     return false;
 }
@@ -52,7 +63,9 @@ export function lyricsPreferenceScore(
               main.map((line) => line.text).join("\n"),
               languageCode?.startsWith("ja") ? "ja" : "unknown",
           );
-    const karaoke = main.filter((line) => line.words?.some((word) => word.text.trim())).length;
+    const karaoke = main.filter(
+        (line) => hasAuthoredRichWordTiming(line) && line.words?.some((word) => word.text.trim()),
+    ).length;
     const translated = main.filter(
         (line) =>
             line.translation?.trim() &&
