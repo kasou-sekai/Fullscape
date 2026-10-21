@@ -41,6 +41,9 @@ export type LyricsCacheEntry = {
     desktopLyricsColors?: DesktopLyricsColors;
     debug?: ThirdPartyLyricsDebug;
     manualResetAt?: number;
+    sourceFamily?: "standard" | "apple-music";
+    documentRevision?: string;
+    validatedMatcherVersion?: string;
 };
 
 type LyricsCacheStore = {
@@ -63,6 +66,8 @@ const SHARED_PRESENCE_INTERVAL_MS = 5_000;
 
 let store: LyricsCacheStore | null = null;
 let sharedSessionToken: string | null = null;
+let richBridgeSupported = false;
+let sharedSessionRequest: Promise<string> | null = null;
 let sharedPresenceTimer: ReturnType<typeof setInterval> | null = null;
 const bridgeStateUpdates = new Map<string, Promise<boolean>>();
 
@@ -332,7 +337,7 @@ export async function setSharedBridgeLease(trackUri: string, active: boolean) {
     }
 }
 
-async function fetchBridge(input: RequestInfo | URL, init: RequestInit = {}) {
+export async function fetchBridge(input: RequestInfo | URL, init: RequestInit = {}) {
     const token = await getSharedSessionToken();
     const headers = new Headers(init.headers);
     headers.set("X-LyricShiori-Token", token);
@@ -352,13 +357,28 @@ async function fetchBridge(input: RequestInfo | URL, init: RequestInit = {}) {
 
 async function getSharedSessionToken() {
     if (sharedSessionToken) return sharedSessionToken;
+    if (sharedSessionRequest) return sharedSessionRequest;
+    const pending = fetchSharedSessionToken().finally(() => {
+        if (sharedSessionRequest === pending) sharedSessionRequest = null;
+    });
+    sharedSessionRequest = pending;
+    return pending;
+}
+
+async function fetchSharedSessionToken() {
     const response = await fetchSharedWithTimeout(`${SHARED_BRIDGE_ORIGIN}/bridge-session`, {
         headers: { Accept: "application/json" },
     });
     if (!response.ok) throw new Error(`Bridge session HTTP ${response.status}`);
-    const payload = (await response.json()) as { token?: string; protocolVersion?: number };
+    const payload = (await response.json()) as {
+        token?: string;
+        protocolVersion?: number;
+        capabilities?: string[];
+    };
     if (!payload.token || payload.protocolVersion !== 1)
         throw new Error("Unsupported bridge session");
+    richBridgeSupported =
+        Array.isArray(payload.capabilities) && payload.capabilities.includes("apple-music-v2");
     sharedSessionToken = payload.token;
     return payload.token;
 }
@@ -435,5 +455,15 @@ function persistStore() {
         } catch {
             // Keep the in-memory cache when browser storage is full or unavailable.
         }
+    }
+}
+
+export async function supportsRichLyricsBridge() {
+    if (!CFM.get("sharedLyricsBridge")) return false;
+    try {
+        await getSharedSessionToken();
+        return richBridgeSupported;
+    } catch {
+        return false;
     }
 }

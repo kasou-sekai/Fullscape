@@ -25,3 +25,6 @@ Extensions/savePlaylist.js
 Extensions/autoSavePlaylists.js
 Extensions/autoSkip.js
 Extensions/fullscape.js
+
+# Local Spicetify build output
+dist/

@@ -29,6 +29,11 @@
         "lyricsHeader": "歌詞設定",
         "lyrics": "歌詞",
         "lyricsDescription": ["**注意:** 利用可能な場合は Spotify の内蔵歌詞を使用します。"],
+        "lyricsSource": {
+            "setting": "歌詞ソース",
+            "auto": "自動",
+            "standard": "その他のソース"
+        },
         "sharedLyricsBridge": {
             "setting": "LyricShiori に接続",
             "description": "LyricShiori に接続して歌詞を共有したり、歌詞を手動で指定したり、歌詞の遅延を調整したりします。"

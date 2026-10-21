@@ -105,3 +105,15 @@ This extension is based on [daksh2k/Spicetify-stuff](https://github.com/daksh2k/
 Lyrics rendering and animation reference [solstice23/refined-now-playing-netease](https://github.com/solstice23/refined-now-playing-netease).
 
 The fluid animated background is powered by [Better Lyrics/Kawarp](https://github.com/better-lyrics/kawarp), using its [`@kawarp/core`](https://www.npmjs.com/package/@kawarp/core) WebGL renderer.
+
+## Apple Music via LyricShiori
+
+Use the upgraded LyricShiori app for Apple Music sign-in. In FullScape, enable
+**Connect to LyricShiori** and choose **Lyrics source → Auto / Apple Music / Other sources**.
+Apple Music and ordinary lyrics keep separate caches. The upcoming track is
+prepared by Shiori using Spotify metadata and first-line evidence; FullScape
+continues to own Spotify/QQ/NetEase requests. No Apple credentials enter the plugin.
+
+The existing line and word animation curves are retained, with overlapping voices,
+mirrored right alignment and expanding/fading background vocals. Protocol, source
+ownership and validation details are in [the bridge design](docs/apple-music-bridge-design.md).

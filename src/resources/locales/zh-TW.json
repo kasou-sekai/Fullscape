@@ -30,6 +30,11 @@
         "lyrics": "歌詞",
         "lyricsDescription": ["**注意:** 預設使用 Spotify 內建的歌詞。"],
         "thirdPartyLyrics": "使用網易雲與 QQ 音樂增強歌詞",
+        "lyricsSource": {
+            "setting": "歌詞來源",
+            "auto": "自動",
+            "standard": "其他來源"
+        },
         "sharedLyricsBridge": {
             "setting": "連接 LyricShiori",
             "description": "連接 LyricShiori 共享歌詞、手動指定歌詞或調整歌詞延遲。"

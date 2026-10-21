@@ -13,6 +13,7 @@ export type Settings = {
     lyricsDisplay: boolean;
     thirdPartyLyrics: boolean;
     sharedLyricsBridge: boolean;
+    lyricsSource: "auto" | "standard" | "apple-music";
     relaxedLyricsMatching: boolean;
     showLyricsTranslation: boolean;
     showLyricsRomanization: boolean;

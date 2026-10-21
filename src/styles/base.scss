@@ -240,6 +240,59 @@
                 opacity 0.5s ease;
             opacity: 0.55;
         }
+        .rnp-lyrics-line.rnp-lyrics-right {
+            text-align: right;
+            transform-origin: right center;
+            > .rnp-lyrics-line-content {
+                margin-left: auto;
+            }
+        }
+        .rnp-lyrics-line.rnp-lyrics-center {
+            text-align: center;
+            > .rnp-lyrics-line-content {
+                margin-inline: auto;
+            }
+        }
+        .rnp-rich-background-right {
+            text-align: right;
+            > .rnp-lyrics-line-content {
+                margin-left: auto;
+            }
+        }
+        .rnp-rich-background-center {
+            text-align: center;
+            > .rnp-lyrics-line-content {
+                margin-inline: auto;
+            }
+        }
+        .rnp-rich-backgrounds {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            padding-top: 0.22em;
+            font-size: 0.65em;
+            opacity: 0;
+            clip-path: inset(0 0 100% 0);
+            pointer-events: none;
+            transition:
+                clip-path 520ms var(--lyric-timing-function) 120ms,
+                opacity 160ms ease;
+            .rnp-lyrics-line-content {
+                width: fit-content;
+                max-width: 100%;
+            }
+        }
+        .rnp-lyrics-right > .rnp-rich-backgrounds .rnp-lyrics-line-content {
+            margin-left: auto;
+        }
+        .rnp-lyrics-line.active > .rnp-rich-backgrounds {
+            opacity: 1;
+            clip-path: inset(0);
+            transition:
+                clip-path 520ms var(--lyric-timing-function),
+                opacity 240ms ease 80ms;
+        }
         .rnp-lyrics-interlude {
             position: absolute;
             top: 0;
@@ -1034,7 +1087,12 @@ body {
         .rnp-karaoke-ruby > rt {
             transform: none !important;
         }
-        .fullscape-artwork-previous { display: none; }
-        .fullscape-artwork-incoming { opacity: 1 !important; transform: none !important; }
+        .fullscape-artwork-previous {
+            display: none;
+        }
+        .fullscape-artwork-incoming {
+            opacity: 1 !important;
+            transform: none !important;
+        }
     }
 }

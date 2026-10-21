@@ -5,6 +5,7 @@ export const DEFAULTS: Config = {
         lyricsDisplay: true,
         thirdPartyLyrics: true,
         sharedLyricsBridge: true,
+        lyricsSource: "auto",
         relaxedLyricsMatching: false,
         showLyricsTranslation: true,
         showLyricsRomanization: true,

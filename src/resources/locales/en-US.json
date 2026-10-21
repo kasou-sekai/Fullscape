@@ -31,6 +31,11 @@
         "lyrics": "Lyrics",
         "lyricsDescription": ["**Tip:** Uses Spotify's built-in lyrics when available."],
         "thirdPartyLyrics": "Enhance Lyrics from NetEase and QQ Music",
+        "lyricsSource": {
+            "setting": "Lyrics source",
+            "auto": "Auto",
+            "standard": "Other sources"
+        },
         "sharedLyricsBridge": {
             "setting": "Connect to LyricShiori",
             "description": "Connect to LyricShiori to share lyrics, manually select lyrics, or adjust lyric delay."

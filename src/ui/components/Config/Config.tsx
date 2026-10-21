@@ -1438,6 +1438,17 @@ export class ConfigManager {
                             undefined,
                             strings.sharedLyricsBridge.description,
                         ),
+                        this.createOptions(
+                            strings.lyricsSource.setting,
+                            {
+                                auto: strings.lyricsSource.auto,
+                                "apple-music": "Apple Music (Shiori)",
+                                standard: strings.lyricsSource.standard,
+                            },
+                            CFM.get("lyricsSource") as Settings["lyricsSource"],
+                            "lyricsSource",
+                            (value) => this.saveOption("lyricsSource", value),
+                        ),
                         this.createToggle(
                             strings.relaxedLyricsMatching.setting,
                             "relaxedLyricsMatching",

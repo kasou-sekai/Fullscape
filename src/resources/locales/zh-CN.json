@@ -31,6 +31,11 @@
         "lyrics": "歌词",
         "lyricsDescription": ["**提示:** 默认使用 Spotify 自带的歌词。"],
         "thirdPartyLyrics": "使用网易云与 QQ 音乐增强歌词",
+        "lyricsSource": {
+            "setting": "歌词来源",
+            "auto": "自动",
+            "standard": "普通来源"
+        },
         "sharedLyricsBridge": {
             "setting": "连接 LyricShiori",
             "description": "连接 LyricShiori 共享歌词、手动指定歌词或者调整歌词延迟。"

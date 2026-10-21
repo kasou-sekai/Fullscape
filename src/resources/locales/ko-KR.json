@@ -29,6 +29,11 @@
         "lyricsHeader": "가사 설정",
         "lyrics": "가사",
         "lyricsDescription": ["**참고:** 사용 가능한 경우 Spotify 기본 제공 가사를 사용합니다."],
+        "lyricsSource": {
+            "setting": "가사 소스",
+            "auto": "자동",
+            "standard": "기타 소스"
+        },
         "sharedLyricsBridge": {
             "setting": "LyricShiori 연결",
             "description": "LyricShiori에 연결해 가사를 공유하거나 가사를 직접 지정하고 가사 지연을 조정합니다."
