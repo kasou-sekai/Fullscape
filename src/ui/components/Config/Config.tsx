@@ -331,7 +331,8 @@ export class ConfigManager {
             return content;
         };
 
-        const providerEnabled = Boolean(CFM.get("thirdPartyLyrics"));
+        const providerEnabled =
+            Boolean(CFM.get("thirdPartyLyrics")) || diagnostics.sourceFamily === "apple-music";
         const providerStatus = providerEnabled
             ? (strings.providerStatuses[diagnostics.thirdParty.status] ??
               diagnostics.thirdParty.status)

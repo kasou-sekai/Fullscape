@@ -17,7 +17,38 @@ export type RichPresentation = {
     element: TimedTextElement;
 };
 
+/** Repair legacy rich caches whose timed spans omit the literal TTML gaps. */
+export function preserveRichUntimedText(line: EnhancedLyricLine): EnhancedLyricLine {
+    const words = line.words;
+    if (
+        !line.presentation ||
+        !words?.length ||
+        words.map((word) => word.text).join("") === line.text
+    )
+        return line;
+    let cursor = 0;
+    const starts: number[] = [];
+    for (const word of words) {
+        if (!word.text) return line;
+        const start = line.text.indexOf(word.text, cursor);
+        if (start < 0) return line;
+        starts.push(start);
+        cursor = start + word.text.length;
+    }
+    return {
+        ...line,
+        words: words.map((word, index) => ({
+            ...word,
+            text: line.text.slice(
+                index === 0 ? 0 : starts[index],
+                starts[index + 1] ?? line.text.length,
+            ),
+        })),
+    };
+}
+
 export function groupRichLines(lines: EnhancedLyricLine[]) {
+    lines = lines.map(preserveRichUntimedText);
     const main = lines
         .filter((line) => !line.presentation?.isBackground)
         .map((line) => ({ ...line, backgrounds: [] as EnhancedLyricLine[] }));

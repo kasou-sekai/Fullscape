@@ -103,3 +103,40 @@ test("completed voices stay lit until the next start, including seeks into a gap
     assert.deepEqual(api.activeRichLines(duet, 18000), [0, 1]);
     assert.equal(api.richLineEnd(right), 16000);
 });
+
+test("legacy rich spans retain untimed spaces without changing syllable clocks", () => {
+    const line = {
+        ...main,
+        text: "Hello ocean! Again",
+        words: ["Hello", "ocean", "Again"].map((text, index) => ({
+            time: 10000 + index * 500,
+            duration: 500,
+            text,
+        })),
+    };
+    const fixed = api.groupRichLines([line])[0];
+    assert.equal(fixed.words.map((word) => word.text).join(""), line.text);
+    assert.deepEqual(
+        fixed.words.map((word) => [word.time, word.duration]),
+        line.words.map((word) => [word.time, word.duration]),
+    );
+    assert.deepEqual(
+        line.words.map((word) => word.text),
+        ["Hello", "ocean", "Again"],
+    );
+    assert.equal(
+        api.preserveRichUntimedText({ ...line, presentation: undefined }).words,
+        line.words,
+    );
+    const chinese = {
+        ...line,
+        text: "海洋",
+        words: [
+            { time: 10000, duration: 500, text: "海" },
+            { time: 10500, duration: 500, text: "洋" },
+        ],
+    };
+    assert.equal(api.preserveRichUntimedText(chinese), chinese);
+    const mismatched = { ...line, text: "different lyric" };
+    assert.equal(api.preserveRichUntimedText(mismatched), mismatched);
+});

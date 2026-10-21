@@ -3299,6 +3299,39 @@ export class Lyrics {
         };
     }
 
+    private static displayedProviderDiagnostics(): ThirdPartyLyricsDebug {
+        const entry = this.currentRichEntry;
+        if (!entry || !this.lines.some((line) => line.presentation))
+            return getThirdPartyLyricsDebug();
+        const metadata = entry.metadata;
+        const spotify = getCachedLyricsFullEntry(entry.trackUri, "spotify")?.lines ?? [];
+        return {
+            enabled: true,
+            status: "matched",
+            reason:
+                getEffectiveCacheSource(entry) === "manual"
+                    ? "Apple Music：使用手动选择的歌词"
+                    : "Apple Music：已通过当前歌曲匹配校验，由 Shiori 提供",
+            track: {
+                title: metadata?.title ?? this.getCurrentTrack(entry.trackUri).title,
+                artists: metadata?.artist ?? this.getCurrentTrack(entry.trackUri).artists,
+                album: metadata?.album ?? this.getCurrentTrack(entry.trackUri).album,
+                duration: this.getCurrentTrack(entry.trackUri).duration,
+            },
+            spotifyFirst: spotify[0] ?? null,
+            spotifyPreview: spotify.slice(0, 5),
+            matchedSong: `Apple Music：${metadata?.title ?? this.getCurrentTrack(entry.trackUri).title} - ${metadata?.artist ?? this.getCurrentTrack(entry.trackUri).artists}`,
+            matchedFirst: this.lines[0] ?? null,
+            merged: {
+                translation: this.diagnostics.translations,
+                romanization: this.diagnostics.romanizations,
+                furigana: this.lines.filter((line) => richRuby(line).annotations.length).length,
+                karaoke: this.diagnostics.karaoke,
+            },
+            candidates: [],
+        };
+    }
+
     static getDiagnostics() {
         return {
             status: this.lastStatus,
@@ -3312,7 +3345,8 @@ export class Lyrics {
                 ...line,
                 words: line.words?.map((word) => ({ ...word })),
             })),
-            thirdParty: getThirdPartyLyricsDebug(),
+            sourceFamily: this.currentRichEntry ? "apple-music" : "standard",
+            thirdParty: this.displayedProviderDiagnostics(),
         };
     }
 }

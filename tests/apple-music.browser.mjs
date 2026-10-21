@@ -21,7 +21,7 @@ test(
             const bundle = await build({
                 stdin: {
                     contents:
-                        'export {Lyrics} from "./src/ui/components/Lyrics/Lyrics"; export {groupRichLines} from "./src/services/lyrics-rich-document";',
+                        'export {Lyrics} from "./src/ui/components/Lyrics/Lyrics"; export {groupRichLines} from "./src/services/lyrics-rich-document"; export {publishThirdPartyLyricsDebug} from "./src/services/third-party-lyrics";',
                     resolveDir: process.cwd(),
                 },
                 bundle: true,
@@ -64,6 +64,28 @@ test(
                     })),
                     presentation: line.presentation,
                 }));
+            }
+            let spacingFixtures = [];
+            if (process.env.FULLSCAPE_SPACING_FIXTURE) {
+                const applePath = process.env.FULLSCAPE_SPACING_FIXTURE;
+                const ordinaryPath = resolve(dirname(applePath), "..", applePath.split("/").pop());
+                spacingFixtures = [applePath, ordinaryPath].map((path) => {
+                    const file = JSON.parse(readFileSync(path, "utf8"));
+                    return {
+                        source: file.sourceName,
+                        lines: file.lines.slice(0, 3).map((line) => ({
+                            time: line.startMilliseconds,
+                            text: line.text,
+                            duration: line.durationMilliseconds,
+                            words: line.words.map((word) => ({
+                                time: word.startMilliseconds,
+                                duration: word.durationMilliseconds,
+                                text: word.text,
+                            })),
+                            presentation: line.presentation,
+                        })),
+                    };
+                });
             }
             const html = `<!doctype html><meta charset="utf-8"><style>${css}
  #fullscape-display{display:block;background:#171421;color:white;width:1050px;height:900px}#fad-lyrics-container{width:950px;height:850px;--lyrics-base-font-size:48px;--lyrics-font-scale:1;--primary-color:white;--tertiary-color:#888;--secondary-color:#aaa;--main-color:255,255,255}.lyrics-wrapper,.rnp-lyrics{height:850px}#results{display:none}</style>
@@ -116,6 +138,22 @@ test(
  L.applyRichEntry({kind:'enhanced',trackUri:'spotify:track:test',lines:[main,right,bg,after],offsetMilliseconds:100,timingOffsetApplied:false,sourceFamily:'apple-music'});
  result.loadInvalidated = !L.isCurrentLoad(oldLoad);
  result.offsetRetainsNodes = retainedWords.every((word,index)=>L.lineNodes[0].querySelectorAll('.rnp-karaoke-word')[index]===word);
+ const legacy={...main,text:'Hello ocean! Again',words:['Hello','ocean','Again'].map((text,index)=>({time:1000+index*500,duration:500,text}))};
+ L.applyRichEntry({kind:'enhanced',trackUri:'spotify:track:test',metadata:{title:'Example',artist:'Artist'},lines:[legacy],sourceFamily:'apple-music'});L.stopLoop();
+ Fixture.publishThirdPartyLyricsDebug({status:'matched',matchedSong:'网易云：Old cached source'});
+ result.displayedSource=L.getDiagnostics().sourceFamily;
+ result.matchedSource=L.getDiagnostics().thirdParty.matchedSong;
+ const lyric=L.lineNodes[0].querySelector('.rnp-lyrics-line-karaoke');
+ result.legacyText=lyric.textContent;
+ const walker=document.createTreeWalker(lyric,NodeFilter.SHOW_TEXT);let textNode;let gapWidth=0;
+ while(textNode=walker.nextNode()){for(let i=0;i<textNode.textContent.length;i++){if(textNode.textContent[i]===' '){const range=document.createRange();range.setStart(textNode,i);range.setEnd(textNode,i+1);gapWidth=Math.max(gapWidth,range.getBoundingClientRect().width);}}}
+ result.gapWidth=gapWidth;
+ const spacingFixtures=${JSON.stringify(spacingFixtures).replace("<", "\u003c")};
+ result.spacing=spacingFixtures.map(fixture=>{
+  L.applyLines(Fixture.groupRichLines(fixture.lines));L.stopLoop();
+  const intact=L.lineNodes.every((node,index)=>node.querySelector('.rnp-lyrics-line-karaoke').textContent===fixture.lines[index].text);
+  return {source:fixture.source,intact};
+ });
  const actual=${JSON.stringify(actual).replace("<", "\u003c")};
  if(actual.length){
   const grouped=Fixture.groupRichLines(actual);let sample=0;let expected=[];
@@ -178,6 +216,17 @@ test(
             }
             assert.equal(value.loadInvalidated, true);
             assert.equal(value.offsetRetainsNodes, true);
+            assert.equal(value.displayedSource, "apple-music");
+            assert.match(value.matchedSource, /^Apple Music：Example/);
+            assert.equal(value.legacyText, "Hello ocean! Again");
+            assert.ok(value.gapWidth > 3, JSON.stringify(value));
+            if (process.env.FULLSCAPE_SPACING_FIXTURE) {
+                assert.equal(value.spacing.length, 2);
+                assert.ok(
+                    value.spacing.every((fixture) => fixture.intact),
+                    JSON.stringify(value),
+                );
+            }
             console.log("Rich renderer:", value);
         } finally {
             rmSync(directory, { recursive: true, force: true });
