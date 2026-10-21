@@ -351,3 +351,26 @@ test("a delayed or replaced bottom bar gets one working button and keeps the F f
     assert.deepEqual(body.appended, [host.DOM.style, host.DOM.container]);
     await shortcuts.get("esc")();
 });
+
+test("timing corrections also update the lyric templates used after a resize", () => {
+    const { Lyrics } = createHost(true);
+    const block = {};
+    const word = {
+        dataset: { time: "100" },
+        classList: { remove() {} },
+        style: { removeProperty() {} },
+    };
+    const line = {
+        dataset: {},
+        querySelectorAll: (selector) => selector === ".rnp-lyrics-line-content > div"
+            ? [block]
+            : selector === ".rnp-karaoke-word" ? [word] : [],
+    };
+    Lyrics.lineNodes = [line];
+    Lyrics.wrappingTemplates.set(block,
+        '<span data-time="100" data-duration="200">word</span><rt data-time="100">reading</rt>');
+    Lyrics.updateTimingInPlace([{ time: 350 }], 250);
+    assert.equal(word.dataset.time, "350");
+    assert.equal(Lyrics.wrappingTemplates.get(block),
+        '<span data-time="350" data-duration="200">word</span><rt data-time="350">reading</rt>');
+});

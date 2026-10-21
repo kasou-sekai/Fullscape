@@ -38,6 +38,7 @@ import type { LyricsChineseConversion } from "../../../utils/chinese-conversion"
 
 import { detectTextLanguage } from "../../../utils/text-language";
 import { applyTextLanguage, getTextLanguageTag } from "../../../utils/text-presentation";
+import { freezeMeasuredLyricRows } from "../../../utils/lyric-wrapping";
 
 type LyricLine = EnhancedLyricLine;
 type LyricsTrack = TrackInfo & {
@@ -184,6 +185,7 @@ export class Lyrics {
     private static manualScrollRenderPosition = -1;
     private static manualScrollFrame: number | null = null;
     private static lineRightSpaces: number[] = [];
+    private static wrappingTemplates = new WeakMap<HTMLElement, string>();
     private static readonly bridgeLeases = new Map<string, BridgeLease>();
 
     static attach(container: HTMLElement) {
@@ -1223,6 +1225,21 @@ export class Lyrics {
             node.dataset.time = `${lines[index].time ?? ""}`;
         });
         this.lineNodes.forEach((lineNode) => {
+            lineNode
+                .querySelectorAll<HTMLElement>(".rnp-lyrics-line-content > div")
+                .forEach((block) => {
+                    const template = this.wrappingTemplates.get(block);
+                    if (template === undefined) return;
+                    this.wrappingTemplates.set(
+                        block,
+                        template.replace(/\bdata-time="([^"]+)"/g, (attribute, value) => {
+                            const time = Number(value);
+                            return Number.isFinite(time)
+                                ? `data-time="${time + shift}"`
+                                : attribute;
+                        }),
+                    );
+                });
             lineNode.querySelectorAll<HTMLElement>(".rnp-karaoke-word").forEach((wordNode) => {
                 const previousTime = Number(wordNode.dataset.time);
                 if (Number.isFinite(previousTime)) {
@@ -2881,70 +2898,39 @@ export class Lyrics {
     }
 
     private static stabilizeLineWrapping() {
-        if (!this.lyricsRoot) return;
-        const lyricsRoot = this.lyricsRoot;
-
+        const root = this.lyricsRoot;
+        if (!root || !root.clientWidth) return;
+        this.cancelKaraokeAnimations();
         this.lineNodes.forEach((node) => {
-            node.style.removeProperty("width");
-            node.style.removeProperty("max-width");
-        });
-
-        const rootWidth = lyricsRoot.clientWidth;
-        this.lineNodes.forEach((node) => {
-            const defaultWidth = node.offsetWidth;
-            const maxWidth = Math.max(defaultWidth, rootWidth - node.offsetLeft);
-            const normal = node.cloneNode(true) as HTMLElement;
-            const active = node.cloneNode(true) as HTMLElement;
-            const prepareClone = (clone: HTMLElement) => {
-                clone.classList.remove("rnp-lyrics-line-outside");
-                clone.style.position = "absolute";
-                clone.style.left = `${node.offsetLeft}px`;
-                clone.style.top = "0";
-                clone.style.maxWidth = "none";
-                clone.style.visibility = "hidden";
-                clone.style.pointerEvents = "none";
-                clone.style.transition = "none";
-                clone.style.transform = "none";
-                clone.style.filter = "none";
-            };
-            prepareClone(normal);
-            prepareClone(active);
-            normal.classList.remove("active");
-            active.classList.add("active");
-            lyricsRoot.append(normal, active);
-
-            const hasStableHeight = (width: number) => {
-                const measuredWidth = `${width}px`;
-                normal.style.width = measuredWidth;
-                active.style.width = measuredWidth;
-                return normal.offsetHeight === active.offsetHeight;
-            };
-
-            let stableWidth = defaultWidth;
-            if (!hasStableHeight(defaultWidth)) {
-                let found = false;
-                for (let width = Math.ceil(defaultWidth) + 1; width <= maxWidth; width += 1) {
-                    if (!hasStableHeight(width)) continue;
-                    stableWidth = width;
-                    found = true;
-                    break;
+            const blocks = Array.from(
+                node.querySelectorAll<HTMLElement>(".rnp-lyrics-line-content > div"),
+            );
+            const clone = node.cloneNode(true) as HTMLElement;
+            clone.classList.remove("rnp-lyrics-line-outside");
+            clone.classList.add("active", "rnp-lyrics-measuring");
+            clone.style.cssText = `position:absolute;left:${node.offsetLeft}px;top:0;width:${node.offsetWidth}px;max-width:none;visibility:hidden;pointer-events:none`;
+            const measuredBlocks = Array.from(
+                clone.querySelectorAll<HTMLElement>(".rnp-lyrics-line-content > div"),
+            );
+            blocks.forEach((block, index) => {
+                if (!this.wrappingTemplates.has(block)) {
+                    this.wrappingTemplates.set(block, block.innerHTML);
                 }
-                if (!found) {
-                    const minWidth = Math.floor(defaultWidth * 0.72);
-                    for (let width = Math.floor(defaultWidth) - 1; width >= minWidth; width -= 1) {
-                        if (!hasStableHeight(width)) continue;
-                        stableWidth = width;
-                        break;
-                    }
-                }
+                measuredBlocks[index].innerHTML = this.wrappingTemplates.get(block) ?? "";
+                // Measure translations even when hidden so toggling them retains
+                // the mounted karaoke nodes and their animation state.
+                measuredBlocks[index].hidden = false;
+            });
+            root.append(clone);
+            try {
+                blocks.forEach((block, index) => {
+                    freezeMeasuredLyricRows(measuredBlocks[index], block);
+                });
+            } finally {
+                clone.remove();
             }
-
-            normal.remove();
-            active.remove();
-            if (Math.abs(stableWidth - defaultWidth) < 0.5) return;
-            node.style.width = `${stableWidth}px`;
-            node.style.maxWidth = `${stableWidth}px`;
         });
+        this.buildKaraokeWordCache();
     }
 
     private static measureHeights() {
@@ -2970,6 +2956,13 @@ export class Lyrics {
             this.applyTransforms(true);
         });
         this.resizeObserver.observe(this.lyricsRoot);
+        const root = this.lyricsRoot;
+        void document.fonts?.ready.then(() => {
+            if (this.lyricsRoot !== root || !root.isConnected) return;
+            this.stabilizeLineWrapping();
+            this.measureHeights();
+            this.applyTransforms(true);
+        });
     }
 
     private static stopResizeObserver() {

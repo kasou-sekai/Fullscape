@@ -499,6 +499,25 @@
         .rnp-lyrics-script-traditional .rnp-lyrics-line.active .rnp-karaoke-word > span {
             font-weight: 700;
         }
+        // Rows are measured in the active font before playback. Each state uses
+        // those same breaks, while retaining its original font weight and spacing.
+        .rnp-lyrics-fixed-row,
+        .rnp-lyrics-fixed-row * {
+            white-space: pre !important;
+            max-width: none;
+        }
+        .rnp-lyrics-fixed-row > .rnp-lyrics-break-segment {
+            // The measured row already supplies the phrase boundary. Avoid a
+            // second inline-block line box adding extra leading around ruby.
+            display: inline;
+        }
+        .rnp-lyrics-measuring,
+        .rnp-lyrics-measuring * {
+            animation: none !important;
+            transition: none !important;
+            transform: none !important;
+            scale: none !important;
+        }
         @keyframes rnp-lyric-glow {
             0%,
             100% {
