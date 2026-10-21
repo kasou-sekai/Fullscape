@@ -1,3 +1,4 @@
+export { lyricsPreferenceScore } from "./lyrics-preference";
 import { normalizeChineseForMatch } from "../utils/chinese-conversion";
 import type { EnhancedLyricLine, TrackInfo } from "./third-party-lyrics";
 type ProviderSong = { name: string; artists: string; album: string; duration?: number };

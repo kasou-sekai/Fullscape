@@ -200,3 +200,40 @@ test("offline rich cache preserves source choice and hidden lyrics", async () =>
     globalThis.fixture.ordinary.hidden = true;
     assert.equal(await activate(), null);
 });
+
+test("display confirmations are separate from prefetch and carry ordered source revisions", async () => {
+    const bodies = [];
+    globalThis.fixture = {
+        supported: true,
+        config: { sharedLyricsBridge: true, lyricsSource: "auto" },
+        fetch: async (url, init) => {
+            assert.ok(url.endsWith("/selection"));
+            bodies.push(JSON.parse(init.body));
+            return new Response(JSON.stringify({ status: "selected" }));
+        },
+    };
+    const c = new LyricsCoordinator();
+    c.setCurrent(track.uri);
+    await c.confirmSelection(track, entry);
+    await c.confirmSelection(track, entry);
+    assert.equal(bodies.length, 1);
+    assert.equal(bodies[0].sourceFamily, "apple-music");
+    assert.equal(bodies[0].documentRevision, "abc");
+    const ordinary = {
+        ...entry,
+        sourceFamily: "standard",
+        documentRevision: undefined,
+        lines: entry.lines.map((line) => ({
+            ...line,
+            presentation: undefined,
+            translation: "你好海洋",
+        })),
+    };
+    await c.confirmSelection(track, ordinary);
+    assert.equal(bodies.length, 2);
+    assert.ok(bodies[1].selectionRevision > bodies[0].selectionRevision);
+    assert.equal(bodies[1].sourceFamily, "standard");
+    c.setCurrent("spotify:track:other");
+    await c.confirmSelection(track, entry);
+    assert.equal(bodies.length, 2);
+});

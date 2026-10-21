@@ -1,3 +1,7 @@
+import {
+    compareLyricsPreference,
+    lyricsPreferenceScore,
+} from "../../../services/lyrics-preference";
 import { traceLyricsBridge } from "../../../services/lyrics-bridge-trace";
 import { LyricsCoordinator } from "../../../services/lyrics-coordinator";
 import { activeRichLines, groupRichLines, richRuby } from "../../../services/lyrics-rich-document";
@@ -113,6 +117,8 @@ export class Lyrics {
     private static richFallbackAuthorized = false;
     private static currentRichEntry: LyricsCacheEntry | null = null;
     private static pendingRichEntry: LyricsCacheEntry | null = null;
+    private static appleCandidate: LyricsCacheEntry | null = null;
+    private static ordinaryCandidate: LyricLine[] | null = null;
     private static readonly REQUEST_TIMEOUT_MS = 10000;
     private static readonly REFETCH_DELAYS_MS = [15000, 45000, 120000];
     private static readonly SHARED_SYNC_POLL_MS = 1000;
@@ -211,6 +217,8 @@ export class Lyrics {
     static teardown() {
         this.stopLoop();
         this.coordinator.stop();
+        this.appleCandidate = null;
+        this.ordinaryCandidate = null;
         this.currentRichEntry = null;
         this.pendingRichEntry = null;
         this.richActive.clear();
@@ -296,6 +304,9 @@ export class Lyrics {
             this.clearRefetch();
             this.refetchAttempt = 0;
             this.currentTrackUri = trackUri ?? null;
+            this.appleCandidate = null;
+            this.ordinaryCandidate = null;
+            this.currentRichEntry = null;
             this.lastSharedSyncSignature = null;
         }
         this.pendingRichEntry = null;
@@ -336,8 +347,16 @@ export class Lyrics {
         if (!this.isCurrentLoad(sequence)) return;
         this.richDecisionInFlight = false;
         if (apple) {
-            this.applyRichEntry(apple);
-            return;
+            this.appleCandidate = apple;
+            if (
+                this.prefersAppleCandidate() &&
+                (CFM.get("lyricsSource") === "apple-music" ||
+                    getEffectiveCacheSource(apple) === "manual" ||
+                    lyricsPreferenceScore(apple.lines, "apple-music")[0] >= 50)
+            ) {
+                this.applyRichEntry(apple);
+                return;
+            }
         }
         const cachedLines = this.getPreparedLyricsFromCache(track);
         if (cachedLines !== null) {
@@ -538,7 +557,16 @@ export class Lyrics {
                         : this.linesForEntry(automaticFallback);
                 const canPublish =
                     !this.isCurrentTrack(track.uri) ||
-                    this.authoritativeRevision === authorityRevision;
+                    this.authoritativeRevision === authorityRevision ||
+                    (CFM.get("lyricsSource") === "auto" &&
+                        this.currentRichEntry &&
+                        getEffectiveCacheSource(this.currentRichEntry) !== "manual" &&
+                        compareLyricsPreference(
+                            resolvedLines,
+                            this.lines,
+                            "standard",
+                            "apple-music",
+                        ) > 0);
                 if (!this.shouldRetryThirdParty(debugSnapshot)) {
                     setCachedLyrics(track.uri, kind, lines, debugSnapshot, canPublish, {
                         source: "plugin",
@@ -713,11 +741,13 @@ export class Lyrics {
         }
         const trackUri = this.currentTrackUri;
         if (!trackUri || !this.isCurrentTrack(trackUri)) return;
+        this.confirmDisplayedSelection();
         this.sharedSyncInFlight = true;
         const sequence = this.loadSequence;
         try {
             const track = this.getCurrentTrack(trackUri);
-            if (this.lines.some((line) => line.presentation)) {
+            const displayingRich = this.lines.some((line) => line.presentation);
+            if (CFM.get("lyricsSource") !== "standard") {
                 const rich = await this.coordinator
                     .refresh(track, () => this.getSpotifyLyrics(track))
                     .catch(() => null);
@@ -728,17 +758,25 @@ export class Lyrics {
                 )
                     return;
                 if (rich?.entry) {
-                    this.applyRichEntry(rich.entry);
-                    return;
+                    this.appleCandidate = rich.entry;
+                    if (this.prefersAppleCandidate()) {
+                        if (displayingRich || !this.isSynced || !this.lines.length)
+                            this.applyRichEntry(rich.entry);
+                        else this.pendingRichEntry = rich.entry;
+                        return;
+                    }
                 }
                 if (
-                    rich?.status === "unchanged" ||
-                    !rich ||
-                    (rich.status !== "standard" && rich.status !== "hidden")
+                    displayingRich &&
+                    (rich?.status === "unchanged" ||
+                        !rich ||
+                        (rich.status !== "standard" && rich.status !== "hidden"))
                 )
                     return;
-                this.richFallbackAuthorized = true;
-                this.lastSharedSyncSignature = null;
+                if (displayingRich) {
+                    this.richFallbackAuthorized = true;
+                    this.lastSharedSyncSignature = null;
+                }
             }
             const entry = await this.bestSharedPreferredEntry(track);
             if (
@@ -908,23 +946,10 @@ export class Lyrics {
     }
 
     private static lyricsQualityScore(lines: LyricLine[]) {
-        const meaningful = lines.filter((line) => line.text.trim()).length;
-        const timed = lines.filter((line) => line.time !== null).length;
-        const karaoke = lines.filter((line) => this.hasKaraokeText(line)).length;
-        const furigana = lines.filter((line) => Boolean(line.furigana?.trim())).length;
-        const translation = lines.filter((line) => Boolean(line.translation?.trim())).length;
-        const romanization = lines.filter((line) => Boolean(line.romanization?.trim())).length;
-        return [
-            Number(karaoke > 0),
-            Number(furigana > 0),
-            Number(translation > 0),
-            karaoke,
-            furigana,
-            translation,
-            romanization,
-            timed,
-            meaningful,
-        ];
+        return lyricsPreferenceScore(
+            lines,
+            lines.some((line) => line.presentation) ? "apple-music" : "standard",
+        );
     }
 
     private static getEnhancedCacheKind(): LyricsCacheKind {
@@ -1228,15 +1253,80 @@ export class Lyrics {
         ]);
     }
 
+    private static prefersAppleCandidate() {
+        const apple = this.appleCandidate;
+        if (!apple || CFM.get("lyricsSource") === "standard") return false;
+        if (
+            CFM.get("lyricsSource") === "apple-music" ||
+            getEffectiveCacheSource(apple) === "manual"
+        )
+            return true;
+        if (
+            this.currentTrackUri &&
+            (["spotify", "enhanced", "enhanced-relaxed"] as const).some(
+                (kind) =>
+                    getEffectiveCacheSource(
+                        getCachedLyricsFullEntry(this.currentTrackUri, kind),
+                    ) === "manual",
+            )
+        )
+            return false;
+        return (
+            !this.ordinaryCandidate?.length ||
+            compareLyricsPreference(
+                apple.lines,
+                this.ordinaryCandidate,
+                "apple-music",
+                "standard",
+            ) >= 0
+        );
+    }
+
+    private static confirmDisplayedSelection() {
+        const uri = this.currentTrackUri;
+        if (!uri || !this.isCurrentTrack(uri) || !this.lines.length) return;
+        const track = this.getCurrentTrack(uri);
+        if (this.currentRichEntry && this.lines.some((line) => line.presentation)) {
+            void this.coordinator.confirmSelection(track, this.currentRichEntry);
+            return;
+        }
+        const signature = this.linesSignature(this.lines);
+        const cached = ([this.getEnhancedCacheKind(), "spotify"] as const)
+            .map((kind) => getCachedLyricsFullEntry(uri, kind))
+            .find((entry) => entry && this.linesSignature(this.linesForEntry(entry)) === signature);
+        const now = Date.now();
+        const entry: LyricsCacheEntry = {
+            ...cached,
+            trackUri: uri,
+            kind: cached?.kind ?? this.getEnhancedCacheKind(),
+            cachedAt: cached?.cachedAt ?? now,
+            expiresAt: cached?.expiresAt ?? now + 86400000,
+            lines: cached?.lines ?? this.lines,
+            sourceFamily: "standard",
+            metadata: this.cacheMetadataForTrack(track),
+            sourceName: cached?.sourceName ?? "Spotify",
+            cacheSource: cached?.cacheSource ?? "plugin",
+            source: "plugin",
+            offsetMilliseconds: cached?.offsetMilliseconds ?? 0,
+            timingOffsetApplied: cached?.timingOffsetApplied ?? true,
+        };
+        void this.coordinator.confirmSelection(track, entry);
+    }
+
     private static applyRichEntry(entry: LyricsCacheEntry) {
+        this.appleCandidate = entry;
+        this.pendingRichEntry = null;
+        if (!this.prefersAppleCandidate()) return;
         const grouped = groupRichLines(this.linesForEntry(entry));
         this.currentRichEntry = entry;
         this.pendingRichEntry = null;
         if (
             this.linesSignature(grouped) === this.renderedLyricsSignature &&
             this.lyricsRoot?.isConnected
-        )
+        ) {
+            this.confirmDisplayedSelection();
             return;
+        }
         // Taking over render authority also invalidates an ordinary enhancement
         // that was already in flight. Its result may be cached, not displayed.
         this.authoritativeRevision += 1;
@@ -1250,8 +1340,16 @@ export class Lyrics {
     }
 
     private static applyLines(lines: LyricLine[]) {
+        if (!lines.some((line) => line.presentation)) {
+            this.ordinaryCandidate = lines;
+            if (this.appleCandidate && this.prefersAppleCandidate()) {
+                this.applyRichEntry(this.appleCandidate);
+                return;
+            }
+        }
         const signature = this.linesSignature(lines);
         if (signature === this.renderedLyricsSignature && this.lyricsRoot?.isConnected) {
+            this.confirmDisplayedSelection();
             return;
         }
         const timingShift = this.uniformTimingShift(this.lines, lines);
@@ -1298,11 +1396,13 @@ export class Lyrics {
         this.container?.classList.toggle("lyrics-unsynced", !this.isSynced);
         if (canUpdateTimingInPlace) {
             this.updateTimingInPlace(lines, timingShift);
+            this.confirmDisplayedSelection();
             this.startLoop();
             return;
         }
         this.activeIndex = this.isSynced ? -1 : 0;
         this.renderLines();
+        this.confirmDisplayedSelection();
         if (this.isSynced) this.startLoop();
     }
 

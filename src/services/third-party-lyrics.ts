@@ -1,3 +1,4 @@
+import { lyricsPreferenceScore } from "./lyrics-preference";
 import type { RichPresentation } from "./lyrics-rich-document";
 import { decryptQrc } from "qrc-decoder";
 import {
@@ -441,16 +442,7 @@ function compareMatchedLyrics(first: MatchedLyricsCandidate, second: MatchedLyri
 }
 
 function getCandidateQuality(candidate: MatchedLyricsCandidate) {
-    const features = countMergedFeatures(candidate.lines);
-    return [
-        Number(features.karaoke > 0),
-        Number(features.furigana > 0 || (candidate.debug.counts?.furigana ?? 0) > 0),
-        Number(features.translation > 0),
-        features.karaoke,
-        features.furigana,
-        features.translation,
-        features.romanization,
-    ];
+    return lyricsPreferenceScore(candidate.lines);
 }
 
 function providerName(provider: ProviderSong["provider"]) {

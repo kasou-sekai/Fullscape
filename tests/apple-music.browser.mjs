@@ -90,7 +90,7 @@ test(
             const html = `<!doctype html><meta charset="utf-8"><style>${css}
  #fullscape-display{display:block;background:#171421;color:white;width:1050px;height:900px}#fad-lyrics-container{width:950px;height:850px;--lyrics-base-font-size:48px;--lyrics-font-scale:1;--primary-color:white;--tertiary-color:#888;--secondary-color:#aaa;--main-color:255,255,255}.lyrics-wrapper,.rnp-lyrics{height:850px}#results{display:none}</style>
  <div id="fullscape-display"><div id="fad-lyrics-container"></div></div>
- <script>globalThis.progress=0;globalThis.hostConfig={get:key=>({lyricsChineseConversion:'original',karaokeLyrics:true,showLyricsFurigana:true,showLyricsTranslation:true,showLyricsRomanization:true,lyricsSize:48})[key]};globalThis.hostDOM={container:document.getElementById('fullscape-display')};globalThis.Spicetify={Player:{getProgress:()=>globalThis.progress,isPlaying:()=>false,data:{item:{uri:'spotify:track:test'}}}};</script>
+ <script>globalThis.progress=0;globalThis.preferenceMode='auto';globalThis.hostConfig={get:key=>({lyricsSource:globalThis.preferenceMode,lyricsChineseConversion:'original',karaokeLyrics:true,showLyricsFurigana:true,showLyricsTranslation:true,showLyricsRomanization:true,lyricsSize:48})[key]};globalThis.hostDOM={container:document.getElementById('fullscape-display')};globalThis.Spicetify={Player:{getProgress:()=>globalThis.progress,isPlaying:()=>false,data:{item:{uri:'spotify:track:test'}}}};</script>
  <script>${bundle.outputFiles[0].text}</script><script>
  (async()=>{try{
  const L=Fixture.Lyrics;
@@ -154,6 +154,20 @@ test(
   const intact=L.lineNodes.every((node,index)=>node.querySelector('.rnp-lyrics-line-karaoke').textContent===fixture.lines[index].text);
   return {source:fixture.source,intact};
  });
+ const translated={...legacy,presentation:undefined,translation:'你好海洋'};
+ L.appleCandidate=null;L.ordinaryCandidate=null;
+ L.applyRichEntry({kind:'enhanced',trackUri:'spotify:track:test',metadata:{title:'Example',artist:'Artist'},lines:[legacy],sourceFamily:'apple-music'});L.stopLoop();
+ L.applyLines([translated]);L.stopLoop();
+ result.translatedWins=L.getDiagnostics().sourceFamily==='standard';
+ L.applyRichEntry({kind:'enhanced',trackUri:'spotify:track:test',lines:[legacy],sourceFamily:'apple-music'});L.stopLoop();
+ result.simpleAppleStaysBelowTranslation=L.getDiagnostics().sourceFamily==='standard';
+ const richLegacy={...legacy,presentation:{...legacy.presentation,alignment:'right'}};
+ L.applyRichEntry({kind:'enhanced',trackUri:'spotify:track:test',lines:[richLegacy],sourceFamily:'apple-music'});L.stopLoop();
+ result.richAppleWins=L.getDiagnostics().sourceFamily==='apple-music';
+ globalThis.preferenceMode='apple-music';
+ L.applyRichEntry({kind:'enhanced',trackUri:'spotify:track:test',lines:[legacy],sourceFamily:'apple-music'});L.stopLoop();
+ result.explicitAppleWins=L.getDiagnostics().sourceFamily==='apple-music';
+ globalThis.preferenceMode='auto';
  const actual=${JSON.stringify(actual).replace("<", "\u003c")};
  if(actual.length){
   const grouped=Fixture.groupRichLines(actual);let sample=0;let expected=[];
@@ -217,6 +231,10 @@ test(
             assert.equal(value.loadInvalidated, true);
             assert.equal(value.offsetRetainsNodes, true);
             assert.equal(value.displayedSource, "apple-music");
+            assert.equal(value.translatedWins, true);
+            assert.equal(value.simpleAppleStaysBelowTranslation, true);
+            assert.equal(value.richAppleWins, true);
+            assert.equal(value.explicitAppleWins, true);
             assert.match(value.matchedSource, /^Apple Music：Example/);
             assert.equal(value.legacyText, "Hello ocean! Again");
             assert.ok(value.gapWidth > 3, JSON.stringify(value));

@@ -244,7 +244,7 @@ Shiori 增加 AppleMusicPrefetchCoordinator、公共 matcher bundle adapter 和 
 
 ## 实施记录
 
-已实现的传输为 `prepare`、`activate`、`release` 三个 POST 端点；prepare 本身兼作有界任务状态查询，
+已实现的传输为 `prepare`、`activate`、`release` 和 `selection` 四个 POST 端点；prepare 本身兼作有界任务状态查询，
 activate 使用 `knownRevision` 返回 unchanged，因此本版没有增加重复职能的独立 job/document GET。
 下一首只接收 ready manifest，正文在 activate 交付。队列兴趣用独立 revision 防止 ABA，后台获取串行执行。
 匹配 bundle 与协议 hash 一致；Apple Music 预取始终采用现有宽松路径（先严格、再宽松），普通源保留原配置开关。
@@ -263,3 +263,14 @@ node scripts/build-shiori-matcher.mjs /path/to/LyricShiori/Sources/LyricShiori/R
 `FULLSCAPE_APPLE_FIXTURE=/path/to/Apple Music/珊瑚海....lrcs` 可对本地真实缓存执行 browser 验收，
 并可用于 Shiori 的 Swift 测试。测试只读用户文件，在临时目录运行；歌词正文和浏览器截图不提交到仓库。
 没有该环境变量时保留合成多声部/背景测试，Swift 的真实文件验收明确跳过。
+
+### 实际选源确认与自动排序
+
+`selection` 仅在实际显示时提交（包含来源、文档 revision、客户端单调递增选择 revision），
+Shiori 核对当前 Spotify 曲目和文档后选择独立缓存槽并更新桌面。下一首预取没有此副作用。
+普通 v1 缓存同步不会改变已确认的 Apple 来源；手动选择、隐藏和较新的曲目选择优先。
+断开重连通过当前显示状态重试，缓存只读刷新不触发歌词下载。
+
+自动排序使用两端同一 `lyrics-preference.ts` bundle：中文歌词 Apple Music 优先；其他歌曲依次为
+富文本 Apple Music、带中文翻译逐字、无翻译逐字、带中文翻译普通、普通同步、无时间轴歌词。
+普通外语 Apple Music 不会阻止仍在获取的带翻译逐字候选更新显示。显式来源模式和手动选择保留优先权。

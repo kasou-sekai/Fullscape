@@ -134,6 +134,51 @@ export class LyricsCoordinator {
         this.next = null;
         this.generation++;
     }
+    private selectionRevision = 0;
+    private lastSelection = "";
+    private lastSelectionAt = 0;
+    private selectionInFlight = new Set<string>();
+    async confirmSelection(track: Track, entry: LyricsCacheEntry) {
+        if (!CFM.get("sharedLyricsBridge") || this.current !== track.uri) return;
+        const family = entry.sourceFamily === "apple-music" ? "apple-music" : "standard";
+        const signature = `${track.uri}:${family}:${entry.documentRevision ?? JSON.stringify([entry.lines, entry.sourceName, entry.offsetMilliseconds, entry.hidden])}`;
+        if (
+            (signature === this.lastSelection && Date.now() - this.lastSelectionAt < 5000) ||
+            this.selectionInFlight.has(signature)
+        )
+            return;
+        const revision = ++this.selectionRevision;
+        this.selectionInFlight.add(signature);
+        try {
+            if (!(await supportsRichLyricsBridge()) || this.current !== track.uri) return;
+            const response = await fetchBridge(`${origin}/selection`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    trackUri: track.uri,
+                    sourceFamily: family,
+                    documentRevision: entry.documentRevision,
+                    entry,
+                    clientSessionId: this.sessionId,
+                    selectionRevision: revision,
+                    sourcePolicy: CFM.get("lyricsSource") ?? "auto",
+                }),
+            });
+            if (
+                response.ok &&
+                (await response.json()).status === "selected" &&
+                this.current === track.uri
+            ) {
+                this.lastSelection = signature;
+                this.lastSelectionAt = Date.now();
+            }
+        } catch {
+            /* A reconnect heartbeat retries the actual displayed choice. */
+        } finally {
+            this.selectionInFlight.delete(signature);
+        }
+    }
+
     private interested(uri: string) {
         return this.current === uri || this.next === uri;
     }
@@ -143,6 +188,7 @@ export class LyricsCoordinator {
         reference: EnhancedLyricLine[],
         known: boolean,
         activate: boolean,
+        cachedOnly = false,
     ): Promise<Reply | null> {
         const policy = CFM.get("lyricsSource") ?? "auto";
         const response = await fetchBridge(`${origin}/${activate ? "activate" : "prepare"}`, {
@@ -159,6 +205,7 @@ export class LyricsCoordinator {
                     .slice(0, 5)
                     .map((line) => ({ time: line.time, text: line.text })),
                 referenceKnown: known,
+                cachedOnly,
                 relaxed: true,
                 matcherVersion: MATCHER_VERSION,
                 generation: this.generation,
@@ -211,7 +258,7 @@ export class LyricsCoordinator {
     async refresh(track: Track, baseline: () => Promise<EnhancedLyricLine[]>) {
         if (!(await supportsRichLyricsBridge())) return null;
         const generation = this.generation;
-        const reply = await this.request(track, await baseline(), true, true);
+        const reply = await this.request(track, await baseline(), true, true, true);
         if (generation !== this.generation || this.current !== track.uri) return null;
         if (reply?.entry) {
             if (
@@ -263,7 +310,7 @@ export class LyricsCoordinator {
             if (prepared === null) return offlineCached();
             if (prepared?.status !== "ready" || !valid()) return null;
             // A fresh activation rechecks manual selection/offset after prefetch.
-            const reply = await this.request(track, await baseline(), true, true);
+            const reply = await this.request(track, await baseline(), true, true, true);
             const entry = reply?.status === "unchanged" ? documents.get(track.uri) : reply?.entry;
             if (
                 !valid() ||
