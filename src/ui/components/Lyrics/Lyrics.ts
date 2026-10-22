@@ -683,14 +683,17 @@ export class Lyrics {
         if (!Number.isFinite(offset) || offset === 0) return lines;
         return lines.map((line) => ({
             ...line,
-            time: typeof line.time === "number" ? Math.max(0, line.time - offset) : line.time,
+            time: typeof line.time === "number" ? line.time - offset : line.time,
             presentation: line.presentation
                 ? { ...line.presentation, end: line.presentation.end - offset / 1000 }
                 : undefined,
             words: line.words?.map((word) => ({
                 ...word,
-                time: Math.max(0, word.time - offset),
+                time: word.time - offset,
             })),
+            backgrounds: line.backgrounds
+                ? this.applyTimingOffset(line.backgrounds, offset)
+                : undefined,
         }));
     }
 
@@ -778,6 +781,10 @@ export class Lyrics {
                         (rich.status !== "standard" && rich.status !== "hidden"))
                 )
                     return;
+                if (rich?.status === "standard" || rich?.status === "hidden") {
+                    this.appleCandidate = null;
+                    this.pendingRichEntry = null;
+                }
                 if (displayingRich) {
                     this.richFallbackAuthorized = true;
                     this.lastSharedSyncSignature = null;

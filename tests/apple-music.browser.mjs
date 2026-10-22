@@ -105,7 +105,7 @@ test(
             const html = `<!doctype html><meta charset="utf-8"><style>${css}
  #fullscape-display{display:block;background:#171421;color:white;width:1050px;height:900px}#fad-lyrics-container{width:950px;height:850px;--lyrics-base-font-size:48px;--lyrics-font-scale:1;--primary-color:white;--tertiary-color:#888;--secondary-color:#aaa;--main-color:255,255,255}.lyrics-wrapper,.rnp-lyrics{height:850px}#results{display:none}</style>
  <div id="fullscape-display"><div id="fad-lyrics-container"></div></div>
- <script>globalThis.progress=0;globalThis.preferenceMode='auto';globalThis.hostConfig={get:key=>({lyricsSource:globalThis.preferenceMode,lyricsChineseConversion:'original',karaokeLyrics:true,showLyricsFurigana:true,showLyricsTranslation:true,showLyricsRomanization:true,lyricsSize:48})[key]};globalThis.hostDOM={container:document.getElementById('fullscape-display')};globalThis.Spicetify={Player:{getProgress:()=>globalThis.progress,isPlaying:()=>false,data:{item:{uri:'spotify:track:test'}}}};</script>
+ <script>globalThis.progress=0;globalThis.preferenceMode='auto';globalThis.hostConfig={get:key=>({lyricsDisplay:!!globalThis.testSyncEnabled,sharedLyricsBridge:!!globalThis.testSyncEnabled,lyricsSource:globalThis.preferenceMode,lyricsChineseConversion:'original',karaokeLyrics:true,showLyricsFurigana:true,showLyricsTranslation:true,showLyricsRomanization:true,lyricsSize:48})[key]};globalThis.hostDOM={container:document.getElementById('fullscape-display')};globalThis.Spicetify={Player:{getProgress:()=>globalThis.progress,isPlaying:()=>false,data:{item:{uri:'spotify:track:test'}}}};</script>
  <script>${bundle.outputFiles[0].text}</script><script>
  (async()=>{try{
  const L=Fixture.Lyrics;
@@ -153,6 +153,12 @@ test(
  L.applyRichEntry({kind:'enhanced',trackUri:'spotify:track:test',lines:[main,right,bg,after],offsetMilliseconds:100,timingOffsetApplied:false,sourceFamily:'apple-music'});
  result.loadInvalidated = !L.isCurrentLoad(oldLoad);
  result.offsetRetainsNodes = retainedWords.every((word,index)=>L.lineNodes[0].querySelectorAll('.rnp-karaoke-word')[index]===word);
+ result.offsetTimeline={line:L.lines[0].time,end:L.lines[0].presentation.end,word:Number(L.lineNodes[0].querySelector('.rnp-karaoke-word').dataset.time),background:L.lines[0].backgrounds[0].time,clock:L.karaokeWordsByLine[0][0].animation.currentTime};
+ const negative=L.linesForEntry({lines:Fixture.groupRichLines([main,bg]),offsetMilliseconds:2000,sourceName:'Apple Music'});
+ result.earlyOffset={line:negative[0].time,word:negative[0].words[0].time,background:negative[0].backgrounds[0].time};
+ const delayed=L.linesForEntry({lines:[main],offsetMilliseconds:-500,sourceName:'Apple Music'});
+ result.delayedOffset=delayed[0].time;
+ result.appliedOffset=L.linesForEntry({lines:[main],offsetMilliseconds:100,timingOffsetApplied:true,sourceName:'Apple Music'})[0].time;
  const legacy={...main,text:'Hello ocean! Again',words:['Hello','ocean','Again'].map((text,index)=>({time:1000+index*500,duration:500,text}))};
  L.applyRichEntry({kind:'enhanced',trackUri:'spotify:track:test',metadata:{title:'Example',artist:'Artist'},lines:[legacy],sourceFamily:'apple-music'});L.stopLoop();
  Fixture.publishThirdPartyLyricsDebug({status:'matched',matchedSong:'网易云：Old cached source'});
@@ -188,6 +194,17 @@ test(
  L.applyRichEntry({kind:'enhanced',trackUri:'spotify:track:test',lines:[legacy],sourceFamily:'apple-music'});L.stopLoop();
  result.explicitAppleWins=L.getDiagnostics().sourceFamily==='apple-music';
  globalThis.preferenceMode='auto';
+ const originalRefresh=L.coordinator.refresh;
+ const originalShared=L.bestSharedPreferredEntry;
+ const originalConfirm=L.confirmDisplayedSelection;
+ L.currentTrackUri='spotify:track:test';L.coordinator.setCurrent('spotify:track:test');
+ L.currentRichEntry.cacheSource='manual';L.appleCandidate=L.currentRichEntry;
+ L.coordinator.refresh=async()=>({status:'standard'});
+ L.bestSharedPreferredEntry=async()=>({kind:'enhanced',trackUri:'spotify:track:test',cacheSource:'manual',sourceName:'NetEase',lines:[translated],offsetMilliseconds:500,metadata:{title:'Example',artist:'Artist'}});
+ L.confirmDisplayedSelection=()=>{};globalThis.testSyncEnabled=true;
+ await L.syncSharedCacheForCurrentTrack();L.stopLoop();
+ result.manualOffsetHandoff={family:L.getDiagnostics().sourceFamily,time:L.lines[0].time};
+ globalThis.testSyncEnabled=false;L.currentTrackUri=null;L.coordinator.refresh=originalRefresh;L.bestSharedPreferredEntry=originalShared;L.confirmDisplayedSelection=originalConfirm;
  const lineFixture=${JSON.stringify(lineFixture).replace("<", "\u003c")};
  if(lineFixture.length){
   L.appleCandidate=null;L.ordinaryCandidate=null;L.applyRichEntry({kind:'enhanced',trackUri:'spotify:track:test',lines:lineFixture,sourceFamily:'apple-music'});L.stopLoop();
@@ -268,6 +285,17 @@ test(
             }
             assert.equal(value.loadInvalidated, true);
             assert.equal(value.offsetRetainsNodes, true);
+            assert.deepEqual(value.offsetTimeline, {
+                line: 900,
+                end: 5.9,
+                word: 900,
+                background: 2100,
+                clock: 1600,
+            });
+            assert.deepEqual(value.earlyOffset, { line: -1000, word: -1000, background: 200 });
+            assert.equal(value.delayedOffset, 1500);
+            assert.equal(value.appliedOffset, 1000);
+            assert.deepEqual(value.manualOffsetHandoff, { family: "standard", time: 500 });
             assert.equal(value.displayedSource, "apple-music");
             if (process.env.FULLSCAPE_LINE_FIXTURE)
                 assert.deepEqual(value.lineFixture, { lines: 48, words: 0, tier: 10 });
