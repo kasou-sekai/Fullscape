@@ -193,6 +193,15 @@ test(
   L.appleCandidate=null;L.ordinaryCandidate=null;L.applyRichEntry({kind:'enhanced',trackUri:'spotify:track:test',lines:lineFixture,sourceFamily:'apple-music'});L.stopLoop();
   result.lineFixture={lines:L.lineNodes.length,words:L.lineNodes.reduce((sum,node)=>sum+node.querySelectorAll('.rnp-karaoke-word').length,0),tier:Fixture.lyricsPreferenceScore(lineFixture,'apple-music')[0]};
  }
+ L.appleCandidate=null;L.ordinaryCandidate=null;
+ const distant={...after,time:20000,words:after.words.map(word=>({...word,time:20000})),presentation:{...after.presentation,end:22}};
+ L.applyLines(Fixture.groupRichLines([main,right,distant]));L.stopLoop();progress=10000;L.updateActive(progress);L.stopLoop();
+ result.interlude={visible:!!L.activeInterlude,active:[...L.richActive],opacity:Number(L.interludeNode.style.opacity)};
+ progress=20000;L.updateActive(progress);L.stopLoop();result.interludeReturn=[...L.richActive];
+ progress=6500;L.updateActive(progress);L.stopLoop();result.seekBack={interlude:!!L.activeInterlude,active:[...L.richActive]};
+ const sustained={...main,presentation:{...main.presentation,end:18},words:main.words.map(word=>({...word,duration:17000}))};
+ L.applyLines(Fixture.groupRichLines([sustained,right,distant]));L.stopLoop();progress=10000;L.updateActive(progress);L.stopLoop();
+ result.sustainedVoice={interlude:!!L.activeInterlude,active:[...L.richActive],gaps:L.interludes.length};
  const actual=${JSON.stringify(actual).replace("<", "\u003c")};
  if(actual.length){
   const grouped=Fixture.groupRichLines(actual);let sample=0;let expected=[];
@@ -240,6 +249,10 @@ test(
             assert.ok(value.rightInset >= 20 && value.rightInset <= 48, JSON.stringify(value));
             assert.deepEqual(value.held, [1]);
             assert.equal(value.heldLit, true);
+            assert.deepEqual(value.interlude, { visible: true, active: [], opacity: 1 });
+            assert.deepEqual(value.interludeReturn, [2]);
+            assert.deepEqual(value.seekBack, { interlude: false, active: [1] });
+            assert.deepEqual(value.sustainedVoice, { interlude: false, active: [0], gaps: 0 });
             assert.deepEqual(value.following, [2]);
             assert.equal(value.frameCount, 31);
             assert.equal(value.lift, "-0.07em");

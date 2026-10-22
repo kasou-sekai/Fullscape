@@ -4,7 +4,12 @@ import {
 } from "../../../services/lyrics-preference";
 import { traceLyricsBridge } from "../../../services/lyrics-bridge-trace";
 import { LyricsCoordinator } from "../../../services/lyrics-coordinator";
-import { activeRichLines, groupRichLines, richRuby } from "../../../services/lyrics-rich-document";
+import {
+    activeRichLines,
+    groupRichLines,
+    richRuby,
+    richLineEnd,
+} from "../../../services/lyrics-rich-document";
 import { animateFeedback, frameSmoothing, prefersReducedMotion } from "../../../utils/motion";
 import { DOM } from "../../elements";
 import CFM from "../../../utils/config";
@@ -2084,8 +2089,12 @@ export class Lyrics {
         if (!this.isSynced) return;
         if (!this.container || !this.lines.length) return;
         const rich = this.lines.some((line) => line.presentation);
-        const active = rich ? activeRichLines(this.lines, progress) : [];
-        const nextInterlude = active.length ? null : this.findActiveInterlude(progress);
+        const candidateActive = rich ? activeRichLines(this.lines, progress) : [];
+        // A held line is still visible, but it is no longer singing. Let a real
+        // interlude take over; short pauses continue to hold the completed line.
+        const singing = candidateActive.some((index) => progress < richLineEnd(this.lines[index]));
+        const nextInterlude = singing ? null : this.findActiveInterlude(progress);
+        const active = nextInterlude ? [] : candidateActive;
         const nextIndex =
             rich && active.length
                 ? active[0]
@@ -2288,7 +2297,11 @@ export class Lyrics {
         const hasTimedWords = (line.words ?? []).some(
             (word) => Number.isFinite(word.time) && word.duration > 0,
         );
-        return hasTimedWords || (typeof line.duration === "number" && line.duration > 0);
+        return (
+            hasTimedWords ||
+            typeof line.presentation?.end === "number" ||
+            (typeof line.duration === "number" && line.duration > 0)
+        );
     }
 
     private static normalizeMetadataText(text: string) {
@@ -2397,10 +2410,20 @@ export class Lyrics {
             metadataIndexes,
         );
         const interludes: LyricInterlude[] = [];
+        const rich = lines.some((line) => line.presentation);
+        let richEnd = 0;
 
         for (let index = 0; index < timedLines.length; index += 1) {
             const next = timedLines[index];
             const previous = timedLines[index - 1];
+            if (rich && previous) {
+                const line = lines[previous.index];
+                richEnd = Math.max(
+                    richEnd,
+                    richLineEnd(line),
+                    ...(line.backgrounds ?? []).map(richLineEnd),
+                );
+            }
             if (!previous && next.index !== 0) continue;
             if (previous && next.index !== previous.index + 1) continue;
             if (
@@ -2430,7 +2453,13 @@ export class Lyrics {
                     ? null
                     : Math.max(0, plainLyricsNormalGap - this.INTERLUDE_NORMAL_EXTENSION_MS);
             const gapStart = previous
-                ? this.getLyricLineEnd(lines[previous.index], next.time, plainLyricsMinimumDuration)
+                ? rich
+                    ? richEnd
+                    : this.getLyricLineEnd(
+                          lines[previous.index],
+                          next.time,
+                          plainLyricsMinimumDuration,
+                      )
                 : 0;
             const gapEnd = Math.max(gapStart, next.time);
             if (gapEnd - gapStart < this.INTERLUDE_MIN_GAP_MS) continue;
