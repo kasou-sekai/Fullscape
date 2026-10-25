@@ -458,6 +458,9 @@
             will-change: transform;
         }
         .rnp-karaoke-word > span {
+            // Inline background painting can clip fallback-font descenders (y/g/p).
+            // Vertical inline padding extends the fill without changing line layout.
+            padding-block: 0.2em;
             background: linear-gradient(
                 90deg,
                 var(--primary-color) 0%,
