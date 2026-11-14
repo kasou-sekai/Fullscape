@@ -374,3 +374,92 @@ test("timing corrections also update the lyric templates used after a resize", (
     assert.equal(Lyrics.wrappingTemplates.get(block),
         '<span data-time="350" data-duration="200">word</span><rt data-time="350">reading</rt>');
 });
+
+test("refreshing a ready Apple document restores polling after its early return", async () => {
+    const { Lyrics, host, settings, player, timers } = createHost(false);
+    const uri = player.data.item.uri;
+    settings.lyricsSource = "apple-music";
+    Lyrics.container = host.createElement();
+    Lyrics.currentTrackUri = uri;
+    Lyrics.getCurrentTrack = () => ({ uri, title: "Example", artists: "Artist" });
+    Lyrics.loadInterludeTempo = () => {};
+    Lyrics.coordinator.activate = async () => ({ trackUri: uri, lines: [] });
+    let rendered = false;
+    Lyrics.applyRichEntry = () => {
+        rendered = true;
+        Lyrics.loadSequence++;
+    };
+    Lyrics.startSharedCacheSync();
+    const previousTimer = Lyrics.sharedSyncTimer;
+    await Lyrics.loadLyrics(uri, "all");
+    assert.equal(rendered, true);
+    assert.equal(timers.has(previousTimer), false);
+    assert.ok(Lyrics.sharedSyncTimer);
+    assert.ok(timers.has(Lyrics.sharedSyncTimer));
+    assert.equal(Lyrics.richDecisionInFlight, false);
+    Lyrics.teardown();
+});
+
+for (const cached of [false, true]) {
+    test(`plain Apple lyrics render when ordinary lyrics are ${cached ? "cached empty" : "unavailable"}`, async () => {
+        const { Lyrics, host, settings, player } = createHost(false);
+        const uri = player.data.item.uri;
+        settings.lyricsSource = "auto";
+        const entry = {
+            trackUri: uri,
+            sourceFamily: "apple-music",
+            lines: [{
+                time: 1000,
+                text: "Hello ocean",
+                presentation: {
+                    isBackground: false, end: 5, timingMode: "Line",
+                    element: { name: "p", attributes: {}, children: [] },
+                },
+            }],
+        };
+        Lyrics.container = host.createElement();
+        Lyrics.getCurrentTrack = () => ({ uri, title: "Example", artists: "Artist" });
+        Lyrics.loadInterludeTempo = () => {};
+        Lyrics.coordinator.activate = async () => entry;
+        Lyrics.getPreparedLyricsFromCache = () => cached ? [] : null;
+        Lyrics.bestSharedPreferredEntry = async () => null;
+        Lyrics.getPreparedLyrics = async () => [];
+        Lyrics.beginBridgeLease = async () => () => {};
+        let rendered = null;
+        Lyrics.applyRichEntry = (value) => { rendered = value; Lyrics.loadSequence++; };
+        await Lyrics.loadLyrics(uri);
+        assert.equal(rendered, entry);
+        Lyrics.teardown();
+    });
+}
+
+test("a saved Shiori lyric blocks provider requests for current and next tracks", async () => {
+    const { Lyrics, host, settings, player } = createHost(false);
+    const uri = player.data.item.uri;
+    const track = { uri, title: "Example", artists: "Artist" };
+    const entry = {
+        trackUri: uri,
+        kind: "enhanced",
+        cacheSource: "without-plugin",
+        lines: [{ time: 1000, text: "Hello ocean" }],
+    };
+    settings.lyricsSource = "auto";
+    Lyrics.container = host.createElement();
+    Lyrics.getCurrentTrack = () => track;
+    Lyrics.loadInterludeTempo = () => {};
+    Lyrics.coordinator.activate = async (_track, _baseline, _onLate, cachedOnly) => {
+        assert.equal(cachedOnly, true);
+        return null;
+    };
+    Lyrics.coordinator.prepareCached = async () => null;
+    Lyrics.coordinator.prepare = () => assert.fail("unexpected Apple Music search");
+    Lyrics.bestSharedPreferredEntry = async () => entry;
+    Lyrics.getPreparedLyrics = () => assert.fail("unexpected external lyrics request");
+    Lyrics.beginBridgeLease = () => assert.fail("unexpected fetch lease");
+    let rendered;
+    Lyrics.applySharedLyricsEntry = (_uri, value) => { rendered = value; };
+    await Lyrics.loadLyrics(uri);
+    assert.equal(rendered, entry);
+    await Lyrics.prefetchNextLyricsFromBestSource(track);
+    Lyrics.teardown();
+});

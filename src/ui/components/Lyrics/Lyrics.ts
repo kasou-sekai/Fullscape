@@ -8,7 +8,7 @@ import {
     activeRichLines,
     groupRichLines,
     richRuby,
-    richLineEnd,
+    richGroupEnd,
 } from "../../../services/lyrics-rich-document";
 import { animateFeedback, frameSmoothing, prefersReducedMotion } from "../../../utils/motion";
 import { DOM } from "../../elements";
@@ -304,7 +304,11 @@ export class Lyrics {
             : null;
     }
 
-    static async loadLyrics(trackUri?: string, force: "none" | "enhanced" | "all" = "none") {
+    static async loadLyrics(
+        trackUri?: string,
+        force: "none" | "enhanced" | "all" = "none",
+        retry = false,
+    ) {
         if (trackUri !== this.currentTrackUri) {
             this.clearRefetch();
             this.refetchAttempt = 0;
@@ -323,7 +327,7 @@ export class Lyrics {
             return;
         }
         this.loadInterludeTempo(trackUri);
-        const bypassAutomaticSharedCache = force !== "none";
+        const bypassAutomaticSharedCache = force !== "none" && !retry;
         if (bypassAutomaticSharedCache) this.stopSharedCacheSync();
         else this.startSharedCacheSync();
         if (force !== "none") {
@@ -332,13 +336,12 @@ export class Lyrics {
                 force === "enhanced" ? this.getEnhancedCacheKind() : undefined,
             );
         }
-        const track = this.getCurrentTrack(trackUri);
-        const authority = this.authoritativeRevision;
-        this.richDecisionInFlight = true;
-        const apple = await this.coordinator.activate(
-            track,
-            () => this.getSpotifyLyrics(track),
-            (entry) => {
+        let releaseLease: (() => void) | undefined;
+        try {
+            const track = this.getCurrentTrack(trackUri);
+            const authority = this.authoritativeRevision;
+            this.richDecisionInFlight = true;
+            const onLate = (entry: LyricsCacheEntry) => {
                 if (
                     this.isCurrentLoad(sequence) &&
                     this.isCurrentTrack(trackUri) &&
@@ -347,54 +350,68 @@ export class Lyrics {
                     if (!this.isSynced || !this.lines.length) this.applyRichEntry(entry);
                     else this.pendingRichEntry = entry;
                 }
-            },
-        );
-        if (!this.isCurrentLoad(sequence)) return;
-        this.richDecisionInFlight = false;
-        if (apple) {
-            this.appleCandidate = apple;
+            };
+            const [cachedApple, shared] = await Promise.all([
+                this.coordinator.activate(track, () => this.getSpotifyLyrics(track), onLate, true),
+                this.bestSharedPreferredEntry(track),
+            ]);
+            if (!this.isCurrentLoad(sequence)) return;
+            const useShared =
+                shared && (!bypassAutomaticSharedCache || getEffectiveCacheSource(shared) === "manual");
+            const cachedLines = this.getPreparedLyricsFromCache(track);
+            this.ordinaryCandidate = useShared ? this.linesForEntry(shared) : cachedLines;
+            if (cachedApple) this.appleCandidate = cachedApple;
             if (
-                this.prefersAppleCandidate() &&
-                (CFM.get("lyricsSource") === "apple-music" ||
-                    getEffectiveCacheSource(apple) === "manual" ||
-                    lyricsPreferenceScore(apple.lines, "apple-music")[0] >= 50)
+                cachedApple &&
+                !shared?.hidden &&
+                (!useShared || getEffectiveCacheSource(shared) !== "manual" || CFM.get("lyricsSource") === "apple-music") &&
+                this.prefersAppleCandidate()
             ) {
-                this.applyRichEntry(apple);
+                this.richDecisionInFlight = false;
+                this.applyRichEntry(cachedApple);
                 return;
             }
-        }
-        const cachedLines = this.getPreparedLyricsFromCache(track);
-        if (cachedLines !== null) {
-            if (cachedLines.length) this.applyLines(cachedLines);
-            else {
+            if (useShared || shared?.hidden) {
+                this.richDecisionInFlight = false;
+                if (shared.hidden || getEffectiveCacheSource(shared) === "manual") {
+                    this.appleCandidate = null;
+                    this.pendingRichEntry = null;
+                }
+                this.rememberSharedSignature(trackUri, shared);
+                this.applySharedLyricsEntry(trackUri, shared, true);
+                return;
+            }
+            if (cachedLines?.length) {
+                this.richDecisionInFlight = false;
+                this.applyLines(cachedLines);
+                this.clearRefetch();
+                this.refetchAttempt = 0;
+                return;
+            }
+
+            releaseLease = await this.beginBridgeLease(trackUri);
+            if (!this.isCurrentLoad(sequence)) return;
+            const apple = await this.coordinator.activate(
+                track,
+                () => this.getSpotifyLyrics(track),
+                onLate,
+            );
+            if (!this.isCurrentLoad(sequence)) return;
+            this.richDecisionInFlight = false;
+            if (apple) {
+                this.appleCandidate = apple;
+                if (this.prefersAppleCandidate()) {
+                    this.applyRichEntry(apple);
+                    return;
+                }
+            }
+            if (cachedLines !== null) {
                 this.renderStatus("Lyrics unavailable", true);
                 this.scheduleRefetch(trackUri, "all");
-            }
-            if (
-                cachedLines.length &&
-                CFM.get("thirdPartyLyrics") &&
-                this.shouldRetryThirdParty(getThirdPartyLyricsDebug())
-            ) {
-                this.scheduleRefetch(trackUri, "enhanced");
-            }
-            return;
-        }
-        this.lastStatus = "loading";
-        this.renderStatus("Loading lyrics…", false);
-        const releaseLease = await this.beginBridgeLease(trackUri);
-        try {
-            // One bounded bridge read before external requests avoids issuing
-            // Spotify/provider requests when Shiori already has a selection.
-            const shared = await this.bestSharedPreferredEntry(track);
-            if (!this.isCurrentLoad(sequence)) return;
-            const shouldUseShared =
-                shared &&
-                (!bypassAutomaticSharedCache || getEffectiveCacheSource(shared) === "manual");
-            if (shouldUseShared) {
-                this.rememberSharedSignature(trackUri, shared);
-                this.applySharedLyricsEntry(trackUri, shared);
                 return;
             }
+            this.lastStatus = "loading";
+            this.renderStatus("Loading lyrics…", false);
             const lines = await this.getPreparedLyrics(track, true, bypassAutomaticSharedCache);
             if (!this.isCurrentLoad(sequence)) return;
             if (!lines.length) {
@@ -414,11 +431,17 @@ export class Lyrics {
             }
         } catch {
             if (!this.isCurrentLoad(sequence)) return;
+            this.richDecisionInFlight = false;
             this.renderStatus("Lyrics unavailable", true);
             this.scheduleRefetch(trackUri, "all");
         } finally {
-            releaseLease();
-            if (bypassAutomaticSharedCache && this.isCurrentTrack(trackUri)) {
+            releaseLease?.();
+            if (
+                bypassAutomaticSharedCache &&
+                this.isCurrentTrack(trackUri) &&
+                CFM.get("lyricsDisplay") &&
+                this.container
+            ) {
                 this.startSharedCacheSync();
             }
         }
@@ -455,16 +478,10 @@ export class Lyrics {
     }
 
     private static async prefetchNextLyricsFromBestSource(track: LyricsTrack) {
-        const apple = await Promise.race([
-            this.coordinator.prepare(track, () => this.getSpotifyLyrics(track)),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200)),
+        const [apple, shared] = await Promise.all([
+            this.coordinator.prepareCached(track),
+            this.bestSharedPreferredEntry(track),
         ]);
-        if (apple?.status === "ready") return;
-        // Prefetching happens while the current track is still playing, so it
-        // can wait briefly for LyricShiori before issuing external requests.
-        // This avoids fetching Spotify/third-party lyrics when Shiori already
-        // has a manual or plugin-quality entry for the upcoming track.
-        const shared = await this.bestSharedPreferredEntry(track);
         if (shared) {
             setCachedLyrics(
                 track.uri,
@@ -476,7 +493,12 @@ export class Lyrics {
             );
             return;
         }
-        await this.getPreparedLyrics(track, false);
+        if (apple?.status === "ready" || this.getPreparedLyricsFromCache(track)?.length) return;
+        const prepared = await Promise.race([
+            this.coordinator.prepare(track, () => this.getSpotifyLyrics(track)),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 1200)),
+        ]);
+        if (prepared?.status !== "ready") await this.getPreparedLyrics(track, false);
     }
 
     // ---- internal helpers ----
@@ -637,13 +659,13 @@ export class Lyrics {
             }
             return null;
         }
-        return entry && this.isPreferredCacheEntry(entry) ? entry : null;
+        return entry && (entry.hidden || entry.lines.length > 0) ? entry : null;
     }
 
     private static isPreferredCacheEntry(entry: LyricsCacheEntry) {
         const source = getEffectiveCacheSource(entry);
         if (source === "manual") return true;
-        if (source !== "plugin") return false;
+        if (source === "without-plugin") return entry.lines.length > 0;
         if (entry.kind === "spotify") return entry.lines.length > 0;
 
         // LyricShiori can expose the Spotify base entry under the requested
@@ -757,7 +779,7 @@ export class Lyrics {
             const displayingRich = this.lines.some((line) => line.presentation);
             if (CFM.get("lyricsSource") !== "standard") {
                 const rich = await this.coordinator
-                    .refresh(track, () => this.getSpotifyLyrics(track))
+                    .refresh(track)
                     .catch(() => null);
                 if (
                     !this.isCurrentTrack(trackUri) ||
@@ -856,7 +878,11 @@ export class Lyrics {
         }
     }
 
-    private static applySharedLyricsEntry(trackUri: string, entry: LyricsCacheEntry) {
+    private static applySharedLyricsEntry(
+        trackUri: string,
+        entry: LyricsCacheEntry,
+        initialLoad = false,
+    ) {
         if (!this.isCurrentTrack(trackUri)) return;
         const lines = this.linesForEntry(entry);
         if (entry.hidden === true) {
@@ -884,7 +910,7 @@ export class Lyrics {
             this.refetchAttempt = 0;
             return;
         }
-        if (!lines.length || !this.shouldApplySharedLyricsEntry(entry, lines)) return;
+        if (!lines.length || (!initialLoad && !this.shouldApplySharedLyricsEntry(entry, lines))) return;
         if (getEffectiveCacheSource(entry) === "manual") {
             this.pendingRichEntry = null;
             // Only an explicit manual choice may invalidate an in-flight local
@@ -1169,7 +1195,7 @@ export class Lyrics {
             ) {
                 return;
             }
-            void this.loadLyrics(trackUri, force);
+            void this.loadLyrics(trackUri, force, true);
         }, delay);
     }
 
@@ -2099,7 +2125,7 @@ export class Lyrics {
         const candidateActive = rich ? activeRichLines(this.lines, progress) : [];
         // A held line is still visible, but it is no longer singing. Let a real
         // interlude take over; short pauses continue to hold the completed line.
-        const singing = candidateActive.some((index) => progress < richLineEnd(this.lines[index]));
+        const singing = candidateActive.some((index) => progress < richGroupEnd(this.lines[index]));
         const nextInterlude = singing ? null : this.findActiveInterlude(progress);
         const active = nextInterlude ? [] : candidateActive;
         const nextIndex =
@@ -2147,12 +2173,9 @@ export class Lyrics {
         this.activeIndex = nextIndex;
         this.activeInterlude = nextInterlude;
         if (!rich && previousIndex !== nextIndex) this.resetKaraokeLine(previousIndex);
-        if (this.manualScrollActive) {
+        if (this.manualScrollActive && !rich) {
             this.lineNodes.forEach((node, index) =>
-                node.classList.toggle(
-                    "active",
-                    rich ? this.richActive.has(index) : index === this.activeIndex,
-                ),
+                node.classList.toggle("active", index === this.activeIndex),
             );
         } else {
             this.applyTransforms(jumped);
@@ -2424,12 +2447,7 @@ export class Lyrics {
             const next = timedLines[index];
             const previous = timedLines[index - 1];
             if (rich && previous) {
-                const line = lines[previous.index];
-                richEnd = Math.max(
-                    richEnd,
-                    richLineEnd(line),
-                    ...(line.backgrounds ?? []).map(richLineEnd),
-                );
+                richEnd = Math.max(richEnd, richGroupEnd(lines[previous.index]));
             }
             if (!previous && next.index !== 0) continue;
             if (previous && next.index !== previous.index + 1) continue;

@@ -21,7 +21,7 @@ test(
             const bundle = await build({
                 stdin: {
                     contents:
-                        'export {Lyrics} from "./src/ui/components/Lyrics/Lyrics"; export {groupRichLines} from "./src/services/lyrics-rich-document"; export {publishThirdPartyLyricsDebug} from "./src/services/third-party-lyrics"; export {lyricsPreferenceScore} from "./src/services/lyrics-preference";',
+                        'export {Lyrics} from "./src/ui/components/Lyrics/Lyrics"; export {groupRichLines,validRichLines} from "./src/services/lyrics-rich-document"; export {MATCHER_VERSION} from "./src/services/lyrics-matcher-version"; export {publishThirdPartyLyricsDebug} from "./src/services/third-party-lyrics"; export {lyricsPreferenceScore} from "./src/services/lyrics-preference";',
                     resolveDir: process.cwd(),
                 },
                 bundle: true,
@@ -50,6 +50,9 @@ test(
                 ],
             });
             const css = sass.compile("src/styles/base.scss").css;
+            const loadEntry = process.env.FULLSCAPE_LOAD_FIXTURE
+                ? JSON.parse(readFileSync(process.env.FULLSCAPE_LOAD_FIXTURE, "utf8")).entry
+                : null;
             let actual = [];
             if (process.env.FULLSCAPE_APPLE_FIXTURE) {
                 const file = JSON.parse(readFileSync(process.env.FULLSCAPE_APPLE_FIXTURE, "utf8"));
@@ -227,6 +230,50 @@ test(
   result.real={lines:L.lineNodes.length,right:L.lineNodes.filter(node=>node.classList.contains('rnp-lyrics-right')).length,expected,active:[...L.richActive],sample};
   L.lineNodes.forEach(node=>{getComputedStyle(node).transform;node.getAnimations().forEach(animation=>{try{animation.finish();}catch{}})});
  }
+ L.appleCandidate=null;L.ordinaryCandidate=null;L.currentRichEntry=null;
+ const secondBackground={...bg,presentation:{...bg.presentation,parentKey:'L2'}};
+ progress=1000;L.applyLines(Fixture.groupRichLines([main,right,bg,secondBackground,after]));L.stopLoop();
+ L.manualScrollActive=true;L.manualScrollRenderPosition=1;L.manualScrollTargetPosition=1;L.applyTransforms(true);
+ const secondHeightBefore=L.lineHeights[1];
+ progress=2500;L.updateActive(progress);L.stopLoop();
+ result.manualBackgroundLayout={before:secondHeightBefore,after:L.lineHeights[1],expected:L.baseLineHeights[1]+L.backgroundHeights[1],aria:L.lineNodes[1].querySelector('.rnp-rich-backgrounds').getAttribute('aria-hidden'),position:L.manualScrollRenderPosition};
+ L.resetLyricsInteraction(false);
+ const tail={...bg,duration:7000,words:[{time:2200,duration:7000,text:bg.text}],presentation:{...bg.presentation,end:9.2}};
+ progress=2500;L.applyLines(Fixture.groupRichLines([main,right,tail,after]));L.stopLoop();
+ const tailWord=L.karaokeWordsByLine[0].find(word=>word.node.closest('.rnp-rich-backgrounds'));
+ const tailAnimation=tailWord.animation;
+ progress=6500;L.updateActive(progress);L.stopLoop();
+ const tailWrapper=L.lineNodes[0].querySelector('.rnp-rich-backgrounds');
+ getComputedStyle(tailWrapper).opacity;tailWrapper.getAnimations().forEach(animation=>animation.finish());
+ result.backgroundTail={active:[...L.richActive],opacity:Number(getComputedStyle(tailWrapper).opacity),animationRetained:!!tailAnimation&&tailWord.animation===tailAnimation,mainEnd:Fixture.groupRichLines([main,tail])[0].presentation.end};
+ progress=9500;L.updateActive(progress);L.stopLoop();
+ result.backgroundTail.finished=tailWord.animation===null&&!L.lineNodes[0].classList.contains('active');
+ L.applyLines(Fixture.groupRichLines([main,right,tail,distant]));L.stopLoop();progress=8000;L.updateActive(progress);L.stopLoop();
+ result.backgroundTail.interludeWhileSinging=!!L.activeInterlude;
+ progress=10000;L.updateActive(progress);L.stopLoop();result.backgroundTail.interludeAfterEnd=!!L.activeInterlude;
+ const loadFixture=${JSON.stringify(loadEntry).replace(/</g, "\\u003c")};
+ const loadEntry=loadFixture??{kind:'enhanced',trackUri:'spotify:track:plain-apple-load',sourceFamily:'apple-music',lines:[{...main,words:undefined,presentation:{...main.presentation,timingMode:'Line'}},{...after,words:undefined,presentation:{...after.presentation,timingMode:'Line'}}]};
+ loadEntry.validatedMatcherVersion=Fixture.MATCHER_VERSION;loadEntry.expiresAt=Date.now()+60000;
+ Spicetify.Player.data.item.uri=loadEntry.trackUri;
+ globalThis.testSyncEnabled=true;globalThis.preferenceMode='auto';
+ const originalFetch=globalThis.fetch;
+ globalThis.fetch=async(url,init)=>{
+  if(String(url).endsWith('/bridge-session'))return new Response(JSON.stringify({token:'fixture',protocolVersion:1,capabilities:['apple-music-v2']}));
+  const body=JSON.parse(init?.body??'{}');
+  return new Response(JSON.stringify({status:'ready',trackUri:loadEntry.trackUri,matcherVersion:Fixture.MATCHER_VERSION,generation:body.generation,...(String(url).endsWith('/activate')?{entry:loadEntry}:{})}));
+ };
+ L.appleCandidate=null;L.ordinaryCandidate=null;L.currentRichEntry=null;L.currentTrackUri=null;
+ L.stopSharedCacheSync();L.startSharedCacheSync=()=>{};L.loadInterludeTempo=()=>{};L.confirmDisplayedSelection=()=>{};
+ L.getCurrentTrack=()=>({uri:loadEntry.trackUri,title:'Example',artists:'Artist',album:'Album',duration:180000});
+ let providerCalls=0;
+ L.getSpotifyLyrics=async()=>{providerCalls++;return [];};
+ L.getPreparedLyrics=async()=>{providerCalls++;return [];};
+ progress=9000;await L.loadLyrics(loadEntry.trackUri);L.stopLoop();
+ result.plainAppleLoad={valid:Fixture.validRichLines(loadEntry.lines),expected:Fixture.groupRichLines(loadEntry.lines).length,rendered:L.lineNodes.length,synced:L.isSynced,providerCalls};
+ const loadedRoot=L.lyricsRoot;
+ await Promise.resolve();
+ result.plainAppleLoad.retained=L.lyricsRoot===loadedRoot&&L.lineNodes.length===result.plainAppleLoad.expected;
+ globalThis.fetch=originalFetch;globalThis.testSyncEnabled=false;L.stopLoop();
  const output=document.createElement('script');output.type='application/json';output.id='results';output.textContent=JSON.stringify(result);document.body.append(output);L.stopLoop();
  }catch(e){const output=document.createElement('script');output.id='results';output.textContent=JSON.stringify({error:String(e),stack:e.stack});document.body.append(output);}})();</script>`;
             const path = join(directory, "fixture.html");
@@ -308,6 +355,25 @@ test(
             assert.match(value.matchedSource, /^Apple Music：Example/);
             assert.equal(value.legacyText, "Hello ocean! Again");
             assert.ok(value.gapWidth > 3, JSON.stringify(value));
+            assert.ok(value.manualBackgroundLayout.after > value.manualBackgroundLayout.before);
+            assert.equal(value.manualBackgroundLayout.after, value.manualBackgroundLayout.expected);
+            assert.equal(value.manualBackgroundLayout.aria, "false");
+            assert.equal(value.manualBackgroundLayout.position, 1);
+            assert.deepEqual(value.backgroundTail, {
+                active: [0, 1],
+                opacity: 1,
+                animationRetained: true,
+                mainEnd: 6,
+                finished: true,
+                interludeWhileSinging: false,
+                interludeAfterEnd: true,
+            });
+            assert.equal(value.plainAppleLoad.valid, true);
+            assert.ok(value.plainAppleLoad.expected > 0);
+            assert.equal(value.plainAppleLoad.rendered, value.plainAppleLoad.expected);
+            assert.equal(value.plainAppleLoad.synced, true);
+            assert.equal(value.plainAppleLoad.providerCalls, 0);
+            assert.equal(value.plainAppleLoad.retained, true);
             if (process.env.FULLSCAPE_SPACING_FIXTURE) {
                 assert.equal(value.spacing.length, 2);
                 assert.ok(

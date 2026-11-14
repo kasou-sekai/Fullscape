@@ -76,8 +76,8 @@ test("prefetch and activation coalesce; only activation receives the rich docume
             const body = JSON.parse(init.body);
             bodies.push(body);
             let status;
-            if (!body.referenceKnown) status = "reference-required";
-            else if (url.endsWith("/activate")) status = "ready";
+            if (url.endsWith("/activate")) status = "ready";
+            else if (!body.referenceKnown) status = "reference-required";
             else {
                 if (providerCount === 0) {
                     providerCount++;
@@ -110,8 +110,8 @@ test("prefetch and activation coalesce; only activation receives the rich docume
     assert.equal((await prefetch).status, "ready");
     assert.equal((await active).documentRevision, "abc");
     assert.equal(providerCount, 1);
-    assert.ok(baselineCount <= 2);
-    assert.equal(bodies.filter((body) => !body.referenceKnown).length, 1);
+    assert.equal(baselineCount, 1);
+    assert.equal(bodies.filter((body) => !body.referenceKnown && !body.cachedOnly).length, 1);
     assert.equal(
         bodies.every((body) => body.relaxed === true),
         true,
@@ -237,3 +237,165 @@ test("display confirmations are separate from prefetch and carry ordered source 
     await c.confirmSelection(track, entry);
     assert.equal(bodies.length, 2);
 });
+
+test("a matcher upgrade revalidates stored documents before claiming their revision", async () => {
+    const upgradedTrack = { ...track, uri: "spotify:track:matcher-upgrade" };
+    let saved = {
+        ...entry,
+        trackUri: upgradedTrack.uri,
+        validatedMatcherVersion: "previous-matcher",
+    };
+    const request = (result) => {
+        const value = { result };
+        queueMicrotask(() => value.onsuccess?.());
+        return value;
+    };
+    const database = {
+        close() {},
+        transaction: () => ({
+            objectStore: () => ({
+                get: () => request(saved),
+                put: (value) => {
+                    saved = value;
+                },
+                getAllKeys: () => request([upgradedTrack.uri]),
+            }),
+        }),
+    };
+    const bodies = [];
+    globalThis.indexedDB = { open: () => request(database) };
+    globalThis.fixture = {
+        supported: true,
+        config: { sharedLyricsBridge: true, lyricsSource: "auto" },
+        fetch: async (url, init) => {
+            const body = JSON.parse(init.body);
+            bodies.push(body);
+            const unchanged =
+                url.endsWith("/activate") && body.knownRevision === entry.documentRevision;
+            return new Response(
+                JSON.stringify({
+                    status: unchanged ? "unchanged" : "ready",
+                    trackUri: upgradedTrack.uri,
+                    matcherVersion: MATCHER_VERSION,
+                    ...(!unchanged && url.endsWith("/activate")
+                        ? {
+                              entry: { ...entry, trackUri: upgradedTrack.uri },
+                          }
+                        : {}),
+                }),
+            );
+        },
+    };
+    try {
+        const freshModule = await import(
+            `data:text/javascript;base64,${Buffer.from(outputFiles[0].text).toString("base64")}#matcher-upgrade`
+        );
+        const c = new freshModule.LyricsCoordinator();
+        c.setCurrent(upgradedTrack.uri);
+        const result = await c.activate(
+            upgradedTrack,
+            async () => reference,
+            () => assert.fail("unexpected late entry"),
+        );
+        assert.equal(result?.validatedMatcherVersion, MATCHER_VERSION);
+        assert.equal(bodies[0].knownRevision, undefined);
+        assert.equal(bodies[1].knownRevision, undefined);
+        assert.equal((await c.refresh(upgradedTrack, async () => reference)).status, "unchanged");
+        assert.equal(bodies.at(-1).knownRevision, entry.documentRevision);
+    } finally {
+        delete globalThis.indexedDB;
+    }
+});
+
+test("malformed rich documents cannot enter the offline cache", async () => {
+    const malformedTrack = { ...track, uri: "spotify:track:malformed" };
+    globalThis.fixture = {
+        supported: true,
+        config: { sharedLyricsBridge: true, lyricsSource: "apple-music" },
+        fetch: async (url) =>
+            new Response(
+                JSON.stringify({
+                    status: "ready",
+                    trackUri: malformedTrack.uri,
+                    matcherVersion: MATCHER_VERSION,
+                    ...(url.endsWith("/activate")
+                        ? {
+                              entry: {
+                                  ...entry,
+                                  trackUri: malformedTrack.uri,
+                                  lines: entry.lines.map((line) => ({
+                                      ...line,
+                                      presentation: { ...line.presentation, timingMode: {} },
+                                  })),
+                              },
+                          }
+                        : {}),
+                }),
+            ),
+    };
+    const c = new LyricsCoordinator();
+    c.setCurrent(malformedTrack.uri);
+    const activate = () =>
+        c.activate(
+            malformedTrack,
+            async () => reference,
+            () => assert.fail("invalid late entry"),
+        );
+    assert.equal(await activate(), null);
+    globalThis.fixture.supported = false;
+    assert.equal(await activate(), null);
+});
+
+test("rich bridge bodies are bounded even without a Content-Length header", async () => {
+    let cancelled = false;
+    let chunks = 0;
+    const chunk = new Uint8Array(1024 * 1024).fill(32);
+    globalThis.fixture = {
+        supported: true,
+        config: { sharedLyricsBridge: true, lyricsSource: "auto" },
+        fetch: async () =>
+            new Response(
+                new ReadableStream({
+                    pull(controller) {
+                        chunks++;
+                        controller.enqueue(chunk);
+                    },
+                    cancel() {
+                        cancelled = true;
+                    },
+                }),
+            ),
+    };
+    const c = new LyricsCoordinator();
+    c.setCurrent(track.uri);
+    assert.equal(await c.refresh(track, async () => reference), null);
+    assert.equal(cancelled, true);
+    assert.ok(chunks <= 18);
+});
+
+test(
+    "a stalled rich bridge body is cancelled without blocking fallback",
+    { timeout: 5000 },
+    async () => {
+        let cancelled = false;
+        globalThis.fixture = {
+            supported: true,
+            config: { sharedLyricsBridge: true, lyricsSource: "auto" },
+            fetch: async () =>
+                new Response(
+                    new ReadableStream({
+                        start(controller) {
+                            controller.enqueue(new TextEncoder().encode('{"status":'));
+                        },
+                        cancel() {
+                            cancelled = true;
+                        },
+                    }),
+                ),
+        };
+        const c = new LyricsCoordinator();
+        c.setCurrent(track.uri);
+        assert.equal(await c.refresh(track, async () => reference), null);
+        assert.equal(cancelled, true);
+    },
+);

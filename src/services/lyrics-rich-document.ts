@@ -84,9 +84,18 @@ export function richLineEnd(line: EnhancedLyricLine) {
         : (line.time ?? 0) + (line.duration ?? 0);
 }
 
+export function richGroupEnd(line: EnhancedLyricLine) {
+    return Math.max(richLineEnd(line), ...(line.backgrounds ?? []).map(richLineEnd));
+}
+
 export function activeRichLines(lines: EnhancedLyricLine[], progress: number) {
     const active = lines.flatMap((line, index) =>
-        line.time !== null && line.time <= progress && progress < richLineEnd(line) ? [index] : [],
+        [line, ...(line.backgrounds ?? [])].some(
+            (voice) =>
+                voice.time !== null && voice.time <= progress && progress < richLineEnd(voice),
+        )
+            ? [index]
+            : [],
     );
     if (active.length) return active;
     // Keep the last completed voice lit through the gap, without extending its
@@ -94,9 +103,13 @@ export function activeRichLines(lines: EnhancedLyricLine[], progress: number) {
     let latestEnd = -Infinity;
     let held: number[] = [];
     lines.forEach((line, index) => {
-        if (line.time === null || line.time > progress) return;
-        const end = richLineEnd(line);
-        if (end > progress || end < latestEnd) return;
+        const completed = [line, ...(line.backgrounds ?? [])].filter(
+            (voice) =>
+                voice.time !== null && voice.time <= progress && richLineEnd(voice) <= progress,
+        );
+        if (!completed.length) return;
+        const end = Math.max(...completed.map(richLineEnd));
+        if (end < latestEnd) return;
         if (end > latestEnd) held = [];
         latestEnd = end;
         held.push(index);
@@ -107,51 +120,80 @@ export function activeRichLines(lines: EnhancedLyricLine[], progress: number) {
 export function validRichLines(lines: unknown): lines is EnhancedLyricLine[] {
     if (!Array.isArray(lines) || !lines.length || lines.length > 5000) return false;
     let nodes = 0;
+    let lineCount = 0;
+    let words = 0;
+    let textLength = 0;
+    const record = (value: unknown): value is Record<string, unknown> =>
+        Boolean(value && typeof value === "object" && !Array.isArray(value));
+    const finite = (value: unknown): value is number =>
+        typeof value === "number" && Number.isFinite(value);
+    const text = (value: unknown): value is string => {
+        if (typeof value !== "string" || value.length > 16384) return false;
+        textLength += value.length;
+        return textLength <= 2_000_000;
+    };
+    const optionalText = (value: unknown) => value === undefined || text(value);
     const validNode = (node: TimedTextElement, depth: number): boolean => {
         if (
-            !node ||
+            !record(node) ||
             depth >= 64 ||
             ++nodes > 100000 ||
-            typeof node.name !== "string" ||
+            !text(node.name) ||
             !Array.isArray(node.children) ||
-            !node.attributes ||
-            typeof node.attributes !== "object"
+            !record(node.attributes) ||
+            !optionalText(node.text)
         )
-            return false;
-        if (node.text !== undefined && (typeof node.text !== "string" || node.text.length > 16384))
             return false;
         return (
             Object.entries(node.attributes).length <= 128 &&
-            Object.values(node.attributes).every(
-                (v) => typeof v === "string" && v.length <= 16384,
-            ) &&
+            Object.entries(node.attributes).every(([name, value]) => text(name) && text(value)) &&
             node.children.every((child) => validNode(child, depth + 1))
         );
     };
-    return lines.every(
-        (line) =>
-            line &&
-            typeof line.text === "string" &&
-            line.text.length <= 16384 &&
-            Number.isFinite(line.time) &&
-            line.time >= 0 &&
-            line.presentation &&
-            typeof line.presentation.isBackground === "boolean" &&
-            Number.isFinite(line.presentation.end) &&
-            line.presentation.end * 1000 >= line.time &&
-            validNode(line.presentation.element, 0) &&
-            (!line.words ||
-                (Array.isArray(line.words) &&
-                    line.words.length <= 2000 &&
-                    line.words.every(
-                        (word) =>
-                            Number.isFinite(word.time) &&
-                            word.time >= 0 &&
-                            Number.isFinite(word.duration) &&
-                            word.duration >= 0 &&
-                            typeof word.text === "string",
-                    ))),
-    );
+    const validLine = (line: unknown, depth: number): boolean =>
+        depth < 64 &&
+        ++lineCount <= 5000 &&
+        record(line) &&
+        text(line.text) &&
+        [line.translation, line.romanization, line.furigana].every(optionalText) &&
+        (line.duration === undefined ||
+            line.duration === null ||
+            (finite(line.duration) && line.duration >= 0)) &&
+        finite(line.time) &&
+        line.time >= 0 &&
+        record(line.presentation) &&
+        [
+            line.presentation.key,
+            line.presentation.parentKey,
+            line.presentation.agent,
+            line.presentation.timingMode,
+        ].every(optionalText) &&
+        (line.presentation.alignment === undefined ||
+            ["left", "center", "right"].includes(line.presentation.alignment as string)) &&
+        typeof line.presentation.isBackground === "boolean" &&
+        finite(line.presentation.end) &&
+        Number.isFinite(line.presentation.end * 1000) &&
+        line.presentation.end * 1000 >= line.time &&
+        validNode(line.presentation.element as TimedTextElement, 0) &&
+        (line.words === undefined ||
+            (Array.isArray(line.words) &&
+                line.words.length <= 2000 &&
+                (words += line.words.length) <= 50000 &&
+                line.words.every(
+                    (word) =>
+                        record(word) &&
+                        finite(word.time) &&
+                        word.time >= 0 &&
+                        finite(word.duration) &&
+                        word.duration >= 0 &&
+                        Number.isFinite(word.time + word.duration) &&
+                        text(word.text),
+                ))) &&
+        (line.backgrounds === undefined ||
+            (Array.isArray(line.backgrounds) &&
+                line.backgrounds.length <= 5000 &&
+                line.backgrounds.every((background) => validLine(background, depth + 1))));
+    return lines.every((line) => validLine(line, 0));
 }
 
 /** Parse ruby from the preserved tree using UTF-16 ranges, not code points. */

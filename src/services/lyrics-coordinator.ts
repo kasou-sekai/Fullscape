@@ -19,6 +19,43 @@ type Reply = {
     entry?: LyricsCacheEntry;
 };
 const origin = "http://127.0.0.1:24887/lyrics-v2";
+const MAX_REPLY_BYTES = 16 * 1024 * 1024;
+const REPLY_TIMEOUT_MS = 2000;
+
+async function readReply(response: Response): Promise<Reply | null> {
+    if (!response.body) return null;
+    if (Number(response.headers.get("Content-Length")) > MAX_REPLY_BYTES) {
+        await response.body.cancel();
+        return null;
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let bytes = 0;
+    let json = "";
+    let expired = false;
+    const timeout = setTimeout(() => {
+        expired = true;
+        void reader.cancel().catch(() => undefined);
+    }, REPLY_TIMEOUT_MS);
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (expired) return null;
+            if (done) break;
+            bytes += value.byteLength;
+            if (bytes > MAX_REPLY_BYTES) {
+                await reader.cancel();
+                return null;
+            }
+            json += decoder.decode(value, { stream: true });
+        }
+        return JSON.parse(json + decoder.decode()) as Reply;
+    } finally {
+        clearTimeout(timeout);
+        reader.releaseLock();
+    }
+}
+
 const documents = new Map<string, LyricsCacheEntry>();
 let database: Promise<IDBDatabase | null> | null = null;
 function db() {
@@ -191,6 +228,15 @@ export class LyricsCoordinator {
         cachedOnly = false,
     ): Promise<Reply | null> {
         const policy = CFM.get("lyricsSource") ?? "auto";
+        const cached = documents.get(track.uri);
+        const knownRevision =
+            cached?.trackUri === track.uri &&
+            cached.sourceFamily === "apple-music" &&
+            cached.validatedMatcherVersion === MATCHER_VERSION &&
+            cached.expiresAt > Date.now() &&
+            validRichLines(cached.lines)
+                ? cached.documentRevision
+                : undefined;
         const response = await fetchBridge(`${origin}/${activate ? "activate" : "prepare"}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -214,12 +260,12 @@ export class LyricsCoordinator {
                 role: this.current === track.uri ? "current" : "next",
                 interestRevision:
                     this.current === track.uri ? this.currentRevision : this.nextRevision,
-                knownRevision: documents.get(track.uri)?.documentRevision,
+                knownRevision,
             }),
         });
         if (!response.ok) return null;
-        const reply = (await response.json()) as Reply;
-        if (reply.trackUri !== track.uri || reply.matcherVersion !== MATCHER_VERSION) return null;
+        const reply = await readReply(response);
+        if (reply?.trackUri !== track.uri || reply.matcherVersion !== MATCHER_VERSION) return null;
         return reply;
     }
 
@@ -255,10 +301,20 @@ export class LyricsCoordinator {
         return work;
     }
 
-    async refresh(track: Track, baseline: () => Promise<EnhancedLyricLine[]>) {
+    async prepareCached(track: Track) {
+        if (
+            !this.interested(track.uri) ||
+            CFM.get("lyricsSource") === "standard" ||
+            !(await supportsRichLyricsBridge())
+        )
+            return null;
+        return this.request(track, [], false, false, true).catch(() => null);
+    }
+
+    async refresh(track: Track) {
         if (!(await supportsRichLyricsBridge())) return null;
         const generation = this.generation;
-        const reply = await this.request(track, await baseline(), true, true, true);
+        const reply = await this.request(track, [], false, true, true);
         if (generation !== this.generation || this.current !== track.uri) return null;
         if (reply?.entry) {
             if (
@@ -277,6 +333,7 @@ export class LyricsCoordinator {
         track: Track,
         baseline: () => Promise<EnhancedLyricLine[]>,
         onLate: (entry: LyricsCacheEntry) => void,
+        cachedOnly = false,
     ) {
         if (CFM.get("lyricsSource") === "standard" || !CFM.get("sharedLyricsBridge")) return null;
         const cachedDocument = await stored(track.uri).catch(() => null);
@@ -306,11 +363,17 @@ export class LyricsCoordinator {
                 : null;
         };
         const work = (async () => {
-            const prepared = await this.prepare(track, baseline);
-            if (prepared === null) return offlineCached();
-            if (prepared?.status !== "ready" || !valid()) return null;
-            // A fresh activation rechecks manual selection/offset after prefetch.
-            const reply = await this.request(track, await baseline(), true, true, true);
+            if (cachedOnly) {
+                if (!(await supportsRichLyricsBridge())) return offlineCached();
+            } else {
+                const prepared = await this.prepare(track, baseline);
+                if (prepared === null) return offlineCached();
+                if (prepared.status !== "ready") return null;
+            }
+            if (!valid()) return null;
+            // Recheck selection and offset without fetching a Spotify reference.
+            const reply = await this.request(track, [], false, true, true);
+            if (!reply) return offlineCached();
             const entry = reply?.status === "unchanged" ? documents.get(track.uri) : reply?.entry;
             if (
                 !valid() ||
@@ -325,6 +388,7 @@ export class LyricsCoordinator {
             await remember(entry);
             return entry;
         })().catch(() => offlineCached());
+        if (cachedOnly) return work;
         let initial = true;
         void work.then((entry) => {
             if (!initial && entry && valid()) onLate(entry);

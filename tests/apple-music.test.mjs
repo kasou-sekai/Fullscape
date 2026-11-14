@@ -100,6 +100,49 @@ test("rich validation rejects corrupt timing, excessive trees and unsafe typed a
     );
 });
 
+test("rich validation rejects malformed optional fields and oversized word text", () => {
+    for (const timingMode of [{}, [], 1, null]) {
+        assert.equal(
+            api.validRichLines([{ ...main, presentation: { ...main.presentation, timingMode } }]),
+            false,
+        );
+    }
+    for (const field of ["translation", "romanization", "furigana"]) {
+        assert.equal(api.validRichLines([{ ...main, [field]: {} }]), false);
+    }
+    assert.equal(api.validRichLines([{ ...main, backgrounds: {} }]), false);
+    assert.equal(api.validRichLines([{ ...main, backgrounds: [null] }]), false);
+    assert.equal(api.validRichLines([{ ...main, words: [null] }]), false);
+    assert.equal(
+        api.validRichLines([
+            { ...main, words: [{ time: 10000, duration: 5000, text: "x".repeat(16385) }] },
+        ]),
+        false,
+    );
+    const largeLine = {
+        ...main,
+        words: Array.from({ length: 2000 }, () => ({
+            time: 10000,
+            duration: 1,
+            text: "x".repeat(2000),
+        })),
+    };
+    assert.equal(api.validRichLines([largeLine]), false);
+    assert.equal(api.validRichLines([{ ...main, translation: "你好", duration: null }]), true);
+});
+
+test("background vocals keep their owner active until their own timeline ends", () => {
+    const tail = { ...background, presentation: { ...background.presentation, end: 18 } };
+    const next = { ...right, time: 17000, presentation: { ...right.presentation, end: 20 } };
+    const grouped = api.groupRichLines([main, right, tail, next]);
+    assert.deepEqual(api.activeRichLines(grouped, 15500), [0, 1]);
+    assert.deepEqual(api.activeRichLines(grouped, 16500), [0]);
+    assert.deepEqual(api.activeRichLines(grouped, 17500), [0, 2]);
+    assert.deepEqual(api.activeRichLines(grouped, 18500), [2]);
+    assert.deepEqual(api.activeRichLines(grouped, 21000), [2]);
+    assert.equal(api.richLineEnd(grouped[0]), 15000);
+});
+
 test("completed voices stay lit until the next start, including seeks into a gap", () => {
     const next = { ...main, time: 20000, presentation: { ...main.presentation, end: 25 } };
     const lines = api.groupRichLines([main, right, next]);
