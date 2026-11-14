@@ -356,9 +356,9 @@
         }
         .rnp-lyrics-line-content > div {
             line-height: 1.32;
+            font-weight: 400;
             transition:
                 opacity 0.4s ease,
-                font-weight 0.45s ease,
                 text-shadow 0.45s ease;
             color: var(--tertiary-color);
             white-space: pre-wrap;
@@ -366,6 +366,12 @@
             word-break: auto-phrase;
             overflow-wrap: break-word;
             text-wrap: pretty;
+        }
+        // Balance the complete sentence across rows, rather than leaving a
+        // final word stranded. Timed words and ruby remain atomic below.
+        .rnp-lyrics-line-content > .rnp-lyrics-line-original,
+        .rnp-lyrics-line-content > .rnp-lyrics-line-karaoke {
+            text-wrap: balance;
         }
         .rnp-lyrics-line-content > .rnp-lyrics-line-original {
             white-space: break-spaces;
@@ -399,7 +405,9 @@
             z-index: 1;
         }
         .rnp-lyrics-break-segment {
-            display: inline-block;
+            // A phrase box hides its internal break opportunities from the
+            // sentence balancer. Keep only semantic words/ruby indivisible.
+            display: inline;
             max-width: 100%;
             white-space: break-spaces;
             word-break: auto-phrase;
@@ -414,16 +422,6 @@
         }
         .rnp-lyrics-line-translated {
             font-size: 0.66em;
-            font-weight: 400;
-        }
-        .rnp-lyrics-script-simplified .rnp-lyrics-line-content > .rnp-lyrics-line-original,
-        .rnp-lyrics-script-simplified .rnp-lyrics-line-content > .rnp-lyrics-line-karaoke,
-        .rnp-lyrics-script-traditional .rnp-lyrics-line-content > .rnp-lyrics-line-original,
-        .rnp-lyrics-script-traditional .rnp-lyrics-line-content > .rnp-lyrics-line-karaoke {
-            font-weight: 400;
-            transition:
-                opacity 0.4s ease,
-                text-shadow 0.45s ease;
         }
         rt {
             font-family: "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", "Noto Sans CJK JP",
@@ -515,13 +513,16 @@
         }
         .rnp-lyrics-line.active .rnp-lyrics-line-content > div {
             color: var(--primary-color);
-            font-weight: 700;
             transition: none;
             text-shadow:
                 0 0 12px rgba(var(--main-color), 0.16),
                 0 0 20px rgba(var(--main-color), 0.12),
                 0 4px 16px rgba(var(--main-color), 0.1);
             animation: rnp-lyric-glow 3s ease-in-out infinite;
+        }
+        .rnp-lyrics-line.active .rnp-lyrics-line-content > .rnp-lyrics-line-original,
+        .rnp-lyrics-line.active .rnp-lyrics-line-content > .rnp-lyrics-line-karaoke {
+            font-weight: 600;
         }
         .rnp-lyrics-line.active .rnp-lyrics-line-content > .rnp-lyrics-line-karaoke {
             color: var(--tertiary-color);
@@ -531,36 +532,10 @@
         .rnp-lyrics-line.active .rnp-lyrics-line-romaji,
         .rnp-lyrics-line.active .rnp-lyrics-line-translated {
             color: var(--secondary-color);
-            font-weight: 500;
             text-shadow: none;
             animation: none;
         }
-        .rnp-lyrics-script-simplified
-            .rnp-lyrics-line.active
-            .rnp-lyrics-line-content
-            > .rnp-lyrics-line-original,
-        .rnp-lyrics-script-simplified
-            .rnp-lyrics-line.active
-            .rnp-lyrics-line-content
-            > .rnp-lyrics-line-karaoke,
-        .rnp-lyrics-script-traditional
-            .rnp-lyrics-line.active
-            .rnp-lyrics-line-content
-            > .rnp-lyrics-line-original,
-        .rnp-lyrics-script-traditional
-            .rnp-lyrics-line.active
-            .rnp-lyrics-line-content
-            > .rnp-lyrics-line-karaoke {
-            font-weight: 700;
-        }
-        .rnp-lyrics-script-simplified .rnp-lyrics-line.active .rnp-karaoke-word,
-        .rnp-lyrics-script-simplified .rnp-lyrics-line.active .rnp-karaoke-word > span,
-        .rnp-lyrics-script-traditional .rnp-lyrics-line.active .rnp-karaoke-word,
-        .rnp-lyrics-script-traditional .rnp-lyrics-line.active .rnp-karaoke-word > span {
-            font-weight: 700;
-        }
-        // Rows are measured in the active font before playback. Each state uses
-        // those same breaks, while retaining its original font weight and spacing.
+        // Freeze the measured breaks before playback so row layout stays stable.
         .rnp-lyrics-fixed-row,
         .rnp-lyrics-fixed-row * {
             white-space: pre !important;

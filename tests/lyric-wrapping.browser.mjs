@@ -17,7 +17,7 @@ const browser =
     ].find((path) => existsSync(path));
 
 test(
-    "real browser retains lyric breaks and normal/bold weights across activation and resize",
+    "real browser retains lyric breaks and highlight weights across activation and resize",
     {
         skip:
             !browser &&
@@ -35,7 +35,7 @@ test(
             });
             const css = sass.compile("src/styles/base.scss").css;
             const html = `<!doctype html><meta charset="utf-8"><style>${css}
-            #fullscape-display {display:block}
+            #fullscape-display {display:block;font-weight:600}
             #fad-lyrics-container {width:900px;--lyrics-base-font-size:48px;--lyrics-font-scale:1}
             .rnp-lyrics-line,.rnp-lyrics-line * {animation:none!important;transition:none!important;transform:none!important}
             </style>
@@ -50,6 +50,8 @@ test(
                 ['Chinese', 'original', '我們可以相伴永遠 不只是逢場作戲 我們可以一同遠走', 'zh-TW'],
                 ['Translation', 'translated', '我們可以相伴永遠 不只是逢場作戲 我們可以一同遠走 我們可以相伴永遠', 'zh-TW'],
                 ['Karaoke', 'karaoke', ['I ', 'can ', 'feel ', 'your ', 'touch ', 'picking ', 'me ', 'up ', 'from ', 'the ', 'underground'].map((word,i) => '<span class="rnp-lyrics-semantic-word"><span class="rnp-karaoke-word" data-time="'+i*100+'" data-duration="100"><span>'+word+'</span></span></span>').join(''), 'en'],
+                ['JapaneseTail', 'karaoke', ['みつめ', 'られても', 'なんにも', '出ないです', 'よ…？'].map((word,i) => '<span class="rnp-lyrics-semantic-word"><span class="rnp-karaoke-word" data-time="'+i*100+'" data-duration="100"><span>'+word+'</span></span></span>').join(''), 'ja'],
+                ['EnglishTail', 'karaoke', ['You ', 'know ', 'you ', 'love ', 'me, ', 'I ', 'know ', 'you ', 'care'].map((word,i) => '<span class="rnp-lyrics-break-segment"><span class="rnp-lyrics-semantic-word"><span class="rnp-karaoke-word" data-time="'+i*100+'" data-duration="100"><span>'+word+'</span></span></span></span>').join(''), 'en'],
                 ['Ruby', 'original', '<span class="rnp-lyrics-break-segment"><ruby class="rnp-furigana-ruby">世界<rt>せかい</rt></ruby>のどこかで 君と出会える <ruby class="rnp-furigana-ruby">世界<rt>せかい</rt></ruby>のどこかで 君と出会える</span>', 'ja'],
                 ['Newline', 'original', 'First line\\nSecond line with more words in this lyric', 'en'],
             ];
@@ -77,6 +79,8 @@ test(
                     root.innerHTML = '<div class="rnp-lyrics-line active"><div class="rnp-lyrics-line-content"><div class="rnp-lyrics-line-'+kind+'" data-text-language="'+language+'" lang="'+language+'">'+content+'</div></div></div>';
                     const line = root.firstElementChild;
                     const block = line.firstElementChild.firstElementChild;
+                    const originalText = block.textContent;
+                    const originalTimes = [...block.querySelectorAll('[data-time]')].map(n => [n.dataset.time,n.dataset.duration,n.textContent]);
                     const naturalPositions = positions(block);
                     const naturalRows = naturalPositions.filter((p,i,a) => !i || Math.abs(p[1]-a[i-1][1])>20).map(p => p[0]);
                     const clone = line.cloneNode(true);
@@ -86,15 +90,24 @@ test(
                     const active = positions(block);
                     const activeRows = active.filter((p,i,a) => !i || Math.abs(p[1]-a[i-1][1])>20).map(p => p[0]);
                     const originalSpacing = JSON.stringify(naturalPositions) === JSON.stringify(active);
-                    const bold = getComputedStyle(block).fontWeight;
+                    const activeWeight = getComputedStyle(block).fontWeight;
+                    const activeWordWeights = [...block.querySelectorAll(".rnp-karaoke-word > span")].map(node => getComputedStyle(node).fontWeight);
                     const times = [...block.querySelectorAll('[data-time]')].map(n => n.dataset.time);
                     line.classList.remove('active');
                     const normal = positions(block);
                     const regular = getComputedStyle(block).fontWeight;
                     const unchanged = JSON.stringify(active) === JSON.stringify(normal);
                     const originalBreaks = JSON.stringify(naturalRows) === JSON.stringify(activeRows);
-                    const karaokeIntact = kind !== 'karaoke' || times.length === 11 && new Set(times).size === 11;
-                    results.push({name,width,bold,regular,unchanged,originalBreaks,originalSpacing,karaokeIntact,naturalRows,activeRows,naturalPositions,active});
+                    const expectedTimes = name === 'JapaneseTail' ? 5 : name === 'EnglishTail' ? 9 : 11;
+                    const karaokeIntact = kind !== 'karaoke' || times.length === expectedTimes && new Set(times).size === expectedTimes;
+                    const rows = [];
+                    for (const [character,bottom] of active) {
+                        if (!rows.length || Math.abs(bottom-rows.at(-1).bottom)>20) rows.push({bottom,text:''});
+                        rows.at(-1).text += character;
+                    }
+                    const preserved = originalText === block.textContent && JSON.stringify(originalTimes) === JSON.stringify([...block.querySelectorAll('[data-time]')].map(n => [n.dataset.time,n.dataset.duration,n.textContent]));
+                    const balancedTail = !['JapaneseTail','EnglishTail'].includes(name) || rows.length < 2 || Math.min(...rows.map(row=>row.text.length)) >= Math.max(...rows.map(row=>row.text.length)) * 0.45;
+                    results.push({name,kind,width,activeWeight,activeWordWeights,regular,unchanged,originalBreaks,originalSpacing,karaokeIntact,balancedTail,preserved,rows,naturalRows,activeRows,naturalPositions,active});
                 }
             }
             document.body.innerHTML = '<pre id="results">'+JSON.stringify(results)+'</pre>';
@@ -121,15 +134,34 @@ test(
             const match = result.stdout.match(/<pre id="results">(.*?)<\/pre>/s);
             assert.ok(match, result.stdout);
             const results = JSON.parse(match[1].replaceAll("&quot;", '"').replaceAll("&amp;", "&"));
-            assert.equal(results.length, 21);
+            assert.equal(results.length, 27);
+            const tails = results.filter((result) =>
+                ["JapaneseTail", "EnglishTail"].includes(result.name),
+            );
+            assert.ok(
+                tails.some((result) => result.rows.length > 1),
+                "Tail regressions must exercise wrapped text",
+            );
+            console.log(
+                "Balanced lyric tails:",
+                tails.map(({ name, width, rows }) => ({
+                    name,
+                    width,
+                    rows: rows.map((row) => row.text),
+                })),
+            );
             for (const result of results) {
-                assert.equal(result.bold, "700", JSON.stringify(result));
+                const expectedActiveWeight = ["original", "karaoke"].includes(result.kind)
+                    ? "600"
+                    : "400";
+                assert.equal(result.activeWeight, expectedActiveWeight, JSON.stringify(result));
+                assert.ok(result.activeWordWeights.every((weight) => weight === "600"));
                 assert.equal(result.regular, "400", JSON.stringify(result));
                 assert.ok(
                     result.unchanged &&
-                        result.originalBreaks &&
-                        result.originalSpacing &&
-                        result.karaokeIntact,
+                        result.karaokeIntact &&
+                        result.balancedTail &&
+                        result.preserved,
                     JSON.stringify(result),
                 );
             }

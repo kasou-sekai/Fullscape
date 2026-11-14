@@ -199,7 +199,7 @@
     }
     #fullscape-title {
         font-size: var(--fullscape-title-size);
-        font-weight: 700;
+        font-weight: 500;
         font-family: inherit;
         font-synthesis: none;
         transition:
@@ -218,7 +218,6 @@
     @media (max-width: 900px), (max-height: 900px) {
         #fullscape-title {
             font-size: 35px;
-            font-weight: 600;
         }
     }
 
