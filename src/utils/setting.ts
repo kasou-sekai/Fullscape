@@ -69,6 +69,38 @@ export function createToggleControl(
     return card;
 }
 
+export function createRadioControl<T extends string>(
+    title: string,
+    key: keyof Settings,
+    options: Record<T, string>,
+    selected: T,
+    onChange: (value: T) => void,
+) {
+    const card = getSettingCard("", title, key);
+    const titleElement = card.querySelector<HTMLElement>(".setting-title");
+    if (!titleElement) return card;
+    titleElement.id = `fullscape-setting-${key}`;
+    const group = document.createElement("div");
+    group.className = "fullscape-setting-radio";
+    group.setAttribute("role", "radiogroup");
+    group.setAttribute("aria-labelledby", titleElement.id);
+    for (const value of Object.keys(options) as T[]) {
+        const label = document.createElement("label");
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = `fullscape-${key}`;
+        input.value = value;
+        input.checked = value === selected;
+        input.onchange = () => {
+            if (input.checked) onChange(value);
+        };
+        label.append(input, options[value]);
+        group.append(label);
+    }
+    card.querySelector(".setting-action")?.append(group);
+    return card;
+}
+
 export function createAdjust(
     title: string,
     key: keyof Settings,

@@ -1,0 +1,52 @@
+#fullscape-display[data-theme="focus"] {
+    --focus-ink: #272622;
+    --focus-surface: #f7f6f2;
+    --focus-inset: clamp(26px, 5.2vw, 104px);
+    --focus-block-inset: clamp(24px, 5.8vh, 72px);
+    background: radial-gradient(ellipse at 22% 24%, #fdfcf9 0%, transparent 63%),
+        var(--focus-surface);
+    color: var(--focus-ink);
+    color-scheme: light;
+    overflow: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+
+    .fullscape-focus-page {
+        box-sizing: border-box;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.04fr);
+        align-items: center;
+        gap: clamp(28px, 6.5vw, 112px);
+        width: min(100%, 1690px);
+        min-height: 100%;
+        margin-inline: auto;
+        padding: var(--focus-block-inset) var(--focus-inset);
+    }
+
+    .fullscape-focus-player {
+        width: 100%;
+        max-width: min(620px, calc((100dvh - 2 * var(--focus-block-inset)) * 1.45));
+        min-width: 0;
+        justify-self: center;
+    }
+
+    .fullscape-focus-book {
+        width: 100%;
+        min-width: 0;
+        justify-self: center;
+        max-width: calc(100dvh - 2 * var(--focus-block-inset));
+    }
+
+    @media (max-width: 760px) and (orientation: portrait) {
+        .fullscape-focus-page {
+            grid-template-columns: minmax(0, 1fr);
+            justify-items: center;
+            align-content: start;
+        }
+
+        .fullscape-focus-player,
+        .fullscape-focus-book {
+            max-width: 540px;
+        }
+    }
+}

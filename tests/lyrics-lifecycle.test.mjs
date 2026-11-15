@@ -49,13 +49,13 @@ const { outputFiles } = await build({
             name: "lifecycle-host",
             setup(builder) {
                 builder.onResolve({ filter: /.*/ }, (args) => {
+                    if (args.path.endsWith(".scss")) return { path: "style", namespace: "host" };
                     const target = resolve(dirname(args.importer || appPath), args.path);
                     if (target === resolve("src/utils/config"))
                         return { path: "config", namespace: "host" };
                     if (target === resolve("src/ui/elements"))
                         return { path: "dom", namespace: "host" };
                     if (args.importer !== appPath) return;
-                    if (args.path.endsWith(".scss")) return { path: "style", namespace: "host" };
                     if (Object.hasOwn(appModules, args.path))
                         return { path: args.path, namespace: "host" };
                 });
@@ -276,6 +276,29 @@ test("exit cleans up an existing renderer even if lyrics were already disabled",
     assert.equal(frames.size, 0);
     assert.equal(timers.size, 0);
     assert.equal(Lyrics.container, null);
+});
+
+test("the focus booklet receives authored blank lines and unsynced status without starting the classic loop", async () => {
+    const { main, Lyrics, host, frames } = createHost(true);
+    await main();
+    const book = host.createElement();
+    const received = [];
+    Lyrics.teardown();
+    Lyrics.attach(book, (presentation) => received.push(presentation));
+    const lines = Lyrics.normalizeLines([
+        { startTimeMs: "0", words: "First verse" },
+        { startTimeMs: "0", words: " " },
+        { startTimeMs: "0", words: "Second verse" },
+    ]);
+    Lyrics.applyLines(lines);
+    assert.equal(received.at(-1).status, "ready");
+    assert.equal(received.at(-1).synced, false);
+    assert.equal(received.at(-1).lines.length, 2);
+    assert.equal(received.at(-1).lines[1].sectionBreakBefore, true);
+    assert.equal(book.innerHTML, "");
+    assert.equal(frames.size, 0);
+    Lyrics.teardown();
+    assert.equal(Lyrics.presenter, null);
 });
 
 test("a lyrics response arriving after disable cannot render or restart work", async () => {

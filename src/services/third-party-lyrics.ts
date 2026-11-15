@@ -29,6 +29,7 @@ export type LyricWord = {
 export type EnhancedLyricLine = {
     time: number | null;
     text: string;
+    sectionBreakBefore?: boolean;
     translation?: string;
     romanization?: string;
     furigana?: string;

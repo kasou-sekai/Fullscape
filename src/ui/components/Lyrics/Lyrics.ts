@@ -64,6 +64,12 @@ import {
 import type { LyricInterlude, TimedLyricLine } from "./timeline";
 
 type LyricLine = EnhancedLyricLine;
+export type LyricsPresentation = {
+    trackUri: string;
+    status: "loading" | "empty" | "ready";
+    synced: boolean;
+    lines: readonly LyricLine[];
+};
 type LyricsTrack = TrackInfo & {
     uri: string;
     image?: string;
@@ -131,6 +137,7 @@ export class Lyrics {
     private static readonly enhancedRequests = new Map<string, Promise<LyricLine[]>>();
     private static readonly prefetchedTrackUris = new Set<string>();
     private static container: HTMLElement | null = null;
+    private static presenter: ((presentation: LyricsPresentation) => void) | null = null;
     private static lyricsRoot: HTMLElement | null = null;
     private static lineNodes: HTMLElement[] = [];
     private static timedLines: TimedLyricLine[] = [];
@@ -197,9 +204,10 @@ export class Lyrics {
     private static wrappingTemplates = new WeakMap<HTMLElement, string>();
     private static readonly bridgeLeases = new Map<string, BridgeLease>();
 
-    static attach(container: HTMLElement) {
+    static attach(container: HTMLElement, presenter?: (presentation: LyricsPresentation) => void) {
         this.container = container;
-        void preloadOfflineFuriganaDictionary();
+        this.presenter = presenter ?? null;
+        if (!presenter) void preloadOfflineFuriganaDictionary();
     }
 
     static teardown() {
@@ -232,6 +240,7 @@ export class Lyrics {
         this.lastMeasuredFontSize = 0;
         this.lyricsRoot = null;
         this.container = null;
+        this.presenter = null;
         this.isSynced = false;
         this.lastStatus = "unavailable";
         this.resetDiagnostics();
@@ -264,7 +273,7 @@ export class Lyrics {
     }
 
     static refreshRenderedFurigana() {
-        if (!this.container || !this.lines.length) return;
+        if (!this.container || this.presenter || !this.lines.length) return;
         this.dictionaryFurigana = [];
         this.dictionaryFuriganaRequestSignature = null;
         this.renderLines();
@@ -300,6 +309,7 @@ export class Lyrics {
             this.ordinaryCandidate = null;
             this.currentRichEntry = null;
             this.lastSharedSyncSignature = null;
+            if (this.presenter && trackUri) this.renderStatus("Loading lyrics…", false);
         }
         this.pendingRichEntry = null;
         this.coordinator.setCurrent(trackUri ?? "");
@@ -309,7 +319,7 @@ export class Lyrics {
             this.renderStatus("Lyrics unavailable", true);
             return;
         }
-        this.loadInterludeTempo(trackUri);
+        if (!this.presenter) this.loadInterludeTempo(trackUri);
         const bypassAutomaticSharedCache = force !== "none" && !retry;
         if (bypassAutomaticSharedCache) this.stopSharedCacheSync();
         else this.startSharedCacheSync();
@@ -953,6 +963,7 @@ export class Lyrics {
             line.time ?? "",
             line.duration ?? "",
             line.text,
+            line.sectionBreakBefore ? "break" : "",
             line.translation ?? "",
             line.romanization ?? "",
             line.furigana ?? "",
@@ -1286,11 +1297,24 @@ export class Lyrics {
         if (unavailable) DOM.container.classList.add("lyrics-unavailable");
         else DOM.container.classList.remove("lyrics-unavailable");
         this.stopLoop();
+        if (this.presenter) {
+            this.present(unavailable ? "empty" : "loading");
+            return;
+        }
         this.container.innerHTML = `<div class="lyrics-wrapper"><div class="lyrics-status">${escapeHtml(text)}</div></div>`;
         animateFeedback(this.container.querySelector(".lyrics-status"), [
             { opacity: 0 },
             { opacity: 1 },
         ]);
+    }
+
+    private static present(status: LyricsPresentation["status"]) {
+        this.presenter?.({
+            trackUri: this.currentTrackUri ?? "",
+            status,
+            synced: this.isSynced,
+            lines: this.lines,
+        });
     }
 
     private static prefersAppleCandidate() {
@@ -1362,7 +1386,7 @@ export class Lyrics {
         this.pendingRichEntry = null;
         if (
             this.linesSignature(grouped) === this.renderedLyricsSignature &&
-            this.lyricsRoot?.isConnected
+            (this.presenter || this.lyricsRoot?.isConnected)
         ) {
             this.confirmDisplayedSelection();
             return;
@@ -1388,7 +1412,7 @@ export class Lyrics {
             }
         }
         const signature = this.linesSignature(lines);
-        if (signature === this.renderedLyricsSignature && this.lyricsRoot?.isConnected) {
+        if (signature === this.renderedLyricsSignature && (this.presenter || this.lyricsRoot?.isConnected)) {
             this.confirmDisplayedSelection();
             return;
         }
@@ -1432,6 +1456,11 @@ export class Lyrics {
             karaoke: lines.filter((line) => this.hasKaraokeText(line)).length,
         };
         DOM.container.classList.remove("lyrics-unavailable");
+        if (this.presenter) {
+            this.present("ready");
+            this.confirmDisplayedSelection();
+            return;
+        }
         this.container?.classList.toggle("lyrics-unsynced", !this.isSynced);
         if (canUpdateTimingInPlace) {
             this.updateTimingInPlace(lines, timingShift);
@@ -2857,29 +2886,27 @@ export class Lyrics {
 
     private static normalizeLines(raw: unknown): LyricLine[] {
         if (!raw || !Array.isArray(raw)) return [];
-        return raw
-            .map((line) => {
-                const text = `${line?.words ?? line?.text ?? line?.lyrics ?? ""}`.trim();
-                if (!text) return null;
-                const timeValue =
-                    line?.startTimeMs ??
-                    line?.startTime ??
-                    line?.time ??
-                    line?.t ??
-                    line?.offset ??
-                    null;
-                const parsed =
-                    typeof timeValue === "string"
-                        ? Number.parseInt(timeValue, 10)
-                        : typeof timeValue === "number"
-                          ? timeValue
-                          : null;
-                return {
-                    text,
-                    time: typeof parsed === "number" && Number.isFinite(parsed) ? parsed : null,
-                };
-            })
-            .filter(Boolean) as LyricLine[];
+        const lines: LyricLine[] = [];
+        let sectionBreakBefore = false;
+        for (const line of raw) {
+            const sourceText = line?.words ?? line?.text ?? line?.lyrics;
+            if (sourceText == null) continue;
+            const text = String(sourceText).trim();
+            if (!text) {
+                sectionBreakBefore = lines.length > 0;
+                continue;
+            }
+            const timeValue =
+                line?.startTimeMs ?? line?.startTime ?? line?.time ?? line?.t ?? line?.offset;
+            const parsed = typeof timeValue === "string" ? Number.parseInt(timeValue, 10) : timeValue;
+            lines.push({
+                text,
+                time: typeof parsed === "number" && Number.isFinite(parsed) ? parsed : null,
+                ...(sectionBreakBefore && { sectionBreakBefore }),
+            });
+            sectionBreakBefore = false;
+        }
+        return lines;
     }
 
     private static resetDiagnostics() {

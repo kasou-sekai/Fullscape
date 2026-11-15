@@ -1,0 +1,496 @@
+.focus-player {
+    --focus-spin-angle: 0deg;
+    --focus-needle-angle: -56deg;
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    color: #26231f;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+
+    .focus-player-scene {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 1.45;
+        overflow: hidden;
+        isolation: isolate;
+        container-type: inline-size;
+    }
+
+    .focus-vinyl-deck,
+    .focus-cd-player {
+        position: absolute;
+        inset: 6% 3.5% 7%;
+        transition:
+            opacity 300ms ease,
+            visibility 0s linear 300ms;
+    }
+
+    .focus-vinyl-deck {
+        overflow: hidden;
+        border: 1px solid rgb(255 255 255 / 18%);
+        border-radius: 3.4cqw;
+        background: linear-gradient(
+                112deg,
+                rgb(255 255 255 / 14%),
+                transparent 32% 78%,
+                rgb(0 0 0 / 20%)
+            ),
+            linear-gradient(155deg, #3d3a35 0%, #282622 44%, #191816 100%);
+        box-shadow:
+            inset 0 1px rgb(255 255 255 / 16%),
+            inset 0 -2px 3px rgb(0 0 0 / 32%),
+            0 3.2cqw 5cqw rgb(57 45 31 / 17%),
+            0 0.7cqw 1.2cqw rgb(48 41 32 / 10%);
+    }
+
+    .focus-vinyl-deck::before {
+        position: absolute;
+        inset: 1.1cqw;
+        border: 1px solid rgb(255 255 255 / 7%);
+        border-radius: 2.5cqw;
+        content: "";
+        pointer-events: none;
+    }
+
+    .focus-vinyl-platter {
+        position: absolute;
+        top: 50%;
+        left: 10%;
+        width: 60%;
+        aspect-ratio: 1;
+        border: 0.75cqw solid #282725;
+        border-radius: 50%;
+        background: radial-gradient(
+            circle,
+            #44413b 0 2.2%,
+            #1d1d1b 2.8% 7%,
+            #35332f 7.5% 8.1%,
+            #252421 9% 100%
+        );
+        box-shadow:
+            0 0 0 0.6cqw rgb(255 255 255 / 8%),
+            inset 0 0 2cqw rgb(0 0 0 / 70%),
+            0 1.4cqw 2.7cqw rgb(0 0 0 / 40%);
+        transform: translateY(-50%);
+    }
+
+    .focus-vinyl-platter::before {
+        position: absolute;
+        inset: 1.4cqw;
+        border: 0.35cqw solid rgb(255 255 255 / 5%);
+        border-radius: 50%;
+        content: "";
+    }
+
+    .focus-vinyl-record {
+        position: absolute;
+        inset: 2.7%;
+        border-radius: 50%;
+        opacity: 1;
+        transform: translateX(0) scale(1);
+        transition:
+            transform 420ms cubic-bezier(0.2, 0.78, 0.24, 1),
+            opacity 260ms ease;
+        will-change: transform, opacity;
+    }
+
+    .focus-vinyl-disc {
+        position: absolute;
+        inset: 0;
+        border: 0.35cqw solid #111110;
+        border-radius: 50%;
+        background: radial-gradient(
+                circle,
+                transparent 0 5.1%,
+                rgb(255 255 255 / 8%) 5.3% 5.55%,
+                transparent 5.8% 15%,
+                rgb(255 255 255 / 7%) 15.1% 15.25%,
+                transparent 15.5% 27%,
+                rgb(0 0 0 / 36%) 27.15% 27.35%,
+                transparent 27.7% 39%,
+                rgb(255 255 255 / 7%) 39.15% 39.3%,
+                transparent 39.6% 54%,
+                rgb(0 0 0 / 36%) 54.15% 54.35%,
+                transparent 54.7% 69%,
+                rgb(255 255 255 / 6%) 69.15% 69.3%,
+                transparent 69.6% 100%
+            ),
+            repeating-radial-gradient(
+                circle,
+                #242422 0 0.12cqw,
+                #111110 0.23cqw 0.4cqw,
+                #1d1d1b 0.52cqw 0.76cqw
+            ),
+            radial-gradient(circle at 40% 34%, #33322f, #0b0b0b 70%);
+        box-shadow:
+            inset 0 0 3cqw rgb(255 255 255 / 9%),
+            inset 0 0 7cqw rgb(0 0 0 / 70%),
+            0 0.5cqw 0.9cqw rgb(0 0 0 / 35%);
+        transform: rotate(var(--focus-spin-angle));
+        will-change: transform;
+    }
+
+    .focus-vinyl-label,
+    .focus-cd-label {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        overflow: hidden;
+        border: 0.45cqw solid rgb(255 255 255 / 68%);
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 25%, rgb(255 255 255 / 65%), transparent 46%),
+            linear-gradient(135deg, #d6c7ac, #a9916f 62%, #66533c);
+        box-shadow: 0 0 0 0.3cqw rgb(0 0 0 / 23%);
+        transform: translate(-50%, -50%);
+    }
+
+    .focus-vinyl-label {
+        width: 24%;
+        aspect-ratio: 1;
+    }
+
+    .focus-vinyl-artwork,
+    .focus-cd-artwork {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .focus-disc-spindle {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 4.2%;
+        aspect-ratio: 1;
+        border: 0.18cqw solid rgb(255 255 255 / 80%);
+        border-radius: 50%;
+        background: #272522;
+        box-shadow: 0 0 0 0.35cqw rgb(0 0 0 / 28%);
+        transform: translate(-50%, -50%);
+    }
+
+    .focus-tonearm {
+        position: absolute;
+        top: 16%;
+        right: 12%;
+        width: 48%;
+        height: 2.5cqw;
+        border-radius: 99px;
+        transform: translateY(var(--focus-needle-lift, 0)) rotate(var(--focus-needle-angle));
+        transform-origin: 100% 50%;
+        transition: transform 420ms cubic-bezier(0.2, 0.78, 0.24, 1);
+        z-index: 2;
+    }
+
+    .focus-tonearm::before {
+        position: absolute;
+        top: 50%;
+        right: 1.5%;
+        left: 0;
+        height: 0.9cqw;
+        border: 0.2cqw solid rgb(255 255 255 / 22%);
+        border-radius: 99px;
+        background: linear-gradient(180deg, #d6d2c9, #6d6962 57%, #363430);
+        box-shadow: 0 0.3cqw 0.6cqw rgb(0 0 0 / 32%);
+        content: "";
+        transform: translateY(-50%);
+    }
+
+    .focus-tonearm::after {
+        position: absolute;
+        top: 50%;
+        left: 0;
+        width: 5cqw;
+        height: 2.6cqw;
+        border: 0.25cqw solid #aaa69e;
+        border-radius: 0.65cqw 0.8cqw 0.8cqw 0.5cqw;
+        background: linear-gradient(180deg, #c9c5bc, #59564f 76%);
+        box-shadow: 0 0.3cqw 0.5cqw rgb(0 0 0 / 38%);
+        content: "";
+        transform: translate(-30%, -50%);
+    }
+
+    .focus-tonearm-pivot {
+        position: absolute;
+        top: 50%;
+        right: -1.6cqw;
+        width: 5.4cqw;
+        aspect-ratio: 1;
+        border: 0.35cqw solid #b9b4aa;
+        border-radius: 50%;
+        background: radial-gradient(circle at 32% 28%, #dedbd3, #807c73 65%, #494740);
+        box-shadow:
+            0 0 0 0.4cqw rgb(0 0 0 / 28%),
+            0 0.4cqw 0.7cqw rgb(0 0 0 / 30%);
+        transform: translateY(-50%);
+    }
+
+    .focus-deck-highlight {
+        position: absolute;
+        inset: 1px;
+        border-radius: inherit;
+        background: linear-gradient(
+            112deg,
+            rgb(255 255 255 / 7%),
+            transparent 27% 73%,
+            rgb(0 0 0 / 9%)
+        );
+        pointer-events: none;
+    }
+
+    .focus-cd-player {
+        display: grid;
+        place-items: center;
+        visibility: hidden;
+        opacity: 0;
+    }
+
+    .focus-cd-case {
+        position: relative;
+        width: 81%;
+        height: 91%;
+        overflow: hidden;
+        border: 1px solid rgb(136 126 112 / 40%);
+        border-radius: 2.1cqw;
+        background: linear-gradient(
+                135deg,
+                rgb(255 255 255 / 75%),
+                rgb(239 240 235 / 58%) 37%,
+                rgb(216 220 217 / 44%) 100%
+            ),
+            #e3e3de;
+        box-shadow:
+            inset 0 0 0 0.7cqw rgb(255 255 255 / 72%),
+            inset 0 0 3cqw rgb(135 137 130 / 22%),
+            0 3cqw 5cqw rgb(83 69 50 / 14%),
+            0 0.55cqw 1.1cqw rgb(55 48 38 / 12%);
+        transform: perspective(110cqw) rotateX(2deg) rotateZ(-1deg);
+    }
+
+    .focus-cd-case::before,
+    .focus-cd-case::after {
+        position: absolute;
+        z-index: 2;
+        content: "";
+        pointer-events: none;
+    }
+
+    .focus-cd-case::before {
+        inset: 1.25cqw;
+        border: 0.45cqw solid rgb(255 255 255 / 78%);
+        border-radius: 1.5cqw;
+        box-shadow:
+            inset 0 0 1.4cqw rgb(255 255 255 / 45%),
+            0 0 0 0.2cqw rgb(120 123 119 / 24%);
+    }
+
+    .focus-cd-case::after {
+        top: 2.2cqw;
+        right: 3cqw;
+        bottom: 2.2cqw;
+        width: 1.1cqw;
+        border-radius: 99px;
+        background: linear-gradient(90deg, transparent, rgb(255 255 255 / 82%), transparent);
+        opacity: 0.9;
+    }
+
+    .focus-cd-tray {
+        position: absolute;
+        inset: 7% 9%;
+        border: 0.45cqw solid rgb(136 139 133 / 36%);
+        border-radius: 1.8cqw;
+        background: radial-gradient(
+                ellipse at 45% 42%,
+                rgb(255 255 255 / 96%),
+                rgb(223 225 221 / 85%) 63%,
+                rgb(189 192 188 / 84%)
+            ),
+            #e4e5e0;
+        box-shadow:
+            inset 0 0.5cqw 1cqw rgb(255 255 255 / 92%),
+            inset 0 -0.6cqw 1.5cqw rgb(97 97 91 / 18%),
+            0 0.4cqw 0.8cqw rgb(69 63 52 / 12%);
+        transform: translateX(0);
+        transition: transform 430ms cubic-bezier(0.2, 0.78, 0.24, 1);
+        will-change: transform;
+    }
+
+    .focus-cd-tray::before {
+        position: absolute;
+        inset: 1.1cqw;
+        border: 0.25cqw solid rgb(255 255 255 / 74%);
+        border-radius: 1.2cqw;
+        content: "";
+    }
+
+    .focus-cd-disc {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 75%;
+        aspect-ratio: 1;
+        border: 0.5cqw solid rgb(255 255 255 / 88%);
+        border-radius: 50%;
+        background: radial-gradient(
+                circle,
+                transparent 0 5.3%,
+                rgb(255 255 255 / 95%) 5.5% 6.7%,
+                transparent 7% 12%,
+                rgb(255 255 255 / 76%) 12.2% 12.55%,
+                transparent 12.8% 21%,
+                rgb(255 255 255 / 45%) 21.2% 21.45%,
+                transparent 21.8% 31%,
+                rgb(151 161 162 / 22%) 31.2% 31.45%,
+                transparent 31.8% 42%,
+                rgb(255 255 255 / 70%) 42.2% 42.45%,
+                transparent 42.8% 55%,
+                rgb(151 161 162 / 26%) 55.2% 55.45%,
+                transparent 55.8% 68%,
+                rgb(255 255 255 / 61%) 68.2% 68.45%,
+                transparent 68.8% 82%,
+                rgb(151 161 162 / 22%) 82.2% 82.45%,
+                transparent 82.8% 100%
+            ),
+            repeating-conic-gradient(
+                from 12deg,
+                rgb(255 255 255 / 32%) 0deg 7deg,
+                rgb(142 150 151 / 12%) 7deg 15deg,
+                rgb(243 244 239 / 26%) 15deg 22deg
+            ),
+            radial-gradient(circle at 34% 25%, #f7f7f2, #bcc3c2 61%, #f3f4ef 78%, #9fa7a7 100%);
+        box-shadow:
+            inset 0 0 1.7cqw rgb(255 255 255 / 98%),
+            inset 0 0 3.5cqw rgb(67 79 83 / 23%),
+            0 0.75cqw 1.3cqw rgb(73 67 56 / 24%);
+        transform: translate(-50%, -50%) rotate(var(--focus-spin-angle));
+        will-change: transform;
+    }
+
+    .focus-cd-disc::before {
+        position: absolute;
+        inset: 0;
+        border: 0.65cqw solid rgb(255 255 255 / 48%);
+        border-radius: 50%;
+        background: conic-gradient(
+            from 23deg,
+            transparent 0 19%,
+            rgb(255 255 255 / 45%) 21%,
+            transparent 26% 54%,
+            rgb(255 255 255 / 30%) 57%,
+            transparent 63% 100%
+        );
+        content: "";
+        pointer-events: none;
+    }
+
+    .focus-cd-label {
+        z-index: 1;
+        width: 43%;
+        aspect-ratio: 1;
+        border-color: rgb(255 255 255 / 82%);
+        box-shadow: 0 0 0 0.35cqw rgb(125 125 120 / 25%);
+    }
+
+    .focus-cd-label .focus-disc-spindle {
+        width: 12%;
+        border-color: rgb(255 255 255 / 98%);
+        background: #c3c6c2;
+        box-shadow: 0 0 0 0.35cqw rgb(110 115 114 / 42%);
+    }
+
+    .focus-cd-case-reflection {
+        position: absolute;
+        z-index: 3;
+        inset: 0;
+        background: linear-gradient(
+            116deg,
+            rgb(255 255 255 / 52%),
+            transparent 19% 68%,
+            rgb(255 255 255 / 22%) 82%,
+            transparent 91%
+        );
+        pointer-events: none;
+    }
+
+    &[data-format="vinyl"] {
+        .focus-vinyl-deck {
+            visibility: visible;
+            opacity: 1;
+            transition-delay: 0s;
+        }
+
+        .focus-cd-player {
+            visibility: hidden;
+            opacity: 0;
+            transition-delay: 0s, 300ms;
+        }
+    }
+
+    &[data-format="cd"] {
+        .focus-vinyl-deck {
+            visibility: hidden;
+            opacity: 0;
+            transition-delay: 0s, 300ms;
+        }
+
+        .focus-cd-player {
+            visibility: visible;
+            opacity: 1;
+            transition-delay: 0s;
+        }
+    }
+
+    &.is-ejecting,
+    &.is-loading {
+        .focus-vinyl-record {
+            opacity: 0;
+            transform: translateX(118%) rotate(9deg) scale(0.94);
+        }
+
+        .focus-cd-tray {
+            transform: translateX(118%);
+        }
+    }
+
+    &.is-paused .focus-tonearm {
+        --focus-needle-lift: -1.2cqw;
+    }
+
+    &.is-playing .focus-tonearm {
+        --focus-needle-lift: 0;
+    }
+
+    &.is-ejecting .focus-tonearm {
+        --focus-needle-lift: -1.5cqw;
+    }
+}
+
+@media (max-width: 720px) {
+    .focus-player .focus-player-scene {
+        aspect-ratio: 1.22;
+    }
+
+    .focus-player .focus-vinyl-deck,
+    .focus-player .focus-cd-player {
+        inset: 7% 1% 8%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .focus-player {
+        .focus-vinyl-deck,
+        .focus-cd-player,
+        .focus-vinyl-record,
+        .focus-tonearm,
+        .focus-cd-tray {
+            transition-duration: 1ms;
+        }
+
+        .focus-vinyl-disc,
+        .focus-cd-disc {
+            will-change: auto;
+        }
+    }
+}

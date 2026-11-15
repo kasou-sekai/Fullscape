@@ -3,6 +3,19 @@
     "upnext": "UP NEXT",
     "unknownArtist": "Artist (Unavailable)",
     "settings": {
+        "focusTheme": {
+            "showSheet": "Show lyric sheet {page}",
+            "appearance": "Appearance",
+            "theme": "Theme",
+            "default": "Classic",
+            "focus": "Focus",
+            "format": "Player format",
+            "vinyl": "Vinyl",
+            "cd": "CD",
+            "loading": "Loading lyrics…",
+            "unavailable": "Lyrics unavailable",
+            "disabled": "Lyrics are turned off"
+        },
         "fullscapeConfig": "Plugin Settings",
         "exit": "Exit",
         "pluginSettings": "Plugin Settings",

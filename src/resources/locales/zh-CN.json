@@ -3,6 +3,19 @@
     "upnext": "接下来是…",
     "unknownArtist": "未知歌手",
     "settings": {
+        "focusTheme": {
+            "showSheet": "翻到歌词第 {page} 页",
+            "appearance": "外观",
+            "theme": "主题",
+            "default": "经典",
+            "focus": "专注",
+            "format": "播放器样式",
+            "vinyl": "黑胶唱片",
+            "cd": "CD",
+            "loading": "正在加载歌词…",
+            "unavailable": "暂无歌词",
+            "disabled": "歌词显示已关闭"
+        },
         "fullscapeConfig": "插件设置",
         "exit": "退出",
         "pluginSettings": "插件设置",

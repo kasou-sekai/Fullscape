@@ -3,6 +3,19 @@
     "upnext": "次は",
     "unknownArtist": "不明なアーティスト",
     "settings": {
+        "focusTheme": {
+            "showSheet": "歌詞の {page} ページ目を表示",
+            "appearance": "外観",
+            "theme": "テーマ",
+            "default": "クラシック",
+            "focus": "集中",
+            "format": "プレーヤーの形式",
+            "vinyl": "レコード",
+            "cd": "CD",
+            "loading": "歌詞を読み込み中…",
+            "unavailable": "歌詞はありません",
+            "disabled": "歌詞表示はオフです"
+        },
         "fullscapeConfig": "プラグイン設定",
         "exit": "終了",
         "pluginSettings": "プラグイン設定",

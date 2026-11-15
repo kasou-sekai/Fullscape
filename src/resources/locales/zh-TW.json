@@ -3,6 +3,19 @@
     "upnext": "下一首",
     "unknownArtist": "未知藝人",
     "settings": {
+        "focusTheme": {
+            "showSheet": "翻到歌詞第 {page} 頁",
+            "appearance": "外觀",
+            "theme": "主題",
+            "default": "經典",
+            "focus": "專注",
+            "format": "播放器樣式",
+            "vinyl": "黑膠唱片",
+            "cd": "CD",
+            "loading": "載入歌詞中…",
+            "unavailable": "暫無歌詞",
+            "disabled": "歌詞顯示已關閉"
+        },
         "fullscapeConfig": "插件設定",
         "exit": "退出",
         "pluginSettings": "插件設定",

@@ -36,6 +36,7 @@ import { UpNext } from "./ui/components/UpNext/UpNext";
 import { PlayerControls } from "./ui/components/PlayerControls/PlayerControls";
 import { Cover } from "./ui/components/Cover/Cover";
 import { Lyrics } from "./ui/components/Lyrics/Lyrics";
+import { FocusPage } from "./ui/components/Focus/FocusPage";
 import { Background } from "./utils/background";
 
 import "./styles/base.scss";
@@ -77,6 +78,13 @@ async function startFullscape() {
     }
 
     let showingQueue = false;
+    let focusPage: FocusPage | null = null;
+    let focusClock: number | undefined;
+
+    function updateFocusPlayback(event?: Event | PlaybackStateEvent) {
+        focusPage?.update(getPlaybackPaused(event));
+    }
+
     function updateLyricsTools() {
         const strings = translations[getLocale()].sideView;
         const translation = DOM.container.querySelector<HTMLButtonElement>("#fullscape-translation");
@@ -211,6 +219,7 @@ async function startFullscape() {
         player.removeEventListener("onplaypause", updatePlayerControls);
         player.removeEventListener("onplaypause", updatePlayingIcon);
         player.removeEventListener("onplaypause", updatePlaybackLayout);
+        player.removeEventListener("onplaypause", updateFocusPlayback);
         player.removeEventListener("onprogress", handleLyricsProgress);
 
         const playerEvents = Spicetify.Platform.PlayerAPI._events;
@@ -223,6 +232,12 @@ async function startFullscape() {
     }
 
     function stopDisplayUpdates() {
+        if (focusClock !== undefined) {
+            window.clearInterval(focusClock);
+            focusClock = undefined;
+        }
+        focusPage?.destroy();
+        focusPage = null;
         UpNext.teardown();
         window.removeEventListener("resize", resizeEvents);
         cancelResize();
@@ -269,6 +284,15 @@ async function startFullscape() {
         DOM.lyrics = null;
         Cover.teardown();
         Queue.teardown();
+        const theme = CFM.get("displayTheme");
+        DOM.container.dataset.theme = theme;
+        DOM.container.classList.remove("fullscape-cursor-hidden", "side-view-queue");
+        DOM.container.style.removeProperty("cursor");
+        if (theme === "focus") {
+            DOM.container.replaceChildren();
+            DOM.queue = null;
+            return;
+        }
         DOM.container.innerHTML = getHtmlContent(locale);
 
         DOM.back = DOM.container.querySelector("#fullscape-background")!;
@@ -527,6 +551,11 @@ async function startFullscape() {
     };
     const handleLyricsQueueUpdate = () => Lyrics.prefetchNextLyrics();
     function handleSongChange() {
+        if (focusPage) {
+            updateFocusPlayback();
+            loadCurrentLyrics();
+            return;
+        }
         Queue.captureIncoming();
         Queue.scheduleUpdate();
         void updateInfo();
@@ -537,14 +566,58 @@ async function startFullscape() {
 
     async function activate() {
         if (deactivationPromise) await deactivationPromise;
-        Cover.attach();
-        Queue.attach(DOM.queue!);
-        Spicetify.Platform.PlayerAPI._events.addListener("queue_update", Queue.scheduleUpdate);
         const sequence = ++activationSequence;
 
         document.body.classList.add(...CLASSES_TO_ADD);
         if (CFM.get("enableFullscreen")) await Utils.enterFullscreen()?.catch(() => undefined);
         else await Utils.exitFullscreen()?.catch(() => undefined);
+        if (sequence !== activationSequence) return;
+
+        // Recent Spotify layouts no longer expose the legacy root class.
+        const displayHost = document.querySelector(".Root__top-container") ?? document.body;
+        displayHost.append(DOM.style, DOM.container);
+        animateFeedback(DOM.container, [{ opacity: 0 }, { opacity: 1 }]);
+        Spicetify.Player.addEventListener("songchange", handleSongChange);
+        DOM.container.oncontextmenu = ConfigManager.openConfig.bind(ConfigManager);
+        Spicetify.Mousetrap.unbind("l");
+        Spicetify.Mousetrap.unbind("q");
+        Spicetify.Mousetrap.bind("f11", toggleNativeFullscreen);
+        document.addEventListener("fullscreenchange", fullscreenChangeListener);
+        Spicetify.Mousetrap.bind("esc", deactivate);
+        Spicetify.Mousetrap.bind("c", () => {
+            const popup = document.querySelector("body > generic-modal");
+            if (popup) popup.remove();
+            else ConfigManager.openConfig();
+        });
+
+        if (DOM.container.dataset.theme === "focus") {
+            const lyricsEnabled = CFM.get("lyricsDisplay");
+            focusPage = new FocusPage(
+                DOM.container,
+                CFM.get("focusFormat"),
+                lyricsEnabled,
+                translations[getLocale()].settings.focusTheme,
+                CFM.get("lyricsChineseConversion"),
+            );
+            DOM.container.querySelector<HTMLElement>(".fullscape-focus-player")!.ondblclick =
+                deactivate;
+            updateFocusPlayback();
+            Spicetify.Player.addEventListener("onplaypause", updateFocusPlayback);
+            focusClock = window.setInterval(updateFocusPlayback, 125);
+            if (lyricsEnabled) {
+                Lyrics.attach(focusPage.lyricsRoot, focusPage.presentLyrics);
+                loadCurrentLyrics();
+                Spicetify.Platform.PlayerAPI._events.addListener(
+                    "queue_update",
+                    handleLyricsQueueUpdate,
+                );
+            }
+            return;
+        }
+
+        Cover.attach();
+        Queue.attach(DOM.queue!);
+        Spicetify.Platform.PlayerAPI._events.addListener("queue_update", Queue.scheduleUpdate);
         setTimeout(() => {
             if (sequence !== activationSequence || !Utils.isModeActivated()) return;
             updateInfo();
@@ -556,9 +629,7 @@ async function startFullscape() {
                 };
             });
         }, 200);
-        Spicetify.Player.addEventListener("songchange", handleSongChange);
         handleMouseMoveActivation();
-        DOM.container.oncontextmenu = ConfigManager.openConfig.bind(ConfigManager);
         DOM.container.querySelector<HTMLElement>("#fullscape-foreground")!.ondblclick = deactivate;
         DOM.back.ondblclick = deactivate;
         if (CFM.get("upnextDisplay") !== "never") {
@@ -577,10 +648,6 @@ async function startFullscape() {
         );
         updatePlayerControls(playbackState);
         Spicetify.Player.addEventListener("onplaypause", updatePlayerControls);
-        // Recent Spotify layouts no longer expose the legacy root class.
-        const displayHost = document.querySelector(".Root__top-container") ?? document.body;
-        displayHost.append(DOM.style, DOM.container);
-        animateFeedback(DOM.container, [{ opacity: 0 }, { opacity: 1 }]);
         updatePlaybackLayout(playbackState);
         Spicetify.Player.addEventListener("onplaypause", updatePlaybackLayout);
         if (CFM.get("lyricsDisplay")) {
@@ -597,20 +664,12 @@ async function startFullscape() {
                 handleLyricsQueueUpdate,
             );
         }
-        Spicetify.Mousetrap.bind("f11", toggleNativeFullscreen);
-        document.addEventListener("fullscreenchange", fullscreenChangeListener);
-        Spicetify.Mousetrap.bind("esc", deactivate);
         if (CFM.get("lyricsDisplay")) {
             Spicetify.Mousetrap.bind("l", () => {
                 if (showingQueue) setQueueVisible(false);
                 else Lyrics.toggleLyrics();
             });
         }
-        Spicetify.Mousetrap.bind("c", () => {
-            const popup = document.querySelector("body > generic-modal");
-            if (popup) popup.remove();
-            else ConfigManager.openConfig();
-        });
         Spicetify.Mousetrap.bind("q", toggleQueue);
     }
 
@@ -623,6 +682,7 @@ async function startFullscape() {
     }
 
     async function deactivateDisplay() {
+        activationSequence += 1;
         if (DOM.container.isConnected && !prefersReducedMotion()) {
             const opacity = getComputedStyle(DOM.container).opacity;
             cancelFeedback(DOM.container);
@@ -636,7 +696,6 @@ async function startFullscape() {
         }
         Cover.teardown();
         Queue.teardown();
-        activationSequence += 1;
         infoSequence += 1;
 
         removePlaybackListeners();
@@ -701,7 +760,7 @@ async function startFullscape() {
 
     document.addEventListener("typography", () => {
         applyTypography(CFM.get("typography"));
-        if (!Utils.isModeActivated()) return;
+        if (!Utils.isModeActivated() || focusPage) return;
         updateMetadataOverflow();
         updateLyricsBounds();
         Lyrics.refreshLayout();
@@ -713,8 +772,14 @@ async function startFullscape() {
         render,
         activate,
         deactivate,
-        Background.updateBackground.bind(Background),
-        UpNext.updateUpNextShow.bind(UpNext),
+        async (metadata, fromResize) => {
+            if (DOM.container.dataset.theme === "default") {
+                await Background.updateBackground(metadata, fromResize);
+            }
+        },
+        () => {
+            if (DOM.container.dataset.theme === "default") UpNext.updateUpNextShow();
+        },
     );
 
     function updateEntryButtonLabel(button: HTMLElement) {

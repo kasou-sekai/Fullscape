@@ -5,7 +5,13 @@ import { DEFAULTS } from "../../../constants";
 import { Config, Settings } from "../../../types/fullscape";
 import Utils from "../../../utils/utils";
 import { DOM } from "../../elements";
-import { headerText, getSettingCard, createAdjust, createToggleControl } from "../../../utils/setting";
+import {
+    headerText,
+    getSettingCard,
+    createAdjust,
+    createRadioControl,
+    createToggleControl,
+} from "../../../utils/setting";
 import { getTypography, typographyWeights } from "../../../utils/typography";
 import {
     getLyricFontSize,
@@ -410,6 +416,15 @@ export class ConfigManager {
         this.configContainer = document.createElement("div");
         this.configContainer.id = "fullscape-config-container";
         this.configContainer.dataset.locale = LOCALE;
+        const focusStrings = strings.focusTheme;
+        const focusFormat = createRadioControl(
+            focusStrings.format,
+            "focusFormat",
+            { vinyl: focusStrings.vinyl, cd: focusStrings.cd },
+            CFM.get("focusFormat"),
+            (value) => this.saveOption("focusFormat", value),
+        );
+        focusFormat.hidden = CFM.get("displayTheme") !== "focus";
         const sections = [
             {
                 id: "general",
@@ -417,6 +432,21 @@ export class ConfigManager {
                 section: this.createSettingsSection(
                     layout.sections.general.title,
                     layout.sections.general.description,
+                    this.createSettingsGroup(
+                        focusStrings.appearance,
+                        "",
+                        createRadioControl(
+                            focusStrings.theme,
+                            "displayTheme",
+                            { default: focusStrings.default, focus: focusStrings.focus },
+                            CFM.get("displayTheme"),
+                            (value) => {
+                                this.saveOption("displayTheme", value);
+                                focusFormat.hidden = value !== "focus";
+                            },
+                        ),
+                        focusFormat,
+                    ),
                     this.createSettingsGroup(
                         layout.groups.languageAndLaunch.title,
                         layout.groups.languageAndLaunch.description,

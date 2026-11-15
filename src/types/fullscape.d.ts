@@ -16,6 +16,8 @@ export type Typography = {
 };
 
 export type Settings = {
+    displayTheme: "default" | "focus";
+    focusFormat: "vinyl" | "cd";
     lyricsDisplay: boolean;
     thirdPartyLyrics: boolean;
     sharedLyricsBridge: boolean;

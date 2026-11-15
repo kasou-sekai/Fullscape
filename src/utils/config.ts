@@ -35,6 +35,8 @@ function getConfig(defaultConfig: Config): Config {
         if (config.autoLaunch !== "never" && config.autoLaunch !== "default") {
             config.autoLaunch = "default";
         }
+        if (config.def.displayTheme !== "focus") config.def.displayTheme = "default";
+        if (config.def.focusFormat !== "cd") config.def.focusFormat = "vinyl";
         saveConfig(config);
         return config;
     } catch {

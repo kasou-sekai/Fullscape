@@ -2,6 +2,8 @@ import { Config } from "../types/fullscape";
 
 export const DEFAULTS: Config = {
     def: {
+        displayTheme: "default",
+        focusFormat: "vinyl",
         lyricsDisplay: true,
         thirdPartyLyrics: true,
         sharedLyricsBridge: true,

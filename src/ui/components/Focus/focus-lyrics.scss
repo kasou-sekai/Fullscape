@@ -1,0 +1,279 @@
+.focus-lyrics {
+    --paper-ink: #292823;
+    --paper-muted: #6a645a;
+    --paper-rule: #ad9278;
+    position: relative;
+    display: grid;
+    isolation: isolate;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    color: var(--paper-ink);
+
+    &[data-sheets="2"] {
+        padding-inline-start: 7%;
+        padding-block-end: 6%;
+    }
+
+    .focus-lyrics-leaf {
+        position: relative;
+        grid-area: 1 / 1;
+        min-width: 0;
+        transform-origin: center;
+    }
+
+    .focus-lyrics-leaf[data-position="front"] {
+        z-index: 2;
+    }
+
+    .focus-lyrics-leaf[data-position="back"] {
+        z-index: 1;
+    }
+
+    .focus-lyrics-sheet-button {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        border: 0;
+        padding: 0;
+        background: transparent;
+        cursor: pointer;
+    }
+
+    .focus-lyrics-sheet-button:hover {
+        box-shadow: inset 0 0 0 1px rgb(130 101 62 / 36%);
+    }
+
+    .focus-lyrics-sheet-button:focus-visible {
+        outline: 2px solid var(--paper-rule);
+        outline-offset: 3px;
+    }
+
+    &[data-turning] .focus-lyrics-sheet-button {
+        pointer-events: none;
+    }
+
+    .focus-lyrics-paper {
+        --focus-lyric-size: 3.45cqw;
+        --focus-lyric-columns: 1;
+        position: relative;
+        container-type: inline-size;
+        box-sizing: border-box;
+        width: 100%;
+        min-width: 0;
+        aspect-ratio: 1;
+        border: 1px solid rgb(89 73 48 / 12%);
+        background:
+            radial-gradient(ellipse at 29% 54%, rgb(92 75 50 / 5%) 0 0.4px, transparent 0.9px) 0 0 /
+                5px 7px,
+            radial-gradient(ellipse at 73% 18%, rgb(92 75 50 / 3%) 0 0.4px, transparent 1px) 0 0 /
+                11px 13px,
+            #fff;
+        box-shadow:
+            0 8px 28px rgb(57 43 25 / 8%),
+            0 1px 2px rgb(57 43 25 / 5%);
+    }
+
+    .focus-lyrics-paper::before {
+        position: absolute;
+        inset: 3.6%;
+        border-block-start: 1px solid rgb(123 99 70 / 19%);
+        border-inline-start: 1px solid rgb(123 99 70 / 19%);
+        width: 5.5%;
+        height: 5.5%;
+        content: "";
+        pointer-events: none;
+    }
+
+    .focus-lyrics-leaf:nth-child(even) .focus-lyrics-paper::before {
+        inset: 3.6% 3.6% auto auto;
+        border-inline-start: 0;
+        border-inline-end: 1px solid rgb(123 99 70 / 19%);
+    }
+
+    .focus-lyrics-print {
+        position: absolute;
+        inset: 7.5% 7%;
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        justify-content: safe center;
+        gap: 4cqw;
+    }
+
+    .focus-lyrics-header {
+        flex: 0 0 auto;
+        min-width: 0;
+    }
+
+    .focus-lyrics-header::after {
+        display: block;
+        margin-block-start: 2.5cqw;
+        inline-size: 10cqw;
+        block-size: 1px;
+        background: var(--paper-rule);
+        opacity: 0.55;
+        content: "";
+    }
+
+    .focus-lyrics-title {
+        max-inline-size: 18ch;
+        margin: 0;
+        font-size: 6.4cqw;
+        font-weight: 620;
+        line-height: 1.06;
+        letter-spacing: -0.04em;
+        overflow-wrap: anywhere;
+        text-wrap: balance;
+    }
+
+    .focus-lyrics-artist {
+        margin: 1.35cqw 0 0;
+        color: var(--paper-muted);
+        font-size: 2.6cqw;
+        line-height: 1.23;
+        letter-spacing: 0.05em;
+        overflow-wrap: anywhere;
+    }
+
+    .focus-lyrics-copy {
+        flex: 0 0 auto;
+        min-width: 0;
+        column-count: var(--focus-lyric-columns);
+        column-gap: 4.8cqw;
+        column-fill: balance;
+        font-size: var(--focus-lyric-size);
+        font-weight: 400;
+        line-height: 1.33;
+    }
+
+    .focus-lyrics-verse {
+        margin: 0;
+        orphans: 2;
+        widows: 2;
+        break-inside: avoid;
+        text-align: start;
+    }
+
+    .focus-lyrics-verse[data-space="verse"] {
+        padding-block-start: 0.58em;
+    }
+
+    .focus-lyrics-verse[data-space="interlude"] {
+        padding-block-start: 0.9em;
+    }
+
+    .focus-lyrics-line {
+        display: block;
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+    }
+
+    .focus-lyrics-marker {
+        color: var(--paper-muted);
+        font-style: italic;
+    }
+
+    .focus-lyrics-status {
+        margin: 0;
+        color: var(--paper-muted);
+        text-align: center;
+        overflow-wrap: anywhere;
+    }
+
+    &[data-layout="masthead"] {
+        .focus-lyrics-header {
+            text-align: center;
+        }
+
+        .focus-lyrics-title,
+        .focus-lyrics-header::after {
+            margin-inline: auto;
+        }
+
+        .focus-lyrics-copy[data-short="true"] .focus-lyrics-verse {
+            text-align: center;
+        }
+    }
+
+    &[data-layout="inset"] {
+        .focus-lyrics-title {
+            max-inline-size: 12ch;
+        }
+
+        .focus-lyrics-copy {
+            margin-inline-start: 3.5cqw;
+        }
+    }
+
+    &[data-layout="colophon"] {
+        .focus-lyrics-header {
+            order: 1;
+            align-self: end;
+            max-inline-size: 100%;
+            text-align: end;
+        }
+
+        .focus-lyrics-title,
+        .focus-lyrics-header::after {
+            margin-inline-start: auto;
+        }
+
+        .focus-lyrics-header::after {
+            margin-block: 0 2.5cqw;
+            order: -1;
+        }
+
+        .focus-lyrics-header {
+            display: flex;
+            flex-direction: column;
+        }
+    }
+
+    &.is-serif {
+        font-family: "Iowan Old Style", "Palatino Linotype", var(--focus-local-serif, Georgia),
+            serif;
+
+        &:lang(zh-CN) {
+            --focus-local-serif: "Songti SC", "Noto Serif CJK SC", SimSun;
+        }
+
+        &:lang(zh-TW) {
+            --focus-local-serif: "Songti TC", "Noto Serif CJK TC", PMingLiU;
+        }
+
+        &:lang(ja) {
+            --focus-local-serif: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP";
+        }
+
+        &:lang(ko) {
+            --focus-local-serif: "AppleMyungjo", Batang, "Noto Serif CJK KR";
+        }
+
+        .focus-lyrics-title {
+            font-weight: 510;
+        }
+    }
+
+    .is-dense .focus-lyrics-verse {
+        break-inside: auto;
+    }
+
+    &.is-vertical {
+        .focus-lyrics-print {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+        }
+
+        .focus-lyrics-title {
+            max-inline-size: 100%;
+            letter-spacing: 0.015em;
+            line-height: 1.18;
+        }
+
+        .focus-lyrics-artist {
+            margin: 0;
+            margin-block-start: 1.35cqw;
+        }
+    }
+}
