@@ -292,6 +292,20 @@ test(
    gap:Math.round(second.m42-first.m42-L.lineHeights[0]*first.m22),
   };
  });
+ result.interludeAlignment=['left','right','center'].map(alignment=>{
+  const next={...distant,presentation:{...distant.presentation,alignment}};
+  progress=10000; L.applyLines(Fixture.groupRichLines([main,right,next])); L.stopLoop();
+  L.updateActive(progress); L.applyTransforms(true);
+  const dots=L.interludeNode.getBoundingClientRect();
+  const firstDot=L.interludeDotNodes[0].getBoundingClientRect();
+  const lastDot=L.interludeDotNodes.at(-1).getBoundingClientRect();
+  progress=next.time; L.updateActive(progress); L.applyTransforms(true); L.stopLoop();
+  const line=L.lineNodes[2].querySelector('.rnp-lyrics-line-content').getBoundingClientRect();
+  const row=L.lineNodes[2].getBoundingClientRect();
+  const dotsX=alignment==='right'?lastDot.right:alignment==='center'?(firstDot.left+lastDot.right)/2:firstDot.left;
+  const lineX=alignment==='right'?line.right:alignment==='center'?(line.left+line.right)/2:line.left;
+  return {alignment, horizontal:Math.round(dotsX-lineX), vertical:Math.round((dots.top+dots.bottom-row.top-row.bottom)/2)};
+ });
  const output=document.createElement('script');output.type='application/json';output.id='results';output.textContent=JSON.stringify(result);document.body.append(output);L.stopLoop();
  }catch(e){const output=document.createElement('script');output.id='results';output.textContent=JSON.stringify({error:String(e),stack:e.stack});document.body.append(output);}})();</script>`;
             const path = join(directory, "fixture.html");
@@ -396,6 +410,11 @@ test(
             assert.deepEqual(value.lineSpacing, [
                 { size: 42, gap: 22 },
                 { size: 64, gap: 22 },
+            ]);
+            assert.deepEqual(value.interludeAlignment, [
+                { alignment: "left", horizontal: 0, vertical: 0 },
+                { alignment: "right", horizontal: 0, vertical: 0 },
+                { alignment: "center", horizontal: 0, vertical: 0 },
             ]);
             if (process.env.FULLSCAPE_SPACING_FIXTURE) {
                 assert.equal(value.spacing.length, 2);

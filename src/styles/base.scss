@@ -210,13 +210,15 @@
                 display: none;
             }
         }
-        .rnp-lyrics-line {
+        :is(.rnp-lyrics-line, .rnp-lyrics-interlude) {
             position: absolute;
             left: var(--lyrics-left-bleed);
-            transform-origin: left center;
-            line-height: 1.55;
             width: calc(100% - 60px - var(--lyrics-left-bleed));
             max-width: calc(100% - 60px - var(--lyrics-left-bleed));
+            transform-origin: left center;
+        }
+        .rnp-lyrics-line {
+            line-height: 1.55;
             box-sizing: border-box;
             transition:
                 transform var(--lyrics-line-transform-duration, var(--fs-motion-lyric))
@@ -226,13 +228,15 @@
                 opacity var(--fs-motion-lyric-fade) ease;
             opacity: 0.55;
         }
-        .rnp-lyrics-line.rnp-lyrics-right {
+        :is(.rnp-lyrics-line, .rnp-lyrics-interlude).rnp-lyrics-right {
             // Keep the second voice away from the far edge of the lyric column.
             --lyrics-duet-inset: clamp(20px, 5%, 48px);
             width: calc(100% - 60px - var(--lyrics-left-bleed) - var(--lyrics-duet-inset));
             max-width: calc(100% - 60px - var(--lyrics-left-bleed) - var(--lyrics-duet-inset));
-            text-align: right;
             transform-origin: right center;
+        }
+        .rnp-lyrics-line.rnp-lyrics-right {
+            text-align: right;
             > .rnp-lyrics-line-content {
                 margin-left: auto;
             }
@@ -285,9 +289,7 @@
                 opacity var(--fs-motion-content) ease var(--fs-motion-lyric-reveal-delay);
         }
         .rnp-lyrics-interlude {
-            position: absolute;
             top: 0;
-            left: calc(var(--lyrics-left-bleed) + 0.25em);
             z-index: 1;
             display: flex;
             // Keep the compact spacing of an ellipsis while scaling with the lyric size.
@@ -297,9 +299,16 @@
             padding: 0;
             pointer-events: none;
             opacity: 0;
-            transform-origin: center center;
             transition: opacity 0.25s ease;
             will-change: transform, opacity;
+
+            &.rnp-lyrics-right {
+                justify-content: flex-end;
+            }
+            &.rnp-lyrics-center {
+                justify-content: center;
+                transform-origin: center center;
+            }
 
             > span {
                 display: block;

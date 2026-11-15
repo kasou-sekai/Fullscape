@@ -2495,6 +2495,22 @@ export class Lyrics {
         const interludeHeight = this.INTERLUDE_HEIGHT_PX;
         const interludeLineGap = baseGap * 1.5;
 
+        const translateByOffset = (offset: number) => Math.max(0, baseIndent - offset * 6);
+        const translateForLine = (index: number, offset: number) => {
+            const rightSpace =
+                this.lineRightSpaces[index] ??
+                Math.max(
+                    0,
+                    lyricsRoot.clientWidth -
+                        this.lineNodes[index].offsetLeft -
+                        this.lineNodes[index].offsetWidth,
+                );
+            if (this.lines[index]?.presentation?.alignment === "center") return 0;
+            if (this.lines[index]?.presentation?.alignment === "right")
+                return translateByOffset(offset);
+            return Math.min(translateByOffset(offset), rightSpace);
+        };
+
         type LyricTransform = {
             top: number;
             scale: number;
@@ -2517,36 +2533,11 @@ export class Lyrics {
                 this.manualScrollActive ? 0 : Math.min(4.5, offset * 0.9);
             const opacityByOffset = (offset: number) =>
                 this.manualScrollActive ? 1 : Math.max(0.32, 1 - Math.max(0, offset - 1) * 0.22);
-            const translateByOffset = (offset: number) => Math.max(0, baseIndent - offset * 6);
-            const translateForLine = (index: number, offset: number) => {
-                const rightSpace =
-                    this.lineRightSpaces[index] ??
-                    Math.max(
-                        0,
-                        lyricsRoot.clientWidth -
-                            this.lineNodes[index].offsetLeft -
-                            this.lineNodes[index].offsetWidth,
-                    );
-                if (this.lines[index]?.presentation?.alignment === "center") return 0;
-                if (this.lines[index]?.presentation?.alignment === "right")
-                    return translateByOffset(offset);
-                return Math.min(translateByOffset(offset), rightSpace);
-            };
             const delayByOffset = (offset: number) =>
                 this.manualScrollActive ? 0 : Math.min(6, offset) * 45;
 
             if (this.activeInterlude && !this.manualScrollActive) {
                 const { anchorIndex, nextIndex } = this.activeInterlude;
-                const interludeTop = centerY - interludeHeight / 2;
-                if (this.interludeNode) {
-                    this.interludeNode.style.setProperty(
-                        "--interlude-height",
-                        `${interludeHeight}px`,
-                    );
-                    this.interludeNode.style.top = "0";
-                    this.interludeNode.style.transform = `translate3d(0, ${interludeTop}px, 0) scale(var(--interlude-scale, 0))`;
-                }
-
                 const getVisualHeight = (index: number, scale: number) =>
                     (this.lineHeights[index] || fontSize) * scale;
                 const getVisualCenter = (index: number, transform: LyricTransform) =>
@@ -2697,42 +2688,39 @@ export class Lyrics {
             }));
         }
 
-        if (this.activeInterlude && this.manualScrollActive) {
-            const { anchorIndex, nextIndex } = this.activeInterlude;
-            const anchorTransform = transforms[anchorIndex];
-            const nextTransform = transforms[nextIndex];
-            if (anchorTransform && nextTransform) {
-                const anchorHeight =
-                    (this.lineHeights[anchorIndex] || fontSize) * anchorTransform.scale;
-                const currentGap = nextTransform.top - (anchorTransform.top + anchorHeight);
-                const desiredGap = interludeHeight + interludeLineGap * 2;
-                const extraGap = Math.max(0, desiredGap - currentGap);
-                if (extraGap > 0) {
-                    for (let index = nextIndex; index < transforms.length; index += 1) {
-                        transforms[index].top += extraGap;
+        const interlude = this.activeInterlude;
+        if (interlude && this.interludeNode) {
+            const { anchorIndex, nextIndex } = interlude;
+            let interludeTop = centerY - interludeHeight / 2;
+            if (this.manualScrollActive) {
+                const nextTransform = transforms[nextIndex];
+                const anchorTransform = transforms[anchorIndex];
+                if (anchorTransform) {
+                    const anchorBottom =
+                        anchorTransform.top +
+                        (this.lineHeights[anchorIndex] || fontSize) * anchorTransform.scale;
+                    interludeTop = anchorBottom + interludeLineGap;
+                    const extraGap =
+                        interludeTop + interludeHeight + interludeLineGap - nextTransform.top;
+                    if (extraGap > 0) {
+                        for (let index = nextIndex; index < transforms.length; index += 1) {
+                            transforms[index].top += extraGap;
+                        }
                     }
+                } else {
+                    interludeTop = nextTransform.top - interludeLineGap - interludeHeight;
                 }
-                const interludeTop =
-                    transforms[anchorIndex].top +
-                    (this.lineHeights[anchorIndex] || fontSize) * transforms[anchorIndex].scale +
-                    interludeLineGap;
-                if (this.interludeNode) {
-                    this.interludeNode.style.setProperty(
-                        "--interlude-height",
-                        `${interludeHeight}px`,
-                    );
-                    this.interludeNode.style.top = "0";
-                    this.interludeNode.style.transform = `translate3d(0, ${interludeTop}px, 0) scale(var(--interlude-scale, 0))`;
-                }
-            } else if (anchorIndex < 0 && nextTransform && this.interludeNode) {
-                const interludeTop = nextTransform.top - interludeLineGap - interludeHeight;
-                this.interludeNode.style.setProperty("--interlude-height", `${interludeHeight}px`);
-                this.interludeNode.style.top = "0";
-                this.interludeNode.style.transform = `translate3d(0, ${interludeTop}px, 0) scale(var(--interlude-scale, 0))`;
             }
-        }
 
-        if (!this.activeInterlude) {
+            // Anchor the dots to the line's position when it becomes active.
+            const alignment = this.lines[nextIndex]?.presentation?.alignment;
+            const right = alignment === "right";
+            const indent = translateForLine(nextIndex, 0);
+            this.interludeNode.classList.toggle("rnp-lyrics-right", right);
+            this.interludeNode.classList.toggle("rnp-lyrics-center", alignment === "center");
+            this.interludeNode.style.setProperty("--interlude-height", `${interludeHeight}px`);
+            this.interludeNode.style.transform = `translate3d(${right ? -indent : indent}px, ${interludeTop}px, 0) scale(var(--interlude-scale, 0))`;
+        } else {
             this.interludeNode?.style.setProperty("opacity", "0");
             this.interludeNode?.style.setProperty("--interlude-scale", "0");
         }
