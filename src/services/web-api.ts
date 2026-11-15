@@ -1,5 +1,5 @@
 import { Colors } from "../types/fullscape";
-import Utils from "../utils/utils";
+import { rgbToHex } from "../utils/color-values";
 
 const colorsCache = new Map<string, Colors>();
 const MAX_COLOR_CACHE_ENTRIES = 20;
@@ -33,8 +33,8 @@ class WebAPI {
             const colorMap = body[0];
             const list: Colors = {};
             if (colorMap.isFallback) throw new Error("No colors returned.");
-            list["VIBRANT"] = Utils.rgbToHex(colorMap.colorLight.rgb);
-            list["DARK_VIBRANT"] = Utils.rgbToHex(colorMap.colorDark.rgb);
+            list["VIBRANT"] = rgbToHex(colorMap.colorLight.rgb);
+            list["DARK_VIBRANT"] = rgbToHex(colorMap.colorDark.rgb);
             if (colorsCache.size >= MAX_COLOR_CACHE_ENTRIES) {
                 colorsCache.delete(colorsCache.keys().next().value);
             }

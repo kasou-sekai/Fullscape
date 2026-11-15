@@ -14,7 +14,9 @@ await build({
     outfile: join(dir, "motion.mjs"),
     logLevel: "silent",
 });
-const { animateFeedback, frameSmoothing } = await import(pathToFileURL(join(dir, "motion.mjs")));
+const { animateFeedback, frameSmoothing, initializeMotionTokens, MOTION } = await import(
+    pathToFileURL(join(dir, "motion.mjs"))
+);
 after(() => rm(dir, { recursive: true, force: true }));
 let reduced = false;
 globalThis.window = { matchMedia: () => ({ matches: reduced }) };
@@ -43,6 +45,24 @@ function animatedElement() {
         },
     };
 }
+
+test("shared timing values initialize matching CSS duration tokens", () => {
+    const properties = new Map();
+    globalThis.document = {
+        documentElement: {
+            style: { setProperty: (name, value) => properties.set(name, value) },
+        },
+    };
+    initializeMotionTokens();
+    for (const [key, duration] of Object.entries(MOTION)) {
+        if (typeof duration !== "number") continue;
+        const cssKey = key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+        assert.equal(properties.get(`--fs-motion-${cssKey}`), `${duration}ms`);
+    }
+    assert.equal(properties.get("--fs-motion-ease"), MOTION.ease);
+    assert.equal(properties.get("--fs-motion-spring"), MOTION.spring);
+    assert.equal(properties.get("--fs-motion-lyric-ease"), MOTION.lyricEase);
+});
 
 test("rapid feedback replaces the prior animation without its completion discarding the newer one", async () => {
     const element = animatedElement();

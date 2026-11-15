@@ -192,10 +192,8 @@
         align-items: center;
         justify-content: center;
         flex-direction: row;
-        &.active {
-            margin: 5px auto 0;
-            gap: 10px;
-        }
+        margin: 5px auto 0;
+        gap: 10px;
     }
     #fullscape-title {
         font-size: var(--fullscape-title-size);

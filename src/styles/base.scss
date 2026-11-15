@@ -16,16 +16,10 @@
     --transition-duration: var(--fs-motion-layout);
     --transition-function: var(--fs-motion-ease);
     --main-color: 255, 255, 255;
-    --contrast-color: 0, 0, 0;
     --primary-color: rgba(var(--main-color), 1);
     --secondary-color: rgba(var(--main-color), 0.7);
     --tertiary-color: rgba(var(--main-color), 0.5);
-    --theme-color: 175, 175, 175;
-    --theme-background-color: rgba(175, 175, 175, 0.6);
-    --theme-hover-color: rgba(175, 175, 175, 0.3);
-    --theme-main-color: rgba(var(--theme-color), 1);
-    --lyrics-font-scale: 1.15;
-    --lyrics-base-font-size: 24px;
+    --lyrics-font-size: 42px;
     // Shared by song titles, original/karaoke lyrics and independently tagged translations.
     [data-text-language] {
         font-feature-settings: "locl";
@@ -53,10 +47,6 @@
     [data-text-language="en"] {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial,
             "Noto Sans", sans-serif;
-    }
-    &.themed-buttons {
-        --theme-background-color: rgba(var(--theme-color), 0.6);
-        --theme-hover-color: rgba(var(--theme-color), 0.3);
     }
     #fullscape-title svg,
     #fullscape-artist svg,
@@ -126,13 +116,6 @@
         height: 1.5px;
     }
     */
-    #fullscape-progress-container {
-        --theme-main-color: rgba(var(--main-color), 1);
-    }
-    &.themed-buttons #fullscape-progress-container,
-    &.themed-icons #fullscape-progress-container {
-        --theme-main-color: rgba(var(--theme-color), 1);
-    }
     #fullscape-upnext-container {
         float: right;
         width: 600px;
@@ -187,14 +170,14 @@
         width: 50%;
         top: var(--lyrics-container-top, 15vh);
         height: var(--lyrics-container-height, clamp(320px, 70vh, 720px));
-        --lyric-timing-function: cubic-bezier(0.3, 0.15, 0.2, 1);
+        font-size: var(--lyrics-font-size);
+        --lyric-timing-function: var(--fs-motion-lyric-ease);
         .lyrics-wrapper {
             position: relative;
             height: 100%;
             min-height: calc(2em * 5);
             padding: 0 20px 0 6px;
             color: var(--secondary-color);
-            font-size: calc(var(--lyrics-base-font-size) * var(--lyrics-font-scale, 1));
             box-sizing: border-box;
         }
         .rnp-lyrics {
@@ -236,10 +219,11 @@
             max-width: calc(100% - 60px - var(--lyrics-left-bleed));
             box-sizing: border-box;
             transition:
-                transform var(--lyrics-line-transform-duration, 0.5s) var(--lyric-timing-function)
+                transform var(--lyrics-line-transform-duration, var(--fs-motion-lyric))
+                    var(--lyric-timing-function)
                     var(--lyrics-line-transform-delay, 0ms),
-                filter 0.5s ease,
-                opacity 0.5s ease;
+                filter var(--fs-motion-lyric-fade) ease,
+                opacity var(--fs-motion-lyric-fade) ease;
             opacity: 0.55;
         }
         .rnp-lyrics-line.rnp-lyrics-right {
@@ -282,8 +266,9 @@
             clip-path: inset(0 0 100% 0);
             pointer-events: none;
             transition:
-                clip-path 520ms var(--lyric-timing-function) 120ms,
-                opacity 160ms ease;
+                clip-path var(--fs-motion-lyric) var(--lyric-timing-function)
+                    var(--fs-motion-lyric-background-delay),
+                opacity var(--fs-motion-feedback) ease;
             .rnp-lyrics-line-content {
                 width: fit-content;
                 max-width: 100%;
@@ -296,8 +281,8 @@
             opacity: 1;
             clip-path: inset(0);
             transition:
-                clip-path 520ms var(--lyric-timing-function),
-                opacity 240ms ease 80ms;
+                clip-path var(--fs-motion-lyric) var(--lyric-timing-function),
+                opacity var(--fs-motion-content) ease var(--fs-motion-lyric-reveal-delay);
         }
         .rnp-lyrics-interlude {
             position: absolute;
@@ -417,7 +402,7 @@
         }
         .rnp-lyrics-line-romaji,
         .rnp-lyrics-line-translated {
-            margin-top: calc(var(--lyrics-base-font-size) * var(--lyrics-font-scale, 1) * 0.15);
+            margin-top: calc(var(--lyrics-font-size) * 0.15);
             font-size: 0.62em;
             line-height: 1.35;
             opacity: 0.78;
@@ -602,7 +587,7 @@
             filter: none !important;
             transition: none !important;
             max-width: calc(100% - 60px - var(--lyrics-left-bleed));
-            margin: 0 0 calc(var(--lyrics-base-font-size) * var(--lyrics-font-scale, 1) * 0.25);
+            margin: 0 0 calc(var(--lyrics-font-size) * 0.25);
         }
     }
     &.lyrics-unavailable,
@@ -635,19 +620,6 @@
     }
     &.playback-paused #fullscape-art {
         transform: scale(0.86);
-    }
-    &.playback-timeline-resyncing {
-        #fullscape-art {
-            transform: scale(1) !important;
-            transition: none !important;
-        }
-        #fullscape-play,
-        #fullscape-play * {
-            animation: none !important;
-        }
-        #fullscape-foreground svg {
-            transition: none !important;
-        }
     }
     #fullscape-art-image {
         position: relative;
@@ -715,7 +687,6 @@
         display: flex;
         flex-direction: row;
         align-items: center;
-        transition: opacity var(--fs-motion-content) var(--fs-motion-ease);
         column-gap: 18px;
     }
     #fullscape-background,
@@ -788,9 +759,9 @@
         box-shadow: 0 0 0 rgba(99, 210, 255, 0);
         transform: scale(calc(1 + var(--debug-beat-strength) * 0.65));
         transition:
-            transform 80ms linear,
-            background-color 120ms ease,
-            box-shadow 120ms ease;
+            transform var(--fs-motion-beat-refresh) linear,
+            background-color var(--fs-motion-beat-color) ease,
+            box-shadow var(--fs-motion-beat-color) ease;
     }
 
     #fullscape-background-debug.beat-active .fullscape-debug-beat-dot {
@@ -813,7 +784,7 @@
             background: linear-gradient(90deg, #6677ff, #63d2ff);
             transform: scaleX(var(--debug-beat-strength));
             transform-origin: left center;
-            transition: transform 80ms linear;
+            transition: transform var(--fs-motion-beat-refresh) linear;
         }
     }
 
@@ -857,10 +828,6 @@
         &:hover {
             transform: scale(1.06);
         }
-        &.button-active {
-            background: var(--theme-background-color) !important;
-            filter: saturate(1.5) contrast(1.5) !important;
-        }
     }
     #fullscape-back,
     #fullscape-next {
@@ -887,13 +854,6 @@
     #fullscape-foreground svg {
         fill: var(--primary-color);
         transition: fill var(--fs-motion-content) var(--transition-function);
-    }
-    &.themed-icons #fullscape-foreground svg {
-        fill: var(--theme-main-color);
-        filter: saturate(1.5) contrast(1.5);
-    }
-    &.themed-icons.themed-buttons .fullscape-button.button-active svg {
-        fill: var(--primary-color) !important;
     }
     .fullscape-background-fade {
         // Artwork crossfades use decoded overlay layers in Cover and UpNext.

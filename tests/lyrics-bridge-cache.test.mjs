@@ -9,7 +9,11 @@ import { build } from "esbuild";
 const buildDirectory = await mkdtemp(join(tmpdir(), "fullscape-lyrics-cache-"));
 const bundlePath = join(buildDirectory, "lyrics-cache.mjs");
 await build({
-    entryPoints: ["src/services/lyrics-cache.ts"],
+    stdin: {
+        contents:
+            'export { getCachedLyricsFullEntry, setCachedLyrics } from "./src/services/lyrics-cache"; export { getSharedCachedLyrics } from "./src/services/lyrics-bridge";',
+        resolveDir: process.cwd(),
+    },
     bundle: true,
     format: "esm",
     platform: "browser",

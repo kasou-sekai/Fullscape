@@ -1,44 +1,42 @@
 import * as React from "react";
 import "./styles.scss";
-import { SeekbarProps } from "../../../types/fullscape";
+import { getPlaybackPaused, type PlaybackStateEvent } from "../../../services/playback-state";
 import { prefersReducedMotion } from "../../../utils/motion";
 import classNames from "classnames";
 
-const SeekableProgressBar = ({ state }: { state: string }) => {
-    const [curProgress, setProgress] = React.useState(Spicetify.Player.getProgress());
-    const [curDuration, setDuration] = React.useState(Spicetify.Player.getDuration());
+type Drag = {
+    startPosition: number;
+    startClientX: number;
+    width: number;
+};
 
-    const [changingProgress, setChangingProgress] = React.useState<SeekbarProps>({
-        isChanging: false,
-        data: null,
-    });
+const CLOCK_SYNC_INTERVAL_MS = 1000;
+const SMALL_CLOCK_DRIFT_MS = 1500;
 
-    const progSlider = React.useRef(null) as React.MutableRefObject<HTMLDivElement | null>;
+function getProgressPercentage(progress: number, duration: number) {
+    return duration > 0 ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0;
+}
 
-    const [visibility, setVisibility] = React.useState(true);
-    const visibleRef = React.useRef(true);
+const SeekableProgressBar = () => {
+    const [curProgress, setProgress] = React.useState(() => Spicetify.Player.getProgress());
+    const [curDuration, setDuration] = React.useState(() => Spicetify.Player.getDuration());
+
+    const [isDragging, setDragging] = React.useState(false);
+    const drag = React.useRef<Drag | null>(null);
+    const progSlider = React.useRef<HTMLDivElement>(null);
+
     const fillRef = React.useRef<HTMLDivElement>(null);
 
-    const progressTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const animationFrame = React.useRef<number | null>(null);
     const progressRef = React.useRef(curProgress);
     const durationRef = React.useRef(curDuration);
-    const changingProgressRef = React.useRef(changingProgress);
-    const playbackAnchor = React.useRef({
-        progress: curProgress,
-        timestamp: performance.now(),
-        isPlaying: Spicetify.Player.isPlaying(),
-    });
-
-    durationRef.current = curDuration;
-    changingProgressRef.current = changingProgress;
+    const playbackAnchor = React.useRef({ progress: curProgress, timestamp: 0, isPlaying: false });
 
     const paintProgress = (progress: number) => {
         progressRef.current = progress;
-        const percentage =
-            durationRef.current > 0 ? Math.min(1, Math.max(0, progress / durationRef.current)) : 0;
+        const percentage = getProgressPercentage(progress, durationRef.current);
         if (fillRef.current) {
-            fillRef.current.style.width = `${percentage * 100}%`;
+            fillRef.current.style.width = `${percentage}%`;
             fillRef.current.style.minWidth = percentage > 0 ? "10px" : "0";
         }
         setProgress((previous) =>
@@ -54,116 +52,43 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
         animationFrame.current = null;
     };
     const resumeAnimation = () => {
-        if (
-            !visibleRef.current ||
-            document.hidden ||
-            !playbackAnchor.current.isPlaying ||
-            prefersReducedMotion()
-        ) {
+        if (document.hidden || !playbackAnchor.current.isPlaying || prefersReducedMotion()) {
             stopAnimation();
         } else if (animationFrame.current === null) {
             animationFrame.current = requestAnimationFrame(animateProgress);
         }
     };
 
-    const onMouseDown = (evt: MouseEvent) => {
-        if (evt.button == 0) {
-            const sliderWidth = progSlider.current?.getBoundingClientRect().width ?? 480;
-            const newData = {
-                isChanging: true,
-                data: {
-                    begin: Math.min(
-                        sliderWidth,
-                        Math.max(
-                            0,
-                            evt.clientX -
-                                (progSlider.current?.getBoundingClientRect().left ?? evt.clientX),
-                        ),
-                    ),
-                    positionCoord: Math.min(
-                        sliderWidth,
-                        Math.max(
-                            0,
-                            evt.clientX -
-                                (progSlider.current?.getBoundingClientRect().left ?? evt.clientX),
-                        ),
-                    ),
-                    beginClient: evt.clientX,
-                    sliderDimen: sliderWidth,
-                },
-            };
-            const newPercentage = newData.data.positionCoord / sliderWidth;
-            const progress = newPercentage * durationRef.current;
-            paintProgress(progress);
-            changingProgressRef.current = newData;
-            setChangingProgress(newData);
-        }
+    const resetPlaybackAnchor = (progress: number, isPlaying = Spicetify.Player.isPlaying()) => {
+        playbackAnchor.current = { progress, timestamp: performance.now(), isPlaying };
     };
 
-    const onMouseMove = (evt: MouseEvent) => {
-        const changing = changingProgressRef.current;
-        if (changing.isChanging && changing.data) {
-            const moveX = evt.clientX - changing.data.beginClient;
-            const sliderWidth = changing.data.sliderDimen;
-            const newPosX = Math.min(Math.max(changing.data.begin + moveX, 0), sliderWidth);
-            const newPercentage = newPosX / sliderWidth;
-            const progress = newPercentage * durationRef.current;
-            const nextChanging = {
-                isChanging: true,
-                data: { ...changing.data, positionCoord: newPosX },
-            };
-            paintProgress(progress);
-            changingProgressRef.current = nextChanging;
-            setChangingProgress(nextChanging);
-        }
-        if (state === "mousemove") {
-            hideProgressBar();
-        }
+    const previewSeek = ({ startPosition, width, startClientX }: Drag, clientX: number) => {
+        const position = Math.min(width, Math.max(0, startPosition + clientX - startClientX));
+        paintProgress((position / width) * durationRef.current);
     };
 
-    const onMouseUp = (evt: MouseEvent) => {
-        if (evt.button == 0 && changingProgressRef.current.isChanging) {
-            Spicetify.Player.seek(progressRef.current);
-            playbackAnchor.current = {
-                progress: progressRef.current,
-                timestamp: performance.now(),
-                isPlaying: Spicetify.Player.isPlaying(),
-            };
-            if (state === "mousemove") hideProgressBar();
-            const stopped = { isChanging: false, data: null };
-            changingProgressRef.current = stopped;
-            setChangingProgress(stopped);
-        }
+    const onMouseDown = (event: MouseEvent) => {
+        if (event.button !== 0) return;
+        const bounds = progSlider.current?.getBoundingClientRect();
+        if (!bounds?.width) return;
+        const startPosition = Math.min(bounds.width, Math.max(0, event.clientX - bounds.left));
+        const next = { startPosition, startClientX: event.clientX, width: bounds.width };
+        drag.current = next;
+        setDragging(true);
+        previewSeek(next, event.clientX);
     };
 
-    const hideProgressBar = (timeout = 3000) => {
-        if (progressTimer.current) {
-            clearTimeout(progressTimer.current);
-        }
-        visibleRef.current = true;
-        setVisibility(true);
-        resumeAnimation();
-        progressTimer.current = setTimeout(() => {
-            if (changingProgressRef.current.isChanging) {
-                hideProgressBar();
-                return;
-            }
-            visibleRef.current = false;
-            setVisibility(false);
-            stopAnimation();
-        }, timeout);
+    const onMouseMove = (event: MouseEvent) => {
+        if (drag.current) previewSeek(drag.current, event.clientX);
     };
 
-    const setDragListener = () => {
-        progSlider.current?.addEventListener("mousedown", onMouseDown);
-        document.addEventListener("mousemove", onMouseMove);
-        document.addEventListener("mouseup", onMouseUp);
-    };
-
-    const resetDragListener = () => {
-        progSlider.current?.removeEventListener("mousedown", onMouseDown);
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
+    const onMouseUp = (event: MouseEvent) => {
+        if (event.button !== 0 || !drag.current) return;
+        Spicetify.Player.seek(progressRef.current);
+        resetPlaybackAnchor(progressRef.current);
+        drag.current = null;
+        setDragging(false);
     };
 
     const syncProgress = () => {
@@ -171,22 +96,18 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
         const isPlaying = Spicetify.Player.isPlaying();
         const drift = playerProgress - progressRef.current;
         const progress =
-            isPlaying && Math.abs(drift) < 1500
+            isPlaying && Math.abs(drift) < SMALL_CLOCK_DRIFT_MS
                 ? Math.max(playerProgress, progressRef.current)
                 : playerProgress;
-        playbackAnchor.current = {
-            progress,
-            timestamp: performance.now(),
-            isPlaying,
-        };
-        if (!changingProgressRef.current.isChanging) {
+        resetPlaybackAnchor(progress, isPlaying);
+        if (!drag.current) {
             paintProgress(progress);
         }
         resumeAnimation();
     };
     const animateProgress = (timestamp: number) => {
         animationFrame.current = null;
-        if (!changingProgressRef.current.isChanging) {
+        if (!drag.current) {
             const anchor = playbackAnchor.current;
             const elapsed = anchor.isPlaying ? timestamp - anchor.timestamp : 0;
             const progress = Math.min(durationRef.current, Math.max(0, anchor.progress + elapsed));
@@ -194,81 +115,54 @@ const SeekableProgressBar = ({ state }: { state: string }) => {
         }
         resumeAnimation();
     };
-    //Using spotify internal songchange event listener
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const updateDuration = (meta: any) => {
-        const duration = meta.data.duration ?? Spicetify.Player.getDuration();
+    const updateDuration = (event?: Event & { data?: { duration?: number } }) => {
+        const duration = event?.data?.duration ?? Spicetify.Player.getDuration();
         const progress = Spicetify.Player.getProgress();
-        progressRef.current = progress;
         durationRef.current = duration;
-        playbackAnchor.current = {
-            progress,
-            timestamp: performance.now(),
-            isPlaying: Spicetify.Player.isPlaying(),
-        };
+        resetPlaybackAnchor(progress);
         paintProgress(progress);
         setDuration(duration);
         resumeAnimation();
     };
-    const updatePlaybackState = (evt?: Event) => {
-        const playbackEvent = evt as
-            | (Event & { data?: { is_paused?: boolean; isPaused?: boolean } })
-            | undefined;
-        const isPaused = playbackEvent?.data?.is_paused ?? playbackEvent?.data?.isPaused;
+
+    const updatePlaybackState = (event?: Event & PlaybackStateEvent) => {
+        const isPaused = getPlaybackPaused(event);
         const progress = Spicetify.Player.getProgress();
-        playbackAnchor.current = {
-            progress,
-            timestamp: performance.now(),
-            isPlaying: typeof isPaused === "boolean" ? !isPaused : Spicetify.Player.isPlaying(),
-        };
-        if (!changingProgressRef.current.isChanging) {
-            paintProgress(progress);
-        }
+        resetPlaybackAnchor(progress, typeof isPaused === "boolean" ? !isPaused : undefined);
+        if (!drag.current) paintProgress(progress);
         resumeAnimation();
     };
 
-    React.useEffect(() => {
-        if (state === "mousemove") {
-            hideProgressBar();
-        } else {
-            visibleRef.current = true;
-            setVisibility(true);
-        }
+    React.useLayoutEffect(() => {
         syncProgress();
         document.addEventListener("visibilitychange", syncProgress);
-        const syncInterval = setInterval(syncProgress, 1000);
+        const syncInterval = setInterval(syncProgress, CLOCK_SYNC_INTERVAL_MS);
 
         Spicetify.Player.addEventListener("songchange", updateDuration);
         Spicetify.Player.addEventListener("onplaypause", updatePlaybackState);
-        setDragListener();
+        const slider = progSlider.current;
+        slider?.addEventListener("mousedown", onMouseDown);
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
         return () => {
             clearInterval(syncInterval);
             document.removeEventListener("visibilitychange", syncProgress);
             stopAnimation();
-            if (progressTimer.current) clearTimeout(progressTimer.current);
             Spicetify.Player.removeEventListener("songchange", updateDuration);
             Spicetify.Player.removeEventListener("onplaypause", updatePlaybackState);
-            resetDragListener();
+            slider?.removeEventListener("mousedown", onMouseDown);
+            document.removeEventListener("mousemove", onMouseMove);
+            document.removeEventListener("mouseup", onMouseUp);
         };
-    }, [state]);
-
-    const progressPercentage =
-        curDuration > 0 ? Math.min(100, Math.max(0, (curProgress / curDuration) * 100)) : 0;
+    }, []);
 
     return (
-        <div id="fullscape-progress-container" style={{ opacity: visibility ? 1 : 0 }}>
+        <div id="fullscape-progress-container">
             <div
                 id="fullscape-progress-bar"
                 ref={progSlider}
-                className={classNames({ dragging: changingProgress.isChanging })}>
-                <div
-                    id="fullscape-progress-bar-inner"
-                    ref={fillRef}
-                    style={{
-                        width: `${progressPercentage}%`,
-                        minWidth: progressPercentage > 0 ? "10px" : "0",
-                    }}
-                />
+                className={classNames({ dragging: isDragging })}>
+                <div id="fullscape-progress-bar-inner" ref={fillRef} />
             </div>
             <div id="fullscape-progress-times">
                 <div className="progress-number" id="fullscape-elapsed">

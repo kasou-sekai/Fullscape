@@ -40,7 +40,7 @@ test(
             const css = sass.compile("src/styles/base.scss").css;
             const html = `<!doctype html><meta charset="utf-8"><style>${css}
             #fullscape-display {display:block;font-weight:600}
-            #fad-lyrics-container {width:900px;--lyrics-base-font-size:48px;--lyrics-font-scale:1}
+            #fad-lyrics-container {width:900px;--lyrics-font-size:48px}
             .rnp-lyrics-line,.rnp-lyrics-line * {animation:none!important;transition:none!important;transform:none!important}
             </style>
             <div id="fullscape-display"><div id="fad-lyrics-container"><div class="lyrics-wrapper"><div class="rnp-lyrics"></div></div></div></div>
@@ -132,10 +132,14 @@ test(
             const weightOnly = fonts();
             Wrapping.applyTypography({ preset: 'default', family: '', weight: 0 });
             const restored = fonts();
+            const sizes = [12, 13, 15, 88, 89, 99].map(size => {
+                container.style.setProperty('--lyrics-font-size', size + 'px');
+                return getComputedStyle(container).fontSize;
+            });
             document.body.innerHTML = '<pre id="results">'+JSON.stringify(results)+'</pre>';
             const report = document.createElement('pre');
             report.id = 'typography';
-            report.textContent = JSON.stringify({ defaults, serif, custom, weightOnly, restored });
+            report.textContent = JSON.stringify({ defaults, serif, custom, weightOnly, restored, sizes });
             document.body.append(report);
             </script>`;
             const path = join(directory, "test.html");
@@ -162,7 +166,10 @@ test(
             const results = JSON.parse(match[1].replaceAll("&quot;", '"').replaceAll("&amp;", "&"));
             const typography = result.stdout.match(/<pre id="typography">(.*?)<\/pre>/s);
             assert.ok(typography, result.stdout);
-            const { defaults, serif, custom, weightOnly, restored } = JSON.parse(typography[1]);
+            const { defaults, serif, custom, weightOnly, restored, sizes } = JSON.parse(
+                typography[1],
+            );
+            assert.deepEqual(sizes, ["12px", "13px", "15px", "88px", "89px", "99px"]);
             assert.deepEqual(restored, defaults);
             for (const [id, font] of Object.entries({
                 original: "Noto Serif CJK JP",

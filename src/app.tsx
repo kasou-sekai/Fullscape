@@ -14,17 +14,18 @@ import {
     prefersReducedMotion,
 } from "./utils/motion";
 import CFM from "./utils/config";
+import { getLyricFontSize } from "./utils/lyric-font-size";
 import { getTextLanguageTag } from "./utils/text-presentation";
 import { applyTypography } from "./utils/typography";
 
 import translations from "./resources/strings";
 import ICONS, { CLASSES_TO_ADD } from "./constants";
 import HtmlSelectors from "./utils/selectors";
-import { Config, Settings } from "./types/fullscape";
 import { createOverflowScrollAnimation, getOverflowScrollTiming } from "./utils/overflow-scroll";
 
+import { getPlaybackPaused, type PlaybackStateEvent } from "./services/playback-state";
 import { getHtmlContent } from "./services/html-creator";
-import { startSharedBridgePresence } from "./services/lyrics-cache";
+import { startSharedBridgePresence } from "./services/lyrics-bridge";
 import { ReleaseUpdater } from "./services/release-updater";
 
 import SeekableProgressBar from "./ui/components/ProgressBar/ProgressBar";
@@ -70,15 +71,17 @@ async function startFullscape() {
         return Utils.isModeActivated() ? deactivate() : activate();
     }
 
-    let LOCALE: string = CFM.getGlobal("locale") as Config["locale"];
+    function getLocale() {
+        const locale = CFM.getGlobal("locale");
+        return Object.hasOwn(translations, locale) ? locale : "en-US";
+    }
+
     let showingQueue = false;
     function updateLyricsTools() {
+        const strings = translations[getLocale()].sideView;
         const translation = DOM.container.querySelector<HTMLButtonElement>("#fullscape-translation");
         if (translation) {
-            translation.setAttribute(
-                "aria-label",
-                LOCALE.startsWith("zh") ? "歌词翻译" : "Lyrics translation",
-            );
+            translation.setAttribute("aria-label", strings.translation);
             translation.setAttribute(
                 "aria-pressed",
                 String(Boolean(CFM.get("showLyricsTranslation"))),
@@ -89,9 +92,7 @@ async function startFullscape() {
             DOM.sideView.innerHTML = showingQueue ? APPLE_SYMBOLS.lyrics : APPLE_SYMBOLS.list;
             DOM.sideView.setAttribute(
                 "aria-label",
-                showingQueue
-                    ? translations[LOCALE].sideView.showLyrics
-                    : translations[LOCALE].sideView.showQueue,
+                showingQueue ? strings.showLyrics : strings.showQueue,
             );
             DOM.sideView.setAttribute("aria-pressed", String(showingQueue));
         }
@@ -107,542 +108,9 @@ async function startFullscape() {
     }
     const showLyricsTools = PlayerControls.showLyricsTools.bind(PlayerControls);
 
-    function applyLyricsScale() {
-        if (!CFM.get("lyricsDisplay")) return;
-        const size = Number(CFM.get("lyricsSize") || 30);
-        const basePx = 22;
-        const minScale = 0.7;
-        const maxScale = 4;
-        const scale = Math.min(maxScale, Math.max(minScale, size / basePx));
-        DOM.container?.style.setProperty("--lyrics-font-scale", `${scale}`);
-    }
-
     const updatePlayerControls = PlayerControls.updatePlayerControls.bind(PlayerControls);
     const updateUpNext = UpNext.updateUpNext.bind(UpNext);
     const updateUpNextShow = UpNext.updateUpNextShow.bind(UpNext);
-    const hidePlayerControls = PlayerControls.hidePlayerControls.bind(PlayerControls);
-    const PLAYBACK_TIMELINE_RESYNC_TARGET_MS = 1000;
-    // Spotify applies pause/resume asynchronously. A one-millisecond gap can
-    // race the pause command and leave the player paused permanently, so keep
-    // a short settling window before issuing the resume command.
-    const PLAYBACK_TIMELINE_RESYNC_DELAY_MS = 80;
-    const PLAYBACK_TIMELINE_RESYNC_CHECK_INTERVAL_MS = 100;
-    let playbackTimelineResyncTimer: ReturnType<typeof setTimeout> | null = null;
-    let playbackTimelineResyncCheckTimer: ReturnType<typeof setTimeout> | null = null;
-    let playbackTimelineResyncResumeReleaseTimer: ReturnType<typeof setTimeout> | null = null;
-    let playbackTimelineResyncSequence = 0;
-    let isPlaybackTimelineResyncing = false;
-    let isPlaybackTimelineResyncAwaitingResume = false;
-    let playbackTimelineResyncPending = false;
-    let playbackTimelineResyncTrackUri: string | null = null;
-    let playbackTimelineResyncCheckingDevice = false;
-    let playbackDeviceDebugUpdatedAt = 0;
-    let playbackDeviceDebugRequest: Promise<void> | null = null;
-    let playbackStateEventData: any = null;
-    let playbackDeviceDebugSource = "NONE";
-
-    function finishPlaybackTimelineResyncVisualState() {
-        if (playbackTimelineResyncResumeReleaseTimer !== null) {
-            clearTimeout(playbackTimelineResyncResumeReleaseTimer);
-            playbackTimelineResyncResumeReleaseTimer = null;
-        }
-        isPlaybackTimelineResyncAwaitingResume = false;
-        DOM.container?.classList.remove("playback-timeline-resyncing");
-    }
-
-    function shouldSuppressPlaybackTimelineResyncEvent(evt?: any) {
-        if (isPlaybackTimelineResyncing) return true;
-        if (!isPlaybackTimelineResyncAwaitingResume) return false;
-        const isPaused = evt?.data?.is_paused ?? evt?.data?.isPaused;
-        if (isPaused === false) finishPlaybackTimelineResyncVisualState();
-        return true;
-    }
-
-    function cancelPlaybackTimelineResync(resumePlayback = true) {
-        if (playbackTimelineResyncTimer !== null) {
-            clearTimeout(playbackTimelineResyncTimer);
-            playbackTimelineResyncTimer = null;
-        }
-        if (playbackTimelineResyncCheckTimer !== null) {
-            clearTimeout(playbackTimelineResyncCheckTimer);
-            playbackTimelineResyncCheckTimer = null;
-        }
-        finishPlaybackTimelineResyncVisualState();
-        playbackTimelineResyncSequence += 1;
-        const shouldResume =
-            resumePlayback &&
-            isPlaybackTimelineResyncing &&
-            playbackTimelineResyncTrackUri === Spicetify.Player.data?.item?.uri &&
-            !Spicetify.Player.isPlaying();
-        isPlaybackTimelineResyncing = false;
-        playbackTimelineResyncPending = false;
-        playbackTimelineResyncTrackUri = null;
-        if (shouldResume) {
-            DOM.container?.classList.remove("playback-paused");
-            void resumePlaybackAfterTimelineResync();
-        }
-    }
-
-    async function resumePlaybackAfterTimelineResync() {
-        const playerApi = Spicetify.Platform?.PlayerAPI as any;
-        try {
-            if (typeof playerApi?.resume === "function") {
-                await playerApi.resume();
-            } else {
-                Spicetify.Player.play();
-            }
-        } catch {
-            // Keep the legacy wrapper as a fallback for clients that expose a
-            // PlayerAPI resume method but reject it during a device handoff.
-            try {
-                Spicetify.Player.play();
-            } catch {
-                // Playback errors are owned by Spotify; do not break the UI.
-            }
-        }
-    }
-
-    async function pausePlaybackForTimelineResync() {
-        const playerApi = Spicetify.Platform?.PlayerAPI as any;
-        try {
-            if (typeof playerApi?.pause === "function") {
-                await playerApi.pause();
-                return;
-            }
-        } catch {
-            // Fall back to the legacy wrapper when the platform API is not
-            // available during a device handoff.
-        }
-        try {
-            Spicetify.Player.pause();
-        } catch {
-            // Playback errors are owned by Spotify; do not break the UI.
-        }
-    }
-
-    function schedulePlaybackTimelineResyncCheck(delay: number) {
-        if (playbackTimelineResyncCheckTimer !== null) {
-            clearTimeout(playbackTimelineResyncCheckTimer);
-        }
-        playbackTimelineResyncCheckTimer = setTimeout(() => {
-            playbackTimelineResyncCheckTimer = null;
-            tryPlaybackTimelineResync();
-        }, delay);
-    }
-
-    function getPlaybackDevice(source: any) {
-        return (
-            source?.device ??
-            source?.playbackDevice ??
-            source?.playback_device ??
-            source?.device_info ??
-            source?.deviceInfo ??
-            source?.active_device ??
-            source?.activeDevice ??
-            source?.player_state?.device ??
-            source?.playerState?.device ??
-            source?.state?.device ??
-            null
-        );
-    }
-
-    function getPlaybackDeviceIdentifier(source: any) {
-        return (
-            source?.device_identifier ??
-            source?.deviceIdentifier ??
-            source?.device_id ??
-            source?.deviceId ??
-            source?.play_origin?.device_identifier ??
-            source?.play_origin?.deviceIdentifier ??
-            source?.play_origin?.device_id ??
-            source?.play_origin?.deviceId ??
-            source?.playOrigin?.device_identifier ??
-            source?.playOrigin?.deviceIdentifier ??
-            source?.playOrigin?.device_id ??
-            source?.playOrigin?.deviceId ??
-            source?.player_state?.device_identifier ??
-            source?.player_state?.play_origin?.device_identifier ??
-            source?.playerState?.device_identifier ??
-            source?.playerState?.play_origin?.device_identifier ??
-            source?.state?.device_identifier ??
-            source?.state?.play_origin?.device_identifier ??
-            source?.track?.device_identifier ??
-            source?.track?.play_origin?.device_identifier ??
-            source?.track?.playOrigin?.device_identifier ??
-            source?.track?.play_origin?.device_id ??
-            source?.track?.playOrigin?.deviceId ??
-            source?.track?.track?.device_identifier ??
-            source?.track?.track?.play_origin?.device_identifier ??
-            source?.id ??
-            null
-        );
-    }
-
-    function parsePlaybackResponse(response: any) {
-        const body = response?.body ?? response;
-        if (typeof body !== "string") return body;
-        try {
-            return JSON.parse(body);
-        } catch {
-            return null;
-        }
-    }
-
-    function hasPlaybackDeviceType(device: any) {
-        return Boolean(
-            device?.type ??
-                device?.deviceType ??
-                device?.device_type ??
-                device?.device_info?.type ??
-                device?.deviceInfo?.type,
-        );
-    }
-
-    function getConnectPlaybackDevice() {
-        const connectApi = (Spicetify.Platform as any)?.ConnectAPI;
-        if (!connectApi) return null;
-
-        const state =
-            connectApi.getConnectState?.() ??
-            connectApi.getState?.() ??
-            connectApi.state ??
-            null;
-        const devices =
-            connectApi.getDevices?.() ??
-            (Array.isArray(state?.devices) ? state.devices : []);
-        return (
-            connectApi.getActiveDevice?.() ??
-            state?.activeDevice ??
-            devices.find((device: any) => device?.isActive || device?.is_active) ??
-            devices.find((device: any) => device?.isLocal || device?.is_local) ??
-            null
-        );
-    }
-
-    function getLocalDeviceId() {
-        const playerApi = Spicetify.Platform?.PlayerAPI as any;
-        return (
-            playerApi?._device?.id ??
-            playerApi?._session?.deviceId ??
-            playerApi?._state?.localDeviceId ??
-            playerApi?._state?.local_device_id ??
-            null
-        );
-    }
-
-    function isLocalPlaybackDevice(device: any, source?: any): boolean | null {
-        if (!device && !source) return null;
-        const localFlags = [device?.isLocal, device?.is_local, source?.isLocal, source?.is_local];
-        const localFlag = localFlags.find((value) => typeof value === "boolean");
-        if (typeof localFlag === "boolean") return localFlag;
-
-        const remoteFlags = [
-            device?.isRemote,
-            device?.is_remote,
-            source?.isRemote,
-            source?.is_remote,
-        ];
-        const remoteFlag = remoteFlags.find((value) => typeof value === "boolean");
-        if (typeof remoteFlag === "boolean") return !remoteFlag;
-
-        const localDeviceId = getLocalDeviceId();
-        const deviceId = getPlaybackDeviceIdentifier(device);
-        if (localDeviceId && deviceId) return localDeviceId === deviceId;
-
-        const deviceType = String(
-            device?.type ??
-                device?.deviceType ??
-                device?.device_type ??
-                device?.device_info?.type ??
-                device?.deviceInfo?.type ??
-                "",
-        ).toLowerCase();
-        if (deviceType) return deviceType === "computer" || deviceType === "desktop";
-        return null;
-    }
-
-    async function getCurrentPlaybackDevice() {
-        playbackDeviceDebugSource = "CHECKING";
-        const player = Spicetify.Player as any;
-        const playerApi = Spicetify.Platform?.PlayerAPI as any;
-        const playerState = player?.data;
-        const playerStateSources = [
-            playbackStateEventData,
-            playerState,
-            playerApi?._state,
-            playerApi?._session,
-        ];
-        const directDevice = playerStateSources
-            .map((source) => getPlaybackDevice(source))
-            .find((device) => hasPlaybackDeviceType(device));
-        let currentDeviceIdentifier = playerStateSources
-            .map((source) => getPlaybackDeviceIdentifier(source))
-            .find(Boolean);
-        if (hasPlaybackDeviceType(directDevice)) {
-            playbackDeviceDebugSource = "PLAYER";
-            return directDevice;
-        }
-
-        const connectDevice = getConnectPlaybackDevice();
-        if (connectDevice) {
-            playbackDeviceDebugSource = "CONNECT_API";
-            return connectDevice;
-        }
-
-        let apiState: any = null;
-        try {
-            const internalPlaybackState = await Spicetify.CosmosAsync.get("sp://player/v2/main");
-            const internalState = parsePlaybackResponse(internalPlaybackState);
-            const internalDevice = getPlaybackDevice(internalState);
-            if (hasPlaybackDeviceType(internalDevice)) {
-                playbackDeviceDebugSource = "INTERNAL";
-                return internalDevice;
-            }
-            currentDeviceIdentifier =
-                currentDeviceIdentifier ?? getPlaybackDeviceIdentifier(internalState);
-        } catch {
-            playbackDeviceDebugSource = "INTERNAL_ERROR";
-        }
-
-        try {
-            const playbackState = await Spicetify.CosmosAsync.get(
-                "https://api.spotify.com/v1/me/player",
-            );
-            apiState = parsePlaybackResponse(playbackState);
-            const apiDevice = getPlaybackDevice(apiState);
-            if (hasPlaybackDeviceType(apiDevice)) {
-                playbackDeviceDebugSource = "PLAYER_API";
-                return apiDevice;
-            }
-            currentDeviceIdentifier =
-                currentDeviceIdentifier ?? getPlaybackDeviceIdentifier(apiState);
-        } catch {
-            apiState = null;
-            playbackDeviceDebugSource = "PLAYER_API_ERROR";
-        }
-
-        try {
-            const devicesResponse = await Spicetify.CosmosAsync.get(
-                "https://api.spotify.com/v1/me/player/devices",
-            );
-            const devicesState = parsePlaybackResponse(devicesResponse);
-            const devices = Array.isArray(devicesState?.devices) ? devicesState.devices : [];
-            const matchingDevice = devices.find(
-                (device: any) =>
-                    currentDeviceIdentifier &&
-                    getPlaybackDeviceIdentifier(device) === currentDeviceIdentifier,
-            );
-            if (matchingDevice) {
-                playbackDeviceDebugSource = "DEVICES_MATCH";
-                return matchingDevice;
-            }
-            const activeDevice = devices.find(
-                (device: any) => device?.is_active || device?.isActive,
-            );
-            if (activeDevice) {
-                playbackDeviceDebugSource = "DEVICES_ACTIVE";
-                return activeDevice;
-            }
-            if (devices[0]) {
-                playbackDeviceDebugSource = "DEVICES_FIRST";
-                return devices[0];
-            }
-            playbackDeviceDebugSource = currentDeviceIdentifier ? "ID_ONLY" : "NO_DEVICE";
-            return currentDeviceIdentifier ? { id: currentDeviceIdentifier } : null;
-        } catch {
-            playbackDeviceDebugSource = "DEVICES_ERROR";
-            return currentDeviceIdentifier ? { id: currentDeviceIdentifier } : null;
-        }
-    }
-
-    async function isPlaybackOnLocalDevice() {
-        const device = await getCurrentPlaybackDevice();
-        // Do not pause when the active device cannot be identified safely.
-        return isLocalPlaybackDevice(device) === true;
-    }
-
-    function getPlaybackDeviceType(device: any) {
-        const type =
-            device?.type ??
-            device?.deviceType ??
-            device?.device_type ??
-            device?.device_info?.type ??
-            device?.deviceInfo?.type;
-        if (typeof type === "number") {
-            return (
-                (
-                    {
-                        0: "UNKNOWN",
-                        1: "COMPUTER",
-                        2: "TABLET",
-                        3: "SMARTPHONE",
-                        4: "SPEAKER",
-                        5: "TV",
-                        6: "AVR",
-                        7: "STB",
-                        8: "AUDIO_DONGLE",
-                        9: "GAME_CONSOLE",
-                        10: "CAST_VIDEO",
-                        11: "CAST_AUDIO",
-                        12: "AUTOMOBILE",
-                        13: "SMARTWATCH",
-                        14: "CHROMEBOOK",
-                        100: "UNKNOWN_SPOTIFY",
-                        101: "CAR_THING",
-                        102: "OBSERVER",
-                        103: "HOME_THING",
-                    } as Record<number, string>
-                )[type] ?? `TYPE_${type}`
-            );
-        }
-        return type ? String(type).toUpperCase() : "UNKNOWN";
-    }
-
-    function isSpotifyInForeground() {
-        return document.visibilityState === "visible" && document.hasFocus();
-    }
-
-    async function updatePlaybackDeviceDebug(force = false) {
-        if (!CFM.get("debugMode")) return;
-        const target = DOM.container.querySelector<HTMLElement>("[data-debug-device]");
-        const idTarget = DOM.container.querySelector<HTMLElement>("[data-debug-device-id]");
-        const sourceTarget = DOM.container.querySelector<HTMLElement>("[data-debug-device-source]");
-        if (!target) return;
-        const now = Date.now();
-        if (!force && now - playbackDeviceDebugUpdatedAt < 2000) return;
-        if (playbackDeviceDebugRequest) return;
-        playbackDeviceDebugUpdatedAt = now;
-        const request = (async () => {
-            const device = await getCurrentPlaybackDevice();
-            if (!CFM.get("debugMode") || !DOM.container.contains(target)) return;
-            target.textContent = getPlaybackDeviceType(device);
-            if (idTarget && DOM.container.contains(idTarget)) {
-                idTarget.textContent = getPlaybackDeviceIdentifier(device) ?? "--";
-            }
-            if (sourceTarget && DOM.container.contains(sourceTarget)) {
-                sourceTarget.textContent = playbackDeviceDebugSource;
-            }
-        })();
-        playbackDeviceDebugRequest = request;
-        try {
-            await request;
-        } finally {
-            if (playbackDeviceDebugRequest === request) playbackDeviceDebugRequest = null;
-        }
-    }
-
-    async function tryPlaybackTimelineResync() {
-        if (!playbackTimelineResyncPending) return;
-        if (
-            !CFM.get("playbackTimelineResync") ||
-            playbackTimelineResyncTrackUri !== Spicetify.Player.data?.item?.uri ||
-            !Utils.isModeActivated()
-        ) {
-            cancelPlaybackTimelineResync(false);
-            return;
-        }
-
-        if (!isSpotifyInForeground()) {
-            return;
-        }
-
-        if (playbackTimelineResyncCheckingDevice) return;
-        playbackTimelineResyncCheckingDevice = true;
-        const deviceCheckSequence = playbackTimelineResyncSequence;
-        const isLocalDevice = await isPlaybackOnLocalDevice();
-        playbackTimelineResyncCheckingDevice = false;
-        if (
-            deviceCheckSequence !== playbackTimelineResyncSequence &&
-            playbackTimelineResyncPending
-        ) {
-            schedulePlaybackTimelineResyncCheck(0);
-            return;
-        }
-        if (!playbackTimelineResyncPending) return;
-        if (!isLocalDevice) {
-            cancelPlaybackTimelineResync(false);
-            return;
-        }
-
-        const progress = Number(Spicetify.Player.getProgress());
-        if (
-            !Number.isFinite(progress) ||
-            progress < PLAYBACK_TIMELINE_RESYNC_TARGET_MS ||
-            !Spicetify.Player.isPlaying()
-        ) {
-            const delay =
-                Number.isFinite(progress) && progress < PLAYBACK_TIMELINE_RESYNC_TARGET_MS
-                    ? Math.min(
-                          PLAYBACK_TIMELINE_RESYNC_CHECK_INTERVAL_MS,
-                          Math.max(1, PLAYBACK_TIMELINE_RESYNC_TARGET_MS - progress),
-                      )
-                    : PLAYBACK_TIMELINE_RESYNC_CHECK_INTERVAL_MS;
-            schedulePlaybackTimelineResyncCheck(delay);
-            return;
-        }
-
-        playbackTimelineResyncPending = false;
-        const sequence = playbackTimelineResyncSequence;
-        isPlaybackTimelineResyncing = true;
-        DOM.container?.classList.add("playback-timeline-resyncing");
-        await pausePlaybackForTimelineResync();
-        if (
-            sequence !== playbackTimelineResyncSequence ||
-            !isPlaybackTimelineResyncing ||
-            playbackTimelineResyncTrackUri !== Spicetify.Player.data?.item?.uri ||
-            !Utils.isModeActivated()
-        ) {
-            finishPlaybackTimelineResyncVisualState();
-            return;
-        }
-        playbackTimelineResyncTimer = setTimeout(() => {
-            playbackTimelineResyncTimer = null;
-            const shouldResume =
-                sequence === playbackTimelineResyncSequence &&
-                isPlaybackTimelineResyncing &&
-                playbackTimelineResyncTrackUri === Spicetify.Player.data?.item?.uri &&
-                Utils.isModeActivated();
-            isPlaybackTimelineResyncing = false;
-            if (shouldResume) {
-                DOM.container?.classList.remove("playback-paused");
-                isPlaybackTimelineResyncAwaitingResume = true;
-                playbackTimelineResyncResumeReleaseTimer = setTimeout(
-                    finishPlaybackTimelineResyncVisualState,
-                    50,
-                );
-                void resumePlaybackAfterTimelineResync();
-            } else {
-                finishPlaybackTimelineResyncVisualState();
-            }
-            playbackTimelineResyncTrackUri = null;
-        }, PLAYBACK_TIMELINE_RESYNC_DELAY_MS);
-    }
-
-    function schedulePlaybackTimelineResync(evt?: any) {
-        cancelPlaybackTimelineResync(false);
-        if (!CFM.get("playbackTimelineResync")) return;
-
-        const isPaused = evt?.data?.is_paused ?? evt?.data?.isPaused;
-        const wasPlaying =
-            typeof isPaused === "boolean" ? !isPaused : Spicetify.Player.isPlaying();
-        if (!wasPlaying) return;
-
-        const trackUri = Spicetify.Player.data?.item?.uri ?? null;
-        if (!trackUri) return;
-        playbackTimelineResyncPending = true;
-        playbackTimelineResyncTrackUri = trackUri;
-        schedulePlaybackTimelineResyncCheck(PLAYBACK_TIMELINE_RESYNC_TARGET_MS);
-    }
-
-    function handleSpotifyForegroundChange() {
-        if (!isSpotifyInForeground() || !playbackTimelineResyncPending) return;
-        schedulePlaybackTimelineResyncCheck(0);
-    }
-
-    const updatePlayerControlsWithoutResyncEffect = (evt: any) => {
-        if (shouldSuppressPlaybackTimelineResyncEvent(evt)) return;
-        updatePlayerControls(evt);
-    };
     let metadataFrameId: number | null = null;
     let metadataAnimations: Animation[] = [];
 
@@ -732,58 +200,31 @@ async function startFullscape() {
         DOM.container.style.setProperty("--lyrics-container-height", `${height}px`);
     }
 
-    function updatePlaybackLayout(evt?: any) {
-        if (evt?.data && typeof evt.data === "object") playbackStateEventData = evt.data;
-        if (shouldSuppressPlaybackTimelineResyncEvent(evt)) return;
-        const isPaused =
-            evt?.data?.is_paused ?? evt?.data?.isPaused ?? !Spicetify.Player.isPlaying();
+    function updatePlaybackLayout(evt?: Event | PlaybackStateEvent) {
+        const isPaused = getPlaybackPaused(evt) ?? !Spicetify.Player.isPlaying();
         DOM.container.classList.toggle("playback-paused", Boolean(isPaused));
     }
 
-    function render() {
-        applyTypography(CFM.get("typography"));
-        cancelPlaybackTimelineResync();
-        playbackDeviceDebugUpdatedAt = 0;
-        playbackDeviceDebugRequest = null;
-        DOM.container.classList.toggle("lyrics-active", Boolean(CFM.get("lyricsDisplay")));
+    function removePlaybackListeners() {
+        const player = Spicetify.Player;
+        player.removeEventListener("songchange", handleSongChange);
+        player.removeEventListener("onplaypause", updatePlayerControls);
+        player.removeEventListener("onplaypause", updatePlayingIcon);
+        player.removeEventListener("onplaypause", updatePlaybackLayout);
+        player.removeEventListener("onprogress", handleLyricsProgress);
 
-        DOM.container.classList.toggle(
-            "vertical-mode",
-            (CFM.get("verticalMonitorSupport") as Settings["verticalMonitorSupport"]) &&
-                window.innerWidth < window.innerHeight,
-        );
-        document.body.classList.toggle(
-            "vertical-mode",
-            (CFM.get("verticalMonitorSupport") as Settings["verticalMonitorSupport"]) &&
-                window.innerWidth < window.innerHeight,
-        );
-        DOM.container.setAttribute("data-locale", LOCALE);
-        DOM.container.classList.remove("lyrics-hide-force");
+        const playerEvents = Spicetify.Platform.PlayerAPI._events;
+        playerEvents.removeListener("queue_update", Queue.scheduleUpdate);
+        playerEvents.removeListener("queue_update", updateUpNext);
+        playerEvents.removeListener("queue_update", handleLyricsQueueUpdate);
+        playerEvents.removeListener("update", updateUpNextShow);
 
-        applyLyricsScale();
-
-        Spicetify.Player.removeEventListener("songchange", handleSongChange);
-        Spicetify.Player.removeEventListener(
-            "onplaypause",
-            updatePlayerControlsWithoutResyncEffect,
-        );
-        Spicetify.Player.removeEventListener("onplaypause", updatePlayingIcon);
-        Spicetify.Player.removeEventListener("onplaypause", updatePlaybackLayout);
         document.removeEventListener("fullscreenchange", fullscreenChangeListener);
-        window.removeEventListener("focus", handleSpotifyForegroundChange);
-        document.removeEventListener("visibilitychange", handleSpotifyForegroundChange);
+    }
 
-        Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", updateUpNext);
-        Spicetify.Platform.PlayerAPI._events.removeListener("update", updateUpNextShow);
-        Spicetify.Player.removeEventListener("onprogress", handlePlaybackTimelineProgress);
-        Spicetify.Player.removeEventListener("onprogress", handleLyricsProgress);
-        Spicetify.Platform.PlayerAPI._events.removeListener(
-            "queue_update",
-            handleLyricsQueueUpdate,
-        );
-        window.removeEventListener("resize", resizeEvents);
+    function stopDisplayUpdates() {
         UpNext.teardown();
-
+        window.removeEventListener("resize", resizeEvents);
         cancelResize();
         if (metadataFrameId !== null) {
             cancelAnimationFrame(metadataFrameId);
@@ -791,18 +232,35 @@ async function startFullscape() {
         }
         cancelMetadataAnimations();
         Background.stop();
-
         handleMouseMoveDeactivation();
+        const progressRoot = DOM.container.querySelector("#fullscape-progress-parent");
+        if (progressRoot) ReactDOM.unmountComponentAtNode(progressRoot);
+    }
 
-        const transitionTime = Number(CFM.get("backAnimationTime"));
+    function render() {
+        infoSequence += 1;
+        const locale = getLocale();
+        applyTypography(CFM.get("typography"));
+        DOM.container.classList.toggle("lyrics-active", Boolean(CFM.get("lyricsDisplay")));
+
+        updateDisplayOrientation();
+        DOM.container.setAttribute("data-locale", locale);
+        DOM.container.classList.remove("lyrics-hide-force");
+        DOM.container.style.setProperty(
+            "--lyrics-font-size",
+            `${getLyricFontSize(CFM.get("lyricsSize"))}px`,
+        );
+        const entryButton = document.getElementById("fullscape-default-button");
+        if (entryButton) updateEntryButtonLabel(entryButton);
+
+        removePlaybackListeners();
+        stopDisplayUpdates();
+
         DOM.style.textContent = `
         #fullscape-display {
             --lyrics-alignment: left;
             --right-margin-lyrics: 0px;
             --icons-display: ${CFM.get("icons") ? "inline-block" : "none"};
-            --fs-transition: ${
-                Number.isFinite(transitionTime) ? Math.min(10, Math.max(0, transitionTime)) : 0
-            }s;
        }
        `;
 
@@ -811,7 +269,7 @@ async function startFullscape() {
         DOM.lyrics = null;
         Cover.teardown();
         Queue.teardown();
-        DOM.container.innerHTML = getHtmlContent();
+        DOM.container.innerHTML = getHtmlContent(locale);
 
         DOM.back = DOM.container.querySelector("#fullscape-background")!;
         DOM.back.width = window.innerWidth;
@@ -861,25 +319,23 @@ async function startFullscape() {
                 CFM.set("titleMovingIcon", true);
                 DOM.playingIcon.classList.remove("hidden");
                 DOM.pausedIcon.classList.add("hidden");
-                updatePlayingIcon({ data: { is_paused: !Spicetify.Player.isPlaying() } });
+                updatePlayingIcon();
             };
         }
-        if (CFM.get("playerControls") !== "never") {
-            DOM.play = DOM.container.querySelector("#fullscape-play")!;
-            DOM.play.onclick = () => {
-                Spicetify.Player.togglePlay();
-            };
-            DOM.nextControl = DOM.container.querySelector("#fullscape-next")!;
-            DOM.nextControl.onclick = () => {
-                Utils.fadeAnimation(DOM.nextControl, "fade-ri");
-                Spicetify.Player.next();
-            };
-            DOM.backControl = DOM.container.querySelector("#fullscape-back")!;
-            DOM.backControl.onclick = () => {
-                Utils.fadeAnimation(DOM.backControl, "fade-le");
-                Spicetify.Player.back();
-            };
-        }
+        DOM.play = DOM.container.querySelector("#fullscape-play")!;
+        DOM.play.onclick = () => {
+            Spicetify.Player.togglePlay();
+        };
+        DOM.nextControl = DOM.container.querySelector("#fullscape-next")!;
+        DOM.nextControl.onclick = () => {
+            Utils.fadeAnimation(DOM.nextControl, "fade-ri");
+            Spicetify.Player.next();
+        };
+        DOM.backControl = DOM.container.querySelector("#fullscape-back")!;
+        DOM.backControl.onclick = () => {
+            Utils.fadeAnimation(DOM.backControl, "fade-le");
+            Spicetify.Player.back();
+        };
     }
 
     function toggleQueue() {
@@ -937,7 +393,7 @@ async function startFullscape() {
             }
             const albumURI = meta?.album_uri;
             if (albumURI?.startsWith("spotify:album:") && CFM.get("showAlbum") === "date") {
-                Utils.getAlbumReleaseDate(albumURI, LOCALE).then((releaseDate) => {
+                Utils.getAlbumReleaseDate(albumURI, getLocale()).then((releaseDate) => {
                     if (sequence !== infoSequence) return;
                     albumText += releaseDate;
                     if (updatedAlbum) {
@@ -1007,9 +463,8 @@ async function startFullscape() {
         };
     }
 
-    function updatePlayingIcon(evt: any) {
-        if (shouldSuppressPlaybackTimelineResyncEvent(evt)) return;
-        if (evt.data.is_paused || evt.data.isPaused) {
+    function updatePlayingIcon(evt?: Event | PlaybackStateEvent) {
+        if (getPlaybackPaused(evt) ?? !Spicetify.Player.isPlaying()) {
             DOM.pausedIcon.classList.remove("hidden");
             DOM.playingIcon.classList.add("hidden");
         } else {
@@ -1027,7 +482,7 @@ async function startFullscape() {
         DOM.container.classList.remove("fullscape-cursor-hidden");
         DOM.container.style.cursor = "default";
         const isInsideLyrics = Boolean(event?.target && DOM.lyrics?.contains(event.target as Node));
-        const delay = isInsideLyrics ? 10_000 : 3_000;
+        const delay = isInsideLyrics ? 10_000 : MOTION.controlsIdle;
         curTimer = setTimeout(() => {
             DOM.container.style.cursor = "none";
             DOM.container.classList.add("fullscape-cursor-hidden");
@@ -1039,20 +494,14 @@ async function startFullscape() {
         DOM.container.addEventListener("mousemove", showLyricsTools);
         showLyricsTools();
         hideCursor();
-        if (CFM.get("playerControls") === "mousemove") {
-            DOM.container.addEventListener("mousemove", hidePlayerControls);
-            PlayerControls.hidePlayerControls();
-        }
     }
 
     function handleMouseMoveDeactivation() {
         DOM.container.removeEventListener("mousemove", hideCursor);
         DOM.container.removeEventListener("mousemove", showLyricsTools);
         clearTimeout(PlayerControls.toolsTimer);
-        DOM.container.removeEventListener("mousemove", hidePlayerControls);
 
         if (curTimer) clearTimeout(curTimer);
-        if (PlayerControls.playerControlsTimer) clearTimeout(PlayerControls.playerControlsTimer);
     }
 
     function fullscreenChangeListener() {
@@ -1077,17 +526,9 @@ async function startFullscape() {
         Lyrics.prefetchNextLyrics();
     };
     const handleLyricsQueueUpdate = () => Lyrics.prefetchNextLyrics();
-    function handlePlaybackTimelineProgress() {
-        void updatePlaybackDeviceDebug();
-        void tryPlaybackTimelineResync();
-    }
-
-    function handleSongChange(evt?: any) {
+    function handleSongChange() {
         Queue.captureIncoming();
         Queue.scheduleUpdate();
-        if (evt?.data && typeof evt.data === "object") playbackStateEventData = evt.data;
-        schedulePlaybackTimelineResync(evt);
-        void updatePlaybackDeviceDebug(true);
         void updateInfo();
     }
 
@@ -1116,10 +557,6 @@ async function startFullscape() {
             });
         }, 200);
         Spicetify.Player.addEventListener("songchange", handleSongChange);
-        Spicetify.Player.addEventListener("onprogress", handlePlaybackTimelineProgress);
-        window.addEventListener("focus", handleSpotifyForegroundChange);
-        document.addEventListener("visibilitychange", handleSpotifyForegroundChange);
-        void updatePlaybackDeviceDebug(true);
         handleMouseMoveActivation();
         DOM.container.oncontextmenu = ConfigManager.openConfig.bind(ConfigManager);
         DOM.container.querySelector<HTMLElement>("#fullscape-foreground")!.ondblclick = deactivate;
@@ -1129,34 +566,22 @@ async function startFullscape() {
             Spicetify.Platform.PlayerAPI._events.addListener("queue_update", updateUpNext);
             Spicetify.Platform.PlayerAPI._events.addListener("update", updateUpNextShow);
         }
+        const playbackState = { data: { is_paused: !Spicetify.Player.isPlaying() } };
         if (CFM.get("icons")) {
-            updatePlayingIcon({ data: { is_paused: !Spicetify.Player.isPlaying() } });
+            updatePlayingIcon(playbackState);
             Spicetify.Player.addEventListener("onplaypause", updatePlayingIcon);
         }
-        if (CFM.get("progressBarDisplay") !== "never") {
-            ReactDOM.render(
-                <SeekableProgressBar
-                    state={CFM.get("progressBarDisplay") as Settings["progressBarDisplay"]}
-                />,
-                DOM.container.querySelector("#fullscape-progress-parent"),
-            );
-        }
-        if (CFM.get("playerControls") !== "never") {
-            PlayerControls.updatePlayerControls({
-                data: { is_paused: !Spicetify.Player.isPlaying() },
-            });
-            Spicetify.Player.addEventListener(
-                "onplaypause",
-                updatePlayerControlsWithoutResyncEffect,
-            );
-        }
+        ReactDOM.render(
+            <SeekableProgressBar />,
+            DOM.container.querySelector("#fullscape-progress-parent"),
+        );
+        updatePlayerControls(playbackState);
+        Spicetify.Player.addEventListener("onplaypause", updatePlayerControls);
         // Recent Spotify layouts no longer expose the legacy root class.
         const displayHost = document.querySelector(".Root__top-container") ?? document.body;
         displayHost.append(DOM.style, DOM.container);
         animateFeedback(DOM.container, [{ opacity: 0 }, { opacity: 1 }]);
-        updatePlaybackLayout({
-            data: { is_paused: !Spicetify.Player.isPlaying() },
-        });
+        updatePlaybackLayout(playbackState);
         Spicetify.Player.addEventListener("onplaypause", updatePlaybackLayout);
         if (CFM.get("lyricsDisplay")) {
             // hard reset lyric renderer to avoid stale raf state after re-entry
@@ -1211,53 +636,13 @@ async function startFullscape() {
         }
         Cover.teardown();
         Queue.teardown();
-        Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", Queue.scheduleUpdate);
         activationSequence += 1;
         infoSequence += 1;
-        // Deactivation must never mutate the user's playback state. In
-        // particular, do not replay a track that was paused by an in-flight
-        // resync while the user is returning to Spotify's native UI.
-        cancelPlaybackTimelineResync(false);
 
-        Background.stop();
-        UpNext.teardown();
-        Spicetify.Player.removeEventListener("songchange", handleSongChange);
-        Spicetify.Player.removeEventListener("onplaypause", updatePlaybackLayout);
-        window.removeEventListener("focus", handleSpotifyForegroundChange);
-        document.removeEventListener("visibilitychange", handleSpotifyForegroundChange);
-        handleMouseMoveDeactivation();
-        window.removeEventListener("resize", resizeEvents);
-        cancelResize();
-        if (metadataFrameId !== null) {
-            cancelAnimationFrame(metadataFrameId);
-            metadataFrameId = null;
-        }
-        cancelMetadataAnimations();
-        if (CFM.get("upnextDisplay") !== "never") {
-            UpNext.upNextShown = false;
-            Spicetify.Platform.PlayerAPI._events.removeListener("queue_update", updateUpNext);
-            Spicetify.Platform.PlayerAPI._events.removeListener("update", updateUpNextShow);
-        }
-        const progressRoot = DOM.container.querySelector("#fullscape-progress-parent");
-        if (progressRoot) ReactDOM.unmountComponentAtNode(progressRoot);
-        if (CFM.get("icons")) {
-            Spicetify.Player.removeEventListener("onplaypause", updatePlayingIcon);
-        }
-        if (CFM.get("playerControls") !== "never") {
-            Spicetify.Player.removeEventListener(
-                "onplaypause",
-                updatePlayerControlsWithoutResyncEffect,
-            );
-        }
-        Spicetify.Player.removeEventListener("onprogress", handlePlaybackTimelineProgress);
-        Spicetify.Player.removeEventListener("onprogress", handleLyricsProgress);
-        Spicetify.Platform.PlayerAPI._events.removeListener(
-            "queue_update",
-            handleLyricsQueueUpdate,
-        );
+        removePlaybackListeners();
+        stopDisplayUpdates();
         Lyrics.teardown();
         document.body.classList.remove(...CLASSES_TO_ADD);
-        UpNext.upNextShown = false;
         if (CFM.get("enableFullscreen")) {
             await Utils.exitFullscreen()?.catch(() => undefined);
         }
@@ -1265,7 +650,6 @@ async function startFullscape() {
         if (popup) popup.remove();
         DOM.style.remove();
         DOM.container.remove();
-        document.removeEventListener("fullscreenchange", fullscreenChangeListener);
 
         Spicetify.Mousetrap.unbind("f11");
         Spicetify.Mousetrap.unbind("esc");
@@ -1302,21 +686,15 @@ async function startFullscape() {
         });
     }
 
+    function updateDisplayOrientation() {
+        const vertical = window.innerWidth < window.innerHeight;
+        DOM.container.classList.toggle("vertical-mode", vertical);
+    }
+
     function applyResize() {
         if (CFM.get("upnextDisplay") !== "never") UpNext.updateUpNext();
         void Background.updateBackground(Spicetify.Player.data.item?.metadata, true);
-        DOM.container.classList.toggle(
-            "vertical-mode",
-            (CFM.get("verticalMonitorSupport") as Settings["verticalMonitorSupport"]) &&
-                window.innerWidth < window.innerHeight,
-        );
-
-        document.body.classList.toggle(
-            "vertical-mode",
-            (CFM.get("verticalMonitorSupport") as Settings["verticalMonitorSupport"]) &&
-                window.innerWidth < window.innerHeight,
-        );
-        applyLyricsScale();
+        updateDisplayOrientation();
         updateMetadataOverflow();
         updateLyricsBounds();
     }
@@ -1339,45 +717,43 @@ async function startFullscape() {
         UpNext.updateUpNextShow.bind(UpNext),
     );
 
-    const mountEntryButton = () => {
+    function updateEntryButtonLabel(button: HTMLElement) {
+        const label = translations[getLocale()].fullscapeButtonDescription;
+        button.setAttribute("title", label);
+        button.setAttribute("aria-label", label);
+    }
+
+    const syncPlaybackBar = () => {
         const extraBar = HtmlSelectors.getExtraBarSelector();
-        if (!extraBar || document.getElementById("fullscape-default-button")) return;
+        if (!extraBar) return;
         if (CFM.getGlobal("hideSpotifyFullscreenButton")) {
-            const fullscreenButton = extraBar.querySelector<HTMLElement>(
-                '[data-testid="fullscreen-mode-button"]',
-            );
-            const lastExtraBarItem = extraBar?.lastElementChild as HTMLElement | null;
-            if (fullscreenButton) {
-                // Keep the native node as an anchor for future bar replacements.
-                fullscreenButton.style.display = "none";
-            } else if (
-                lastExtraBarItem?.classList.contains("control-button") ||
-                lastExtraBarItem?.title === "Full screen"
-            )
-                lastExtraBarItem.remove();
+            const fullscreenButton =
+                extraBar.querySelector<HTMLElement>('[data-testid="fullscreen-mode-button"]') ??
+                extraBar.querySelector<HTMLElement>('button[title="Full screen"]');
+            if (fullscreenButton) fullscreenButton.style.display = "none";
         }
-        if (CFM.getGlobal("activationTypes") != "keys") {
-            const defButton = document.createElement("button");
-            defButton.classList.add("button");
-            defButton.id = "fullscape-default-button";
-            defButton.type = "button";
-            defButton.setAttribute("title", translations[LOCALE].fullscapeButtonDescription);
-            defButton.setAttribute("aria-label", translations[LOCALE].fullscapeButtonDescription);
+        if (
+            CFM.getGlobal("activationTypes") === "keys" ||
+            document.getElementById("fullscape-default-button")
+        ) return;
 
-            defButton.innerHTML = ICONS.FULLSCREEN;
-            defButton.onclick = toggleFullscape;
-
-            defButton.oncontextmenu = (evt) => {
-                evt.preventDefault();
-                ConfigManager.openConfig();
-            };
-            extraBar.append(defButton);
-        }
+        const defButton = document.createElement("button");
+        defButton.classList.add("button");
+        defButton.id = "fullscape-default-button";
+        defButton.type = "button";
+        updateEntryButtonLabel(defButton);
+        defButton.innerHTML = ICONS.FULLSCREEN;
+        defButton.onclick = toggleFullscape;
+        defButton.oncontextmenu = (evt) => {
+            evt.preventDefault();
+            ConfigManager.openConfig();
+        };
+        extraBar.append(defButton);
     };
-    if (CFM.getGlobal("activationTypes") !== "keys") {
-        mountEntryButton();
+    if (CFM.getGlobal("activationTypes") !== "keys" || CFM.getGlobal("hideSpotifyFullscreenButton")) {
+        syncPlaybackBar();
         // Spotify can mount or replace the player bar after extension startup.
-        const entryObserver = new MutationObserver(mountEntryButton);
+        const entryObserver = new MutationObserver(syncPlaybackBar);
         entryObserver.observe(document.body, { childList: true, subtree: true });
     }
 
@@ -1386,7 +762,7 @@ async function startFullscape() {
     const failedRelease = ReleaseUpdater.consumeLoadFailure();
     if (failedRelease) {
         Spicetify.showNotification(
-            translations[LOCALE].settings.updates.loadFailed.replace(
+            translations[getLocale()].settings.updates.loadFailed.replace(
                 "{version}",
                 failedRelease.version,
             ),
@@ -1395,7 +771,7 @@ async function startFullscape() {
         );
     }
     if (CFM.getGlobal("autoUpdateCheck")) {
-        window.setTimeout(() => void ConfigManager.promptForUpdate(LOCALE), 2500);
+        window.setTimeout(() => void ConfigManager.promptForUpdate(getLocale()), 2500);
     }
 
     if (CFM.getGlobal("autoLaunch") === "default") toggleFullscape();

@@ -1,8 +1,10 @@
 import { APPLE_SYMBOLS } from "../constants/apple-system-symbols";
 import ICONS from "../constants";
 import CFM from "../utils/config";
+import translations from "../resources/strings";
 
-export const getHtmlContent = () => {
+export const getHtmlContent = (locale: string) => {
+    const strings = translations[locale].sideView;
     return `
         <canvas id="fullscape-background"></canvas>
         <canvas id="fullscape-fluid-background" aria-hidden="true"></canvas>
@@ -23,9 +25,6 @@ export const getHtmlContent = () => {
                 <span>WARP <b data-debug-warp>0.00</b></span>
                 <span>SCALE <b data-debug-scale>0.00</b></span>
                 <span>TIME <b data-debug-time>0:00.0</b></span>
-                <span>DEVICE <b data-debug-device>--</b></span>
-                <span>DEVICE ID <b data-debug-device-id>--</b></span>
-                <span>DEVICE SRC <b data-debug-device-source>--</b></span>
             </div>
         </aside>`
                 : ""
@@ -50,8 +49,8 @@ export const getHtmlContent = () => {
          : ""
  }
 ${CFM.get("lyricsDisplay") ? `<div id="fad-lyrics-container"></div>` : ""}
-<div id="fullscape-queue-container" aria-label="Queue" tabindex="-1"></div>
-<div class="fullscape-lyrics-tools" role="group" aria-label="${String(CFM.getGlobal("locale")).startsWith("zh") ? "歌词与队列" : "Lyrics and queue"}">
+<div id="fullscape-queue-container" aria-label="${strings.queue}" tabindex="-1"></div>
+<div class="fullscape-lyrics-tools" role="group" aria-label="${strings.tools}">
     <button id="fullscape-translation" type="button">${APPLE_SYMBOLS.translate}</button>
     <button id="fullscape-side-view" type="button">${APPLE_SYMBOLS.list}</button>
 </div>
@@ -87,23 +86,18 @@ ${CFM.get("lyricsDisplay") ? `<div id="fad-lyrics-container"></div>` : ""}
                 </div>
             </div>
             <div id="fullscape-progress-parent"></div>
-            <div id="fullscape-status" class="${CFM.get("playerControls") !== "never" ? "active" : ""}">
-                ${
-                    CFM.get("playerControls") !== "never"
-                        ? `
-                    <div class="fullscape-controls-center fullscape-controls">
-                        <button class="fullscape-button" id="fullscape-back">
-                            ${ICONS.APPLE_MUSIC_BACK}
-                        </button>
-                        <button class="fullscape-button" id="fullscape-play">
-                            ${ICONS.APPLE_MUSIC_PLAY}
-                        </button>
-                        <button class="fullscape-button" id="fullscape-next">
-                            ${ICONS.APPLE_MUSIC_NEXT}
-                        </button>
-                    </div>`
-                        : ""
-                }
+            <div id="fullscape-status">
+                <div class="fullscape-controls-center fullscape-controls">
+                    <button class="fullscape-button" id="fullscape-back">
+                        ${ICONS.APPLE_MUSIC_BACK}
+                    </button>
+                    <button class="fullscape-button" id="fullscape-play">
+                        ${ICONS.APPLE_MUSIC_PLAY}
+                    </button>
+                    <button class="fullscape-button" id="fullscape-next">
+                        ${ICONS.APPLE_MUSIC_NEXT}
+                    </button>
+                </div>
             </div>
     </div>
 </div>`;

@@ -21,7 +21,7 @@ test(
             const bundle = await build({
                 stdin: {
                     contents:
-                        'export {Lyrics} from "./src/ui/components/Lyrics/Lyrics"; export {groupRichLines,validRichLines} from "./src/services/lyrics-rich-document"; export {MATCHER_VERSION} from "./src/services/lyrics-matcher-version"; export {publishThirdPartyLyricsDebug} from "./src/services/third-party-lyrics"; export {lyricsPreferenceScore} from "./src/services/lyrics-preference";',
+                        'export {Lyrics} from "./src/ui/components/Lyrics/Lyrics"; export {groupRichLines,validRichLines} from "./src/services/lyrics-rich-document"; export {MATCHER_VERSION} from "./src/services/lyrics-matcher-version"; export {publishThirdPartyLyricsDebug} from "./src/services/third-party-lyrics"; export {lyricsPreferenceScore} from "./src/services/lyrics-preference"; export {initializeMotionTokens} from "./src/utils/motion";',
                     resolveDir: process.cwd(),
                 },
                 bundle: true,
@@ -106,11 +106,12 @@ test(
                 }));
             }
             const html = `<!doctype html><meta charset="utf-8"><style>${css}
- #fullscape-display{display:block;background:#171421;color:white;width:1050px;height:900px}#fad-lyrics-container{width:950px;height:850px;--lyrics-base-font-size:48px;--lyrics-font-scale:1;--primary-color:white;--tertiary-color:#888;--secondary-color:#aaa;--main-color:255,255,255}.lyrics-wrapper,.rnp-lyrics{height:850px}#results{display:none}</style>
+ #fullscape-display{display:block;background:#171421;color:white;width:1050px;height:900px}#fad-lyrics-container{width:950px;height:850px;--lyrics-font-size:48px;--primary-color:white;--tertiary-color:#888;--secondary-color:#aaa;--main-color:255,255,255}.lyrics-wrapper,.rnp-lyrics{height:850px}#results{display:none}</style>
  <div id="fullscape-display"><div id="fad-lyrics-container"></div></div>
  <script>globalThis.progress=0;globalThis.preferenceMode='auto';globalThis.hostConfig={get:key=>({lyricsDisplay:!!globalThis.testSyncEnabled,sharedLyricsBridge:!!globalThis.testSyncEnabled,lyricsSource:globalThis.preferenceMode,lyricsChineseConversion:'original',karaokeLyrics:true,showLyricsFurigana:true,showLyricsTranslation:true,showLyricsRomanization:true,lyricsSize:48})[key]};globalThis.hostDOM={container:document.getElementById('fullscape-display')};globalThis.Spicetify={Player:{getProgress:()=>globalThis.progress,isPlaying:()=>false,data:{item:{uri:'spotify:track:test'}}}};</script>
  <script>${bundle.outputFiles[0].text}</script><script>
  (async()=>{try{
+ Fixture.initializeMotionTokens();
  const L=Fixture.Lyrics;
  L.container=document.getElementById('fad-lyrics-container');
  const node={name:'p',attributes:{},children:[{name:'span',attributes:{begin:'1',end:'6'},children:[]}]};
@@ -280,6 +281,17 @@ test(
  await Promise.resolve();
  result.plainAppleLoad.retained=L.lyricsRoot===loadedRoot&&L.lineNodes.length===result.plainAppleLoad.expected;
  globalThis.fetch=originalFetch;globalThis.testSyncEnabled=false;L.stopLoop();
+ result.lineSpacing=[42,64].map(size=>{
+  L.container.style.setProperty('--lyrics-font-size',size+'px');
+  progress=1000;
+  L.applyLines([{time:0,text:'First line'},{time:3000,text:'Second line'}]); L.stopLoop();
+  L.updateActive(progress); L.applyTransforms(true);
+  const [first,second]=L.lineNodes.map(node=>new DOMMatrixReadOnly(node.style.transform));
+  return {
+   size:L.getFontSize(),
+   gap:Math.round(second.m42-first.m42-L.lineHeights[0]*first.m22),
+  };
+ });
  const output=document.createElement('script');output.type='application/json';output.id='results';output.textContent=JSON.stringify(result);document.body.append(output);L.stopLoop();
  }catch(e){const output=document.createElement('script');output.id='results';output.textContent=JSON.stringify({error:String(e),stack:e.stack});document.body.append(output);}})();</script>`;
             const path = join(directory, "fixture.html");
@@ -381,6 +393,10 @@ test(
             assert.equal(value.plainAppleLoad.synced, true);
             assert.equal(value.plainAppleLoad.providerCalls, 0);
             assert.equal(value.plainAppleLoad.retained, true);
+            assert.deepEqual(value.lineSpacing, [
+                { size: 42, gap: 22 },
+                { size: 64, gap: 22 },
+            ]);
             if (process.env.FULLSCAPE_SPACING_FIXTURE) {
                 assert.equal(value.spacing.length, 2);
                 assert.ok(

@@ -1,34 +1,25 @@
-import React from "react";
-import ReactDOM from "react-dom";
+import { hexToRgb } from "../../../utils/color-values";
 import CFM from "../../../utils/config";
-import translations from "../../../resources/strings";
+import translations, { languageNames } from "../../../resources/strings";
 import { DEFAULTS } from "../../../constants";
 import { Config, Settings } from "../../../types/fullscape";
 import Utils from "../../../utils/utils";
 import { DOM } from "../../elements";
-import { headerText, getSettingCard, createAdjust } from "../../../utils/setting";
+import { headerText, getSettingCard, createAdjust, createToggleControl } from "../../../utils/setting";
 import { getTypography, typographyWeights } from "../../../utils/typography";
-import SeekableProgressBar from "../ProgressBar/ProgressBar";
-import { modifyRotationSpeed } from "../../../utils/animation";
-import { Lyrics } from "../Lyrics/Lyrics";
+import {
+    getLyricFontSize,
+    MAX_LYRIC_FONT_SIZE,
+    MIN_LYRIC_FONT_SIZE,
+} from "../../../utils/lyric-font-size";
+import { MAX_BACKGROUND_TRANSITION_SECONDS } from "../../../utils/motion";
 import WebAPI from "../../../services/web-api";
-import {
-    CURRENT_VERSION,
-    ReleaseInfo,
-    ReleaseUpdater,
-    UpdateCheckResult,
-} from "../../../services/release-updater";
-import {
-    deleteOfflineFuriganaDictionary,
-    downloadOfflineFuriganaDictionary,
-    getOfflineFuriganaDictionaryStatus,
-    OFFLINE_FURIGANA_DICTIONARY_SIZE,
-} from "../../../services/offline-furigana-dictionary";
+import { createUpdateSettings, promptForUpdate } from "./update-settings";
+import { createLyricsDebugSettings, createOfflineFuriganaDictionaryCard } from "./lyrics-settings";
 
 export class ConfigManager {
     static configContainer: HTMLDivElement;
     static overlayTimout: ReturnType<typeof setTimeout>;
-    static updatePromptRetryTimer: number | null = null;
     static render: () => void;
     static activate: () => Promise<void>;
     static deactivate: () => Promise<void>;
@@ -127,7 +118,7 @@ export class ConfigManager {
     }
 
     private static getAccentContrast(hexColor: string) {
-        const rgb = Utils.hexToRgb(hexColor)?.split(",").map(Number);
+        const rgb = hexToRgb(hexColor)?.split(",").map(Number);
         if (!rgb || rgb.length !== 3) return "#ffffff";
         const [red, green, blue] = rgb.map((channel) => {
             const value = channel / 255;
@@ -244,23 +235,10 @@ export class ConfigManager {
         callback = (value: boolean) => this.saveOption(key as keyof Settings, value),
         description = "",
     ) {
-        const settingCard = getSettingCard(
-            `<label class="switch">
-                <input type="checkbox">
-                <span class="slider"></span>
-            </label>`,
-            title,
-            key,
-            description,
-        );
-        const toggle = settingCard.querySelector<HTMLInputElement>("input");
-        if (toggle) {
-            if (key in DEFAULTS) toggle.checked = CFM.getGlobal(key as keyof Config) as boolean;
-            else toggle.checked = CFM.get(key as keyof Settings) as boolean;
-
-            toggle.onchange = (evt) => callback((evt?.target as HTMLInputElement)?.checked);
-        }
-        return settingCard;
+        const checked = key in DEFAULTS
+            ? Boolean(CFM.getGlobal(key as keyof Config))
+            : Boolean(CFM.get(key as keyof Settings));
+        return createToggleControl(title, key, checked, callback, description);
     }
 
     private static createTypographySetting(locale: string) {
@@ -317,318 +295,6 @@ export class ConfigManager {
             if (event.key === "Enter") family.blur();
         };
         return card;
-    }
-
-    private static formatLyricTime(time: number | null) {
-        if (time === null || !Number.isFinite(time)) return "--:--";
-        const totalSeconds = Math.max(0, Math.floor(time / 1000));
-        const minutes = Math.floor(totalSeconds / 60)
-            .toString()
-            .padStart(2, "0");
-        const seconds = (totalSeconds % 60).toString().padStart(2, "0");
-        return `${minutes}:${seconds}`;
-    }
-
-    private static createLyricsDiagnosticsCard(LOCALE: string) {
-        const diagnostics = Lyrics.getDiagnostics();
-        const strings = translations[LOCALE].settings.lyricsDiagnostics;
-        const card = document.createElement("div");
-        card.classList.add("setting-card", "lyrics-diagnostics-card");
-        card.innerHTML = `
-            <div class="setting-container">
-                <div class="setting-item">
-                    <label class="setting-title"></label>
-                </div>
-                <div class="setting-description"></div>
-                <div class="lyrics-diagnostics-output"></div>
-            </div>`;
-        const title = card.querySelector<HTMLElement>(".setting-title");
-        const description = card.querySelector<HTMLElement>(".setting-description");
-        if (title) title.textContent = strings.setting;
-        if (description) description.textContent = strings.description;
-
-        const output = card.querySelector<HTMLElement>(".lyrics-diagnostics-output");
-        if (!output) return card;
-
-        const appendHeading = (container: HTMLElement, text: string) => {
-            const heading = document.createElement("strong");
-            heading.classList.add("lyrics-diagnostics-heading");
-            heading.textContent = text;
-            container.append(heading);
-        };
-        const appendRow = (container: HTMLElement, label: string, value: string | number) => {
-            const row = document.createElement("div");
-            row.classList.add("lyrics-diagnostics-row");
-            const labelElement = document.createElement("strong");
-            labelElement.textContent = `${label}: `;
-            row.append(labelElement, document.createTextNode(String(value)));
-            container.append(row);
-        };
-        const appendBlock = (container: HTMLElement, label: string, value: string) => {
-            const wrapper = document.createElement("div");
-            wrapper.classList.add("lyrics-diagnostics-block");
-            const labelElement = document.createElement("strong");
-            labelElement.textContent = label;
-            const pre = document.createElement("pre");
-            pre.textContent = value || strings.noData;
-            wrapper.append(labelElement, pre);
-            container.append(wrapper);
-        };
-        const createDetails = (label: string, count: number) => {
-            const details = document.createElement("details");
-            details.classList.add("lyrics-diagnostics-details");
-            const summary = document.createElement("summary");
-            const summaryLabel = document.createElement("strong");
-            summaryLabel.textContent = `${label} (${count})`;
-            summary.append(summaryLabel);
-            const content = document.createElement("div");
-            content.classList.add("lyrics-diagnostics-details-content");
-            details.append(summary, content);
-            output.append(details);
-            return content;
-        };
-
-        const providerEnabled =
-            Boolean(CFM.get("thirdPartyLyrics")) || diagnostics.sourceFamily === "apple-music";
-        const providerStatus = providerEnabled
-            ? (strings.providerStatuses[diagnostics.thirdParty.status] ??
-              diagnostics.thirdParty.status)
-            : strings.disabled;
-        const status = strings.statuses[diagnostics.status] ?? diagnostics.status;
-
-        const overview = document.createElement("section");
-        overview.classList.add("lyrics-diagnostics-section");
-        appendHeading(overview, strings.overview);
-        appendRow(overview, strings.status, status);
-        appendRow(
-            overview,
-            strings.lines,
-            `${diagnostics.lines.total} (${strings.timed}: ${diagnostics.lines.timed})`,
-        );
-        appendRow(
-            overview,
-            strings.features,
-            `${strings.translation} ${diagnostics.lines.translations} / ${strings.romanization} ${diagnostics.lines.romanizations} / ${strings.karaoke} ${diagnostics.lines.karaoke}`,
-        );
-        output.append(overview);
-
-        const provider = document.createElement("section");
-        provider.classList.add("lyrics-diagnostics-section");
-        appendHeading(provider, strings.providerDetails);
-        appendRow(provider, strings.status, providerStatus);
-        const track = diagnostics.thirdParty.track;
-        appendRow(
-            provider,
-            strings.track,
-            track
-                ? `${track.title} - ${track.artists || strings.none} / ${track.album || strings.none} (${Math.round(track.duration / 1000)}s)`
-                : strings.none,
-        );
-        appendRow(provider, strings.matched, diagnostics.thirdParty.matchedSong ?? strings.none);
-        appendRow(
-            provider,
-            strings.spotifyFirst,
-            diagnostics.thirdParty.spotifyFirst
-                ? `[${this.formatLyricTime(diagnostics.thirdParty.spotifyFirst.time)}] ${diagnostics.thirdParty.spotifyFirst.text}`
-                : strings.none,
-        );
-        appendRow(
-            provider,
-            strings.merged,
-            `${strings.translation} ${diagnostics.thirdParty.merged.translation} / ${strings.romanization} ${diagnostics.thirdParty.merged.romanization} / ${strings.furiganaData} ${diagnostics.thirdParty.merged.furigana} / ${strings.karaoke} ${diagnostics.thirdParty.merged.karaoke}`,
-        );
-        appendRow(provider, strings.reason, diagnostics.thirdParty.reason || strings.none);
-        appendBlock(
-            provider,
-            strings.spotifyPreview,
-            diagnostics.thirdParty.spotifyPreview
-                .map((line) => `[${this.formatLyricTime(line.time)}] ${line.text}`)
-                .join("\n"),
-        );
-        if (diagnostics.thirdParty.matchedFirst) {
-            appendRow(
-                provider,
-                strings.matchedFirst,
-                `[${this.formatLyricTime(diagnostics.thirdParty.matchedFirst.time)}] ${diagnostics.thirdParty.matchedFirst.text}`,
-            );
-        }
-        output.append(provider);
-
-        const candidateContent = createDetails(
-            strings.candidateDetails,
-            diagnostics.thirdParty.candidates.length,
-        );
-        diagnostics.thirdParty.candidates.forEach((candidate, index) => {
-            const candidateElement = document.createElement("article");
-            candidateElement.classList.add("lyrics-diagnostics-candidate");
-            appendHeading(
-                candidateElement,
-                `${index + 1}. [${candidate.provider === "netease" ? "NetEase" : "QQ Music"}] ${candidate.name} - ${candidate.artists || strings.none}`,
-            );
-            appendRow(candidateElement, strings.album, candidate.album || strings.none);
-            appendRow(candidateElement, strings.id, candidate.id);
-            appendRow(
-                candidateElement,
-                strings.match,
-                `${candidate.match ? strings.yes : strings.no} (${strings.plausible}: ${candidate.plausible ? strings.yes : strings.no})`,
-            );
-            if (candidate.counts) {
-                appendRow(
-                    candidateElement,
-                    strings.counts,
-                    `LRC ${candidate.counts.lrc} / ${strings.translation} ${candidate.counts.translation} / ${strings.romanization} ${candidate.counts.romanization} / ${strings.furiganaData} ${candidate.counts.furigana} / ${strings.dynamic} ${candidate.counts.dynamic}`,
-                );
-            }
-            appendRow(candidateElement, strings.reason, candidate.reason || strings.none);
-            if (candidate.first) {
-                appendRow(
-                    candidateElement,
-                    strings.firstLine,
-                    `[${this.formatLyricTime(candidate.first.time)}] ${candidate.first.text}`,
-                );
-            }
-            appendBlock(
-                candidateElement,
-                strings.preview,
-                (candidate.preview ?? [])
-                    .map((line) => `[${this.formatLyricTime(line.time)}] ${line.text}`)
-                    .join("\n"),
-            );
-            candidateContent.append(candidateElement);
-        });
-
-        const renderedContent = createDetails(strings.renderedLyrics, diagnostics.rendered.length);
-        appendBlock(
-            renderedContent,
-            strings.renderedLyrics,
-            diagnostics.rendered
-                .map((line, index) => {
-                    const flags = [
-                        line.translation ? strings.translation : "",
-                        line.romanization ? strings.romanization : "",
-                        line.words?.length ? `${strings.karaoke}(${line.words.length})` : "",
-                    ]
-                        .filter(Boolean)
-                        .join(", ");
-                    return `[${this.formatLyricTime(line.time)}] (${index + 1}) ${line.text}${flags ? ` <${flags}>` : ""}`;
-                })
-                .join("\n"),
-        );
-        return card;
-    }
-
-    private static createLyricsRefreshCard(LOCALE: string) {
-        const strings = translations[LOCALE].settings.refreshLyrics;
-        const card = getSettingCard(
-            `<button class="main-buttons-button main-button-secondary lyrics-refresh-button">${strings.button}</button>`,
-            strings.setting,
-            "lyricsDisplay",
-            strings.description,
-        );
-        const button = card.querySelector<HTMLButtonElement>(".lyrics-refresh-button");
-        if (!button) return card;
-        const blockedReason = Lyrics.getRefreshBlockedReason();
-        if (blockedReason === "manual-selection") {
-            const description = card.querySelector<HTMLElement>(".setting-description");
-            button.disabled = true;
-            const message = strings.manualSelectionBlocked ?? strings.description;
-            button.title = message;
-            if (description) description.textContent = message;
-            return card;
-        }
-
-        button.onclick = async () => {
-            button.disabled = true;
-            button.textContent = strings.loading;
-            const refreshed = await Lyrics.refreshCurrentLyrics().catch(() => false);
-            button.textContent = refreshed ? strings.done : strings.failed;
-            const diagnosticsCard = this.configContainer.querySelector(".lyrics-diagnostics-card");
-            diagnosticsCard?.replaceWith(this.createLyricsDiagnosticsCard(LOCALE));
-            window.setTimeout(() => {
-                if (!button.isConnected) return;
-                button.disabled = false;
-                button.textContent = strings.button;
-            }, 1500);
-        };
-        return card;
-    }
-
-    private static createOfflineFuriganaDictionaryCard(LOCALE: string) {
-        const strings = translations[LOCALE].settings.offlineFuriganaDictionary;
-        const card = getSettingCard(
-            `<div class="offline-furigana-actions">
-                <span class="offline-furigana-status">${strings.notDownloaded}</span>
-                <button type="button" class="main-buttons-button main-button-secondary offline-furigana-download">${strings.download}</button>
-                <button type="button" class="main-buttons-button main-button-secondary offline-furigana-delete">${strings.delete}</button>
-            </div>`,
-            strings.setting,
-            "showLyricsFurigana",
-            strings.description,
-        );
-        const status = card.querySelector<HTMLElement>(".offline-furigana-status");
-        const download = card.querySelector<HTMLButtonElement>(".offline-furigana-download");
-        const deleteButton = card.querySelector<HTMLButtonElement>(".offline-furigana-delete");
-        if (!status || !download || !deleteButton) return card;
-
-        const setBusy = (busy: boolean) => {
-            download.disabled = busy;
-            deleteButton.disabled = busy;
-        };
-        const refreshStatus = async () => {
-            const dictionary = await getOfflineFuriganaDictionaryStatus();
-            status.textContent = dictionary.available
-                ? strings.ready.replace("{size}", OFFLINE_FURIGANA_DICTIONARY_SIZE)
-                : strings.notDownloaded;
-            download.hidden = dictionary.available;
-            deleteButton.hidden = !dictionary.available;
-        };
-
-        download.onclick = async () => {
-            setBusy(true);
-            status.textContent = strings.downloading;
-            let completed = false;
-            try {
-                await downloadOfflineFuriganaDictionary();
-                completed = true;
-                status.textContent = strings.downloaded;
-                Lyrics.refreshRenderedFurigana();
-            } catch {
-                status.textContent = strings.error;
-            } finally {
-                setBusy(false);
-                if (completed) await refreshStatus();
-            }
-        };
-        deleteButton.onclick = async () => {
-            setBusy(true);
-            status.textContent = strings.deleting;
-            let completed = false;
-            try {
-                await deleteOfflineFuriganaDictionary();
-                completed = true;
-                status.textContent = strings.deleted;
-                Lyrics.refreshRenderedFurigana();
-            } catch {
-                status.textContent = strings.error;
-            } finally {
-                setBusy(false);
-                if (completed) await refreshStatus();
-            }
-        };
-        void refreshStatus();
-        return card;
-    }
-
-    private static createDebugSettings(LOCALE: string) {
-        const section = document.createElement("section");
-        section.classList.add("fullscape-debug-settings", "settings-nested-section");
-        section.hidden = !CFM.get("debugMode");
-        section.append(
-            headerText(translations[LOCALE].settings.lyricsDebugHeader),
-            this.createLyricsRefreshCard(LOCALE),
-            this.createLyricsDiagnosticsCard(LOCALE),
-        );
-        return section;
     }
 
     private static createBeatSettings(LOCALE: string) {
@@ -732,483 +398,7 @@ export class ConfigManager {
         );
     }
 
-    private static showReloadFallback(LOCALE: string) {
-        const strings = translations[LOCALE].settings.updates;
-        const content = document.createElement("div");
-        content.id = "fullscape-update-fallback";
-        content.classList.add("update-dialog", "update-dialog-fallback");
-
-        const icon = document.createElement("div");
-        icon.classList.add("update-dialog-icon");
-        icon.setAttribute("aria-hidden", "true");
-        icon.innerHTML = `
-            <svg viewBox="0 0 24 24" fill="none">
-                <path d="M5 6.75 9.5 12 5 17.25M11.5 17.25H19" />
-            </svg>`;
-
-        const description = document.createElement("p");
-        description.classList.add("update-dialog-description");
-        description.textContent = strings.reloadFallbackDescription;
-        const command = document.createElement("div");
-        command.classList.add("update-command");
-        command.innerHTML = `<span aria-hidden="true">$</span><code>spicetify apply</code>`;
-        content.append(icon, description, command);
-
-        Spicetify.PopupModal.display({
-            title: strings.reloadFallbackTitle,
-            content,
-        });
-    }
-
-    private static showVersionConfirmation(target: ReleaseInfo | "bundled", LOCALE: string) {
-        const strings = translations[LOCALE].settings.updates;
-        const content = document.createElement("div");
-        content.id = "fullscape-version-confirmation";
-        content.classList.add("update-dialog", "update-dialog-confirmation");
-
-        const targetVersion =
-            target === "bundled" ? ReleaseUpdater.getBundledVersion() : target.version;
-        const icon = document.createElement("div");
-        icon.classList.add("update-dialog-icon");
-        icon.setAttribute("aria-hidden", "true");
-        icon.innerHTML = `
-            <svg viewBox="0 0 24 24" fill="none">
-                <path d="M20 7v5h-5M4 17v-5h5" />
-                <path d="M6.1 8.2A7 7 0 0 1 18.7 10M17.9 15.8A7 7 0 0 1 5.3 14" />
-            </svg>`;
-
-        const description = document.createElement("p");
-        description.classList.add("update-dialog-description");
-        description.textContent =
-            target === "bundled"
-                ? strings.confirmBundledDescription.replace(
-                      "{version}",
-                      ReleaseUpdater.getBundledVersion(),
-                  )
-                : strings.confirmVersionDescription
-                      .replace("{current}", CURRENT_VERSION)
-                      .replace("{version}", target.version);
-
-        const versionFlow = document.createElement("div");
-        versionFlow.classList.add("update-version-flow");
-        versionFlow.innerHTML = `
-            <div class="update-version-stop">
-                <span>${strings.currentVersion}</span>
-                <strong>v${CURRENT_VERSION}</strong>
-            </div>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
-            <div class="update-version-stop update-version-stop-target">
-                <span>${target === "bundled" ? strings.bundledVersion : strings.cardTitle}</span>
-                <strong>v${targetVersion}</strong>
-            </div>`;
-
-        const actions = document.createElement("div");
-        actions.classList.add("setting-button-row", "update-dialog-actions");
-        const cancel = document.createElement("button");
-        cancel.classList.add("main-buttons-button", "main-button-secondary");
-        cancel.textContent = strings.cancel;
-        cancel.onclick = () => Spicetify.PopupModal.hide();
-        const confirm = document.createElement("button");
-        confirm.classList.add("main-buttons-button", "main-button-primary");
-        confirm.textContent = strings.confirmSwitch;
-        confirm.onclick = async () => {
-            if (target === "bundled") {
-                if (!ReleaseUpdater.switchToBundledVersion(() => this.showReloadFallback(LOCALE))) {
-                    Spicetify.showNotification(strings.storageFailed, true, 8000);
-                    return;
-                }
-                Spicetify.PopupModal.hide();
-                return;
-            }
-            cancel.disabled = true;
-            confirm.disabled = true;
-            confirm.textContent = strings.cachingVersion;
-            if (!(await ReleaseUpdater.cacheRelease(target))) {
-                cancel.disabled = false;
-                confirm.disabled = false;
-                confirm.textContent = strings.confirmSwitch;
-                Spicetify.showNotification(
-                    strings.cacheFailed.replace("{version}", target.version),
-                    true,
-                    8000,
-                );
-                return;
-            }
-            if (!ReleaseUpdater.switchToRelease(target, () => this.showReloadFallback(LOCALE))) {
-                cancel.disabled = false;
-                confirm.disabled = false;
-                confirm.textContent = strings.confirmSwitch;
-                Spicetify.showNotification(strings.storageFailed, true, 8000);
-                return;
-            }
-            Spicetify.PopupModal.hide();
-        };
-        actions.append(cancel, confirm);
-        content.append(icon, versionFlow, description, actions);
-
-        // PopupModal reuses one custom element. Replacing its contents during the
-        // selector button's click makes the old overlay treat that same click as
-        // an outside click and immediately close the new confirmation. Let the
-        // current event finish before replacing the settings modal.
-        window.setTimeout(() => {
-            Spicetify.PopupModal.display({
-                title:
-                    target === "bundled"
-                        ? strings.confirmBundledTitle
-                        : strings.confirmVersionTitle.replace("{version}", target.version),
-                content,
-            });
-        }, 0);
-    }
-
-    private static createUpdateCard(
-        LOCALE: string,
-        refreshVersionList?: () => Promise<void> | void,
-    ) {
-        const strings = translations[LOCALE].settings.updates;
-        const card = document.createElement("div");
-        card.classList.add("setting-card", "update-card");
-        card.innerHTML = `
-            <div class="setting-container">
-                <div class="setting-item">
-                    <div>
-                        <div class="setting-title"></div>
-                        <div class="update-version"></div>
-                    </div>
-                    <div class="setting-action update-actions">
-                        <a class="update-release-link" target="_blank" rel="noreferrer"></a>
-                        <button class="main-buttons-button main-button-secondary update-button"></button>
-                    </div>
-                </div>
-                <div class="setting-description update-status"></div>
-                <div class="update-version-explanation"></div>
-            </div>`;
-
-        const title = card.querySelector<HTMLElement>(".setting-title");
-        const version = card.querySelector<HTMLElement>(".update-version");
-        const status = card.querySelector<HTMLElement>(".update-status");
-        const explanation = card.querySelector<HTMLElement>(".update-version-explanation");
-        const releaseLink = card.querySelector<HTMLAnchorElement>(".update-release-link");
-        const button = card.querySelector<HTMLButtonElement>(".update-button");
-        if (!title || !version || !status || !explanation || !releaseLink || !button) return card;
-
-        title.textContent = strings.cardTitle;
-        const bundledVersion = ReleaseUpdater.getBundledVersion();
-        version.textContent = `${strings.currentVersion}: v${CURRENT_VERSION} · ${strings.bundledVersion}: v${bundledVersion}`;
-        const appendExplanation = (label: string, description: string) => {
-            const line = document.createElement("div");
-            const heading = document.createElement("strong");
-            heading.textContent = label;
-            line.append(heading, document.createTextNode(` — ${description}`));
-            explanation.append(line);
-        };
-        appendExplanation(strings.currentVersion, strings.runningVersionDescription);
-        appendExplanation(strings.bundledVersion, strings.bundledVersionDescription);
-        appendExplanation(strings.releaseCache, strings.releaseCacheDescription);
-        releaseLink.textContent = strings.releasePage;
-        releaseLink.hidden = true;
-
-        const renderResult = (result: UpdateCheckResult) => {
-            button.disabled = false;
-            button.classList.remove("main-button-primary");
-            button.classList.add("main-button-secondary");
-            releaseLink.hidden = true;
-            releaseLink.removeAttribute("href");
-            const withCacheWarning = (message: string) =>
-                result.status !== "error" && result.stale
-                    ? `${message} ${strings.cachedResultWarning}: ${result.message ?? strings.checkFailed}`
-                    : message;
-
-            if (result.status === "available") {
-                status.textContent = withCacheWarning(
-                    strings.available.replace("{version}", result.release.version),
-                );
-                button.textContent = strings.reviewUpdate;
-                button.classList.remove("main-button-secondary");
-                button.classList.add("main-button-primary");
-                button.onclick = () => this.showVersionConfirmation(result.release, LOCALE);
-                releaseLink.href = result.release.pageUrl;
-                releaseLink.hidden = false;
-                return;
-            }
-
-            if (result.status === "error") {
-                status.textContent = `${strings.checkFailed}: ${result.message}`;
-                button.textContent = strings.retry;
-                button.onclick = () => void check(true);
-                return;
-            }
-
-            status.textContent = withCacheWarning(strings.upToDate);
-            button.textContent = strings.checkNow;
-            button.onclick = () => void check(true);
-            if (result.release) {
-                releaseLink.href = result.release.pageUrl;
-                releaseLink.hidden = false;
-            }
-        };
-
-        const check = async (force = false) => {
-            button.disabled = true;
-            button.textContent = strings.checking;
-            status.textContent = strings.checkingDescription;
-            const result = await ReleaseUpdater.check(force);
-            if (force) await refreshVersionList?.();
-            renderResult(result);
-        };
-
-        void check();
-        return card;
-    }
-
-    private static createVersionSelector(LOCALE: string) {
-        const strings = translations[LOCALE].settings.updates;
-        const card = document.createElement("div");
-        card.classList.add("setting-card", "update-version-selector");
-        card.innerHTML = `
-            <div class="setting-container">
-                <div class="setting-item">
-                    <div>
-                        <div class="setting-title"></div>
-                        <div class="setting-description version-selector-description"></div>
-                    </div>
-                    <div class="setting-action update-version-actions">
-                        <select class="update-version-select"></select>
-                        <button class="main-buttons-button main-button-primary update-version-button"></button>
-                    </div>
-                </div>
-                <div class="setting-description update-version-status"></div>
-            </div>`;
-
-        const title = card.querySelector<HTMLElement>(".setting-title");
-        const description = card.querySelector<HTMLElement>(".version-selector-description");
-        const select = card.querySelector<HTMLSelectElement>(".update-version-select");
-        const button = card.querySelector<HTMLButtonElement>(".update-version-button");
-        const status = card.querySelector<HTMLElement>(".update-version-status");
-        if (!title || !description || !select || !button || !status) {
-            return { card, load: async () => undefined };
-        }
-
-        title.textContent = strings.versionSelectorTitle;
-        description.textContent = strings.versionSelectorDescription;
-        button.textContent = strings.useSelectedVersion;
-        let releases: ReleaseInfo[] = [];
-
-        const syncButton = () => {
-            const active = ReleaseUpdater.getSelectedRelease()?.tag ?? "bundled";
-            button.disabled = select.disabled || select.value === active;
-        };
-
-        select.onchange = syncButton;
-        button.onclick = () => {
-            if (select.value === "bundled") {
-                this.showVersionConfirmation("bundled", LOCALE);
-                return;
-            }
-            const release = releases.find((candidate) => candidate.tag === select.value);
-            if (release) this.showVersionConfirmation(release, LOCALE);
-        };
-
-        const load = async (force = false) => {
-            select.disabled = true;
-            button.disabled = true;
-            status.textContent = strings.loadingVersions;
-            try {
-                releases = await ReleaseUpdater.listStableReleases(force);
-                const runningTag = `v${CURRENT_VERSION}`;
-                if (!force && !releases.some((release) => release.tag === runningTag)) {
-                    releases = await ReleaseUpdater.listStableReleases(true);
-                }
-                select.replaceChildren();
-                const bundled = document.createElement("option");
-                bundled.value = "bundled";
-                bundled.textContent = strings.bundledVersionOption.replace(
-                    "{version}",
-                    ReleaseUpdater.getBundledVersion(),
-                );
-                select.append(bundled);
-                const selectedRelease = ReleaseUpdater.getSelectedRelease();
-                if (
-                    selectedRelease &&
-                    !releases.some((release) => release.tag === selectedRelease.tag)
-                ) {
-                    const running = document.createElement("option");
-                    running.value = selectedRelease.tag;
-                    running.textContent = strings.runningVersionOption.replace(
-                        "{version}",
-                        selectedRelease.version,
-                    );
-                    select.append(running);
-                }
-                releases.forEach((release) => {
-                    const option = document.createElement("option");
-                    option.value = release.tag;
-                    option.textContent = `v${release.version}`;
-                    select.append(option);
-                });
-                const selected = ReleaseUpdater.getSelectedRelease()?.tag ?? "bundled";
-                select.value = Array.from(select.options).some(
-                    (option) => option.value === selected,
-                )
-                    ? selected
-                    : "bundled";
-                select.disabled = false;
-                const listWarning = ReleaseUpdater.getReleaseListWarning();
-                status.textContent = listWarning
-                    ? `${strings.versionListReady} ${strings.cachedResultWarning}: ${listWarning}`
-                    : strings.versionListReady;
-                button.textContent = strings.useSelectedVersion;
-                button.onclick = () => {
-                    if (select.value === "bundled") {
-                        this.showVersionConfirmation("bundled", LOCALE);
-                        return;
-                    }
-                    const release = releases.find((candidate) => candidate.tag === select.value);
-                    if (release) this.showVersionConfirmation(release, LOCALE);
-                };
-                syncButton();
-            } catch (error) {
-                status.textContent = `${strings.versionListFailed}: ${
-                    error instanceof Error ? error.message : String(error)
-                }`;
-                button.disabled = false;
-                button.textContent = strings.retry;
-                button.onclick = () => void load(true);
-            }
-        };
-
-        return { card, load };
-    }
-
-    private static createUpdateSettings(LOCALE: string) {
-        const strings = translations[LOCALE].settings.updates;
-        const stack = document.createElement("div");
-        stack.classList.add("update-settings-stack");
-        const { card: versionSelector, load } = this.createVersionSelector(LOCALE);
-        const autoCheck = CFM.getGlobal("autoUpdateCheck") as boolean;
-        versionSelector.hidden = autoCheck;
-        const updateCard = this.createUpdateCard(LOCALE, async () => {
-            if (!versionSelector.hidden) await load(true);
-        });
-
-        const toggle = this.createToggle(
-            strings.autoCheck,
-            "autoUpdateCheck",
-            (enabled) => {
-                this.saveGlobalOption("autoUpdateCheck", enabled);
-                versionSelector.hidden = enabled;
-                if (enabled) {
-                    ReleaseUpdater.resetPromptedVersion();
-                } else {
-                    void load();
-                }
-            },
-            strings.autoCheckDescription,
-        );
-        stack.append(toggle, updateCard, versionSelector);
-        if (!autoCheck) void load();
-        return stack;
-    }
-
-    static async promptForUpdate(LOCALE: string) {
-        if (!CFM.getGlobal("autoUpdateCheck")) return;
-        const result = await ReleaseUpdater.check();
-        if (result.status !== "available" || !ReleaseUpdater.shouldPromptFor(result.release)) {
-            return;
-        }
-        if (document.querySelector("body > generic-modal")) {
-            if (this.updatePromptRetryTimer === null) {
-                this.updatePromptRetryTimer = window.setTimeout(() => {
-                    this.updatePromptRetryTimer = null;
-                    void this.promptForUpdate(LOCALE);
-                }, 30000);
-            }
-            return;
-        }
-
-        const strings = translations[LOCALE].settings.updates;
-        const content = document.createElement("div");
-        content.id = "fullscape-update-prompt";
-        content.classList.add("update-dialog", "update-dialog-available");
-
-        const icon = document.createElement("div");
-        icon.classList.add("update-dialog-icon");
-        icon.setAttribute("aria-hidden", "true");
-        icon.innerHTML = `
-            <svg viewBox="0 0 24 24" fill="none">
-                <path d="M12 3v12M7 10l5 5 5-5M5 20h14" />
-            </svg>`;
-        const description = document.createElement("p");
-        description.classList.add("update-dialog-description");
-        description.textContent = strings.promptDescription
-            .replace("{current}", CURRENT_VERSION)
-            .replace("{version}", result.release.version);
-
-        const versionFlow = document.createElement("div");
-        versionFlow.classList.add("update-version-flow");
-        versionFlow.innerHTML = `
-            <div class="update-version-stop">
-                <span>${strings.currentVersion}</span>
-                <strong>v${CURRENT_VERSION}</strong>
-            </div>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
-            <div class="update-version-stop update-version-stop-target">
-                <span>${strings.cardTitle}</span>
-                <strong>v${result.release.version}</strong>
-            </div>`;
-
-        const actions = document.createElement("div");
-        actions.classList.add("setting-button-row", "update-dialog-actions");
-        const releaseNotes = document.createElement("a");
-        releaseNotes.classList.add("update-dialog-link");
-        releaseNotes.href = result.release.pageUrl;
-        releaseNotes.target = "_blank";
-        releaseNotes.rel = "noreferrer";
-        releaseNotes.textContent = strings.releasePage;
-        const later = document.createElement("button");
-        later.classList.add("main-buttons-button", "main-button-secondary");
-        later.textContent = strings.later;
-        later.onclick = () => Spicetify.PopupModal.hide();
-        const update = document.createElement("button");
-        update.classList.add("main-buttons-button", "main-button-primary");
-        update.textContent = strings.confirmUpdate;
-        update.onclick = async () => {
-            later.disabled = true;
-            update.disabled = true;
-            update.textContent = strings.cachingVersion;
-            if (!(await ReleaseUpdater.cacheRelease(result.release))) {
-                later.disabled = false;
-                update.disabled = false;
-                update.textContent = strings.confirmUpdate;
-                Spicetify.showNotification(
-                    strings.cacheFailed.replace("{version}", result.release.version),
-                    true,
-                    8000,
-                );
-                return;
-            }
-            if (
-                !ReleaseUpdater.switchToRelease(result.release, () =>
-                    this.showReloadFallback(LOCALE),
-                )
-            ) {
-                later.disabled = false;
-                update.disabled = false;
-                update.textContent = strings.confirmUpdate;
-                Spicetify.showNotification(strings.storageFailed, true, 8000);
-                return;
-            }
-            Spicetify.PopupModal.hide();
-        };
-        actions.append(releaseNotes, later, update);
-        content.append(icon, versionFlow, description, actions);
-
-        Spicetify.PopupModal.display({
-            title: strings.promptTitle,
-            content,
-        });
-        ReleaseUpdater.markPrompted(result.release);
-    }
+    static promptForUpdate = promptForUpdate;
 
     static openConfig(evt: Event | null = null): void {
         evt?.preventDefault();
@@ -1232,7 +422,7 @@ export class ConfigManager {
                         layout.groups.languageAndLaunch.description,
                         this.createOptions(
                             strings.language,
-                            Utils.getAvailableLanguages(translations),
+                            languageNames,
                             CFM.getGlobal("locale") as Config["locale"],
                             "locale",
                             (value: string) => {
@@ -1289,12 +479,6 @@ export class ConfigManager {
                             },
                             strings.hideSpotifyFullscreenButtonDescription,
                         ),
-                        this.createToggle(
-                            strings.verticalMonitorSupport,
-                            "verticalMonitorSupport",
-                            (value: boolean) => this.saveOption("verticalMonitorSupport", value),
-                            strings.verticalMonitorSupportDescription,
-                        ),
                     ),
                     this.createSettingsGroup(
                         layout.groups.troubleshooting.title,
@@ -1320,56 +504,6 @@ export class ConfigManager {
                 section: this.createSettingsSection(
                     layout.sections.playback.title,
                     layout.sections.playback.description,
-                    this.createSettingsGroup(
-                        layout.groups.controls.title,
-                        layout.groups.controls.description,
-                        this.createOptions(
-                            strings.progressBar,
-                            {
-                                never: strings.contextDisplay.never,
-                                mousemove: strings.contextDisplay.mouse,
-                                always: strings.contextDisplay.always,
-                            },
-                            CFM.get("progressBarDisplay") as Settings["progressBarDisplay"],
-                            "progressBarDisplay",
-                            (value: string) => {
-                                CFM.set(
-                                    "progressBarDisplay",
-                                    value as Settings["progressBarDisplay"],
-                                );
-                                if (value !== "never") {
-                                    ReactDOM.render(
-                                        <SeekableProgressBar state={value} />,
-                                        DOM.container.querySelector("#fullscape-progress-parent"),
-                                    );
-                                } else {
-                                    const root = DOM.container.querySelector(
-                                        "#fullscape-progress-parent",
-                                    );
-                                    if (root) ReactDOM.unmountComponentAtNode(root);
-                                }
-                            },
-                            layout.descriptions.progressBar,
-                        ),
-                        this.createOptions(
-                            strings.playerControls,
-                            {
-                                never: strings.contextDisplay.never,
-                                mousemove: strings.contextDisplay.mouse,
-                                always: strings.contextDisplay.always,
-                            },
-                            CFM.get("playerControls") as Settings["playerControls"],
-                            "playerControls",
-                            (value: string) => this.saveOption("playerControls", value),
-                            layout.descriptions.playerControls,
-                        ),
-                        this.createToggle(
-                            strings.playbackTimelineResync,
-                            "playbackTimelineResync",
-                            undefined,
-                            layout.descriptions.playbackTimelineResync,
-                        ),
-                    ),
                     this.createSettingsGroup(
                         layout.groups.trackInfo.title,
                         layout.groups.trackInfo.description,
@@ -1464,24 +598,14 @@ export class ConfigManager {
                             strings.lyricsSize.setting,
                             "lyricsSize",
                             "px",
-                            Number(CFM.get("lyricsSize") || DEFAULTS.def.lyricsSize),
+                            getLyricFontSize(CFM.get("lyricsSize")),
                             1,
-                            12,
-                            99,
-                            (value: number) =>
-                                this.saveOption(
-                                    "lyricsSize",
-                                    value as unknown as Settings["lyricsSize"],
-                                ),
+                            MIN_LYRIC_FONT_SIZE,
+                            MAX_LYRIC_FONT_SIZE,
+                            (value) => this.saveOption("lyricsSize", Number(value)),
                             strings.lyricsSize.description,
                         ),
                         this.createTypographySetting(LOCALE),
-                        this.createToggle(
-                            strings.autoHideLyrics,
-                            "autoHideLyrics",
-                            undefined,
-                            layout.descriptions.autoHideLyrics,
-                        ),
                     ),
                     this.createSettingsGroup(
                         layout.groups.lyricSources.title,
@@ -1522,7 +646,7 @@ export class ConfigManager {
                         this.createToggle(strings.showLyricsTranslation, "showLyricsTranslation"),
                         this.createToggle(strings.showLyricsRomanization, "showLyricsRomanization"),
                         this.createToggle(strings.showLyricsFurigana, "showLyricsFurigana"),
-                        this.createOfflineFuriganaDictionaryCard(LOCALE),
+                        createOfflineFuriganaDictionaryCard(LOCALE),
                         this.createOptions(
                             strings.lyricsChineseConversion.setting,
                             {
@@ -1543,7 +667,7 @@ export class ConfigManager {
                         ),
                         this.createToggle(strings.karaokeLyrics, "karaokeLyrics"),
                     ),
-                    this.createDebugSettings(LOCALE),
+                    createLyricsDebugSettings(LOCALE),
                 ),
             },
             {
@@ -1571,10 +695,7 @@ export class ConfigManager {
                             2,
                             2,
                             40,
-                            (state) => {
-                                CFM.set("animationSpeed", Number(state) / 100);
-                                modifyRotationSpeed(Number(state) / 100);
-                            },
+                            (state) => CFM.set("animationSpeed", Number(state) / 100),
                             layout.descriptions.animationSpeed,
                         ),
                     ),
@@ -1588,11 +709,8 @@ export class ConfigManager {
                             CFM.get("backAnimationTime") as Settings["backAnimationTime"],
                             0.1,
                             0,
-                            5,
-                            (state) => {
-                                CFM.set("backAnimationTime", Number(state));
-                                DOM.container.style.setProperty("--fs-transition", `${state}s`);
-                            },
+                            MAX_BACKGROUND_TRANSITION_SECONDS,
+                            (state) => CFM.set("backAnimationTime", Number(state)),
                             layout.descriptions.transitionTime,
                         ),
                         createAdjust(
@@ -1651,42 +769,6 @@ export class ConfigManager {
                 ),
             },
             {
-                id: "appearance",
-                title: layout.sections.appearance.title,
-                section: this.createSettingsSection(
-                    layout.sections.appearance.title,
-                    layout.sections.appearance.description,
-                    this.createSettingsGroup(
-                        layout.groups.playbackTheme.title,
-                        layout.groups.playbackTheme.description,
-                        this.createToggle(
-                            strings.themedButtons,
-                            "themedButtons",
-                            undefined,
-                            layout.descriptions.themedButtons,
-                        ),
-                        this.createToggle(
-                            strings.themedIcons,
-                            "themedIcons",
-                            undefined,
-                            layout.descriptions.themedIcons,
-                        ),
-                        this.createOptions(
-                            strings.invertColors.setting,
-                            {
-                                never: strings.invertColors.never,
-                                always: strings.invertColors.always,
-                                auto: strings.invertColors.auto,
-                            },
-                            CFM.get("invertColors") as Settings["invertColors"],
-                            "invertColors",
-                            (value: string) => this.saveOption("invertColors", value),
-                            layout.descriptions.invertColors,
-                        ),
-                    ),
-                ),
-            },
-            {
                 id: "updates",
                 title: layout.sections.updates.title,
                 section: this.createSettingsSection(
@@ -1695,7 +777,9 @@ export class ConfigManager {
                     this.createSettingsGroup(
                         layout.groups.releaseUpdates.title,
                         layout.groups.releaseUpdates.description,
-                        this.createUpdateSettings(LOCALE),
+                        createUpdateSettings(LOCALE, (enabled) =>
+                            this.saveGlobalOption("autoUpdateCheck", enabled),
+                        ),
                     ),
                 ),
             },

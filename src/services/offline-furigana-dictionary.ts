@@ -1,4 +1,5 @@
 import type { FuriganaAnnotation, FuriganaRenderData } from "../utils/furigana";
+import { withTimeout } from "../utils/async";
 
 export const OFFLINE_FURIGANA_DICTIONARY_URL =
     "https://github.com/Doublevil/JmdictFurigana/releases/latest/download/JmdictFurigana.txt";
@@ -131,6 +132,7 @@ async function downloadDictionaryText(): Promise<string> {
             const response = await withTimeout(
                 Spicetify.CosmosAsync.get(OFFLINE_FURIGANA_DICTIONARY_URL, {}, {}),
                 45000,
+                "dictionary download timed out",
             );
             if (typeof response !== "string") throw new Error("Dictionary response is not text");
             return response;
@@ -357,24 +359,5 @@ function openDatabase(): Promise<IDBDatabase> {
         request.onblocked = () => {
             // Let the timeout handle a connection that is blocked by an old tab.
         };
-    });
-}
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-    return new Promise((resolve, reject) => {
-        const timeoutId = setTimeout(
-            () => reject(new Error("dictionary download timed out")),
-            timeoutMs,
-        );
-        promise.then(
-            (value) => {
-                clearTimeout(timeoutId);
-                resolve(value);
-            },
-            (error) => {
-                clearTimeout(timeoutId);
-                reject(error);
-            },
-        );
     });
 }

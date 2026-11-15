@@ -21,7 +21,7 @@
             0 0 56px rgb(0 0 0 / 16%);
         transition: transform var(--fs-motion-layout) var(--fs-motion-spring);
         &.is-pressing {
-            transition-duration: 80ms;
+            transition-duration: var(--fs-motion-cover-press);
             transition-timing-function: linear;
         }
         &:focus-visible {

@@ -1,6 +1,7 @@
 import { lyricsPreferenceScore } from "./lyrics-preference";
 import type { RichPresentation } from "./lyrics-rich-document";
 import { decryptQrc } from "qrc-decoder";
+import { fetchWithTimeout, withTimeout } from "../utils/async";
 import {
     getLyricsMatchResult,
     getRelaxedLyricsMatchResult,
@@ -655,7 +656,7 @@ async function requestText(
             // A GET needs no Content-Type (which would force a CORS preflight).
             headers: method === "POST" ? { ...headers, "Content-Type": "application/json" } : {},
             body: method === "POST" && body ? JSON.stringify(body) : undefined,
-        });
+        }, REQUEST_TIMEOUT_MS);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return await withTimeout(response.text(), REQUEST_TIMEOUT_MS);
     } catch (proxyErr) {
@@ -675,7 +676,7 @@ async function requestBody(
             method,
             headers,
             body: method === "POST" && body ? JSON.stringify(body) : undefined,
-        });
+        }, REQUEST_TIMEOUT_MS);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return await withTimeout(response.text(), REQUEST_TIMEOUT_MS);
     } catch (directError) {
@@ -735,30 +736,6 @@ function validateProviderResponse(data: ReturnType<typeof parseResponseBody>) {
 function parseResponseBody(body: unknown) {
     if (typeof body === "string") return JSON.parse(body);
     return body;
-}
-
-function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    return fetch(input, { ...init, signal: controller.signal }).finally(() => {
-        clearTimeout(timeoutId);
-    });
-}
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-    return new Promise((resolve, reject) => {
-        const timeoutId = setTimeout(() => reject(new Error("request timed out")), timeoutMs);
-        promise.then(
-            (value) => {
-                clearTimeout(timeoutId);
-                resolve(value);
-            },
-            (err) => {
-                clearTimeout(timeoutId);
-                reject(err);
-            },
-        );
-    });
 }
 
 function formatError(err: unknown) {
@@ -1116,58 +1093,63 @@ function buildThirdPartyLyrics(thirdParty: ThirdPartyLyrics): EnhancedLyricLine[
     const renderLines =
         firstEffectiveIndex > 0 ? primaryLines.slice(firstEffectiveIndex) : primaryLines;
     const plainLines = alignOriginalLines(renderLines, thirdParty.lines);
-    const translationsByPlainLine = alignTimedLines(
+    const plainIndices = plainLines.map((line) =>
+        line ? thirdParty.lines.indexOf(line) : -1,
+    );
+    const translations = alignSupplementalLines(
+        renderLines,
         thirdParty.lines,
+        plainIndices,
         thirdParty.translations,
-        MERGE_TIME_TOLERANCE_MS,
     );
-    const romanizationsByPlainLine = alignTimedLines(
+    const romanizations = alignSupplementalLines(
+        renderLines,
         thirdParty.lines,
+        plainIndices,
         thirdParty.romanizations,
-        MERGE_TIME_TOLERANCE_MS,
     );
-    const furiganaByPlainLine = alignTimedLines(
+    const furigana = alignSupplementalLines(
+        renderLines,
         thirdParty.lines,
+        plainIndices,
         thirdParty.furigana,
-        MERGE_TIME_TOLERANCE_MS,
-    );
-    const directTranslations = alignTimedLines(
-        renderLines,
-        thirdParty.translations,
-        MERGE_TIME_TOLERANCE_MS,
-    );
-    const directRomanizations = alignTimedLines(
-        renderLines,
-        thirdParty.romanizations,
-        MERGE_TIME_TOLERANCE_MS,
-    );
-    const directFurigana = alignTimedLines(
-        renderLines,
-        thirdParty.furigana,
-        MERGE_TIME_TOLERANCE_MS,
     );
 
     return renderLines.map((line, index) => {
         if (line.time === null) return line;
         const plain = plainLines[index];
-        const plainIndex = plain ? thirdParty.lines.indexOf(plain) : -1;
-        const translation =
-            (plainIndex >= 0 ? translationsByPlainLine[plainIndex] : null) ??
-            directTranslations[index];
-        const romanization =
-            (plainIndex >= 0 ? romanizationsByPlainLine[plainIndex] : null) ??
-            directRomanizations[index];
-        const furigana =
-            (plainIndex >= 0 ? furiganaByPlainLine[plainIndex] : null) ?? directFurigana[index];
         const synchronizedLine = synchronizeDynamicPunctuation(line, plain?.text);
         return {
             ...synchronizedLine,
             text: synchronizedLine.text || plain?.text || "",
-            translation: translation?.text,
-            romanization: romanization?.text,
-            furigana: furigana?.text,
+            translation: translations[index]?.text,
+            romanization: romanizations[index]?.text,
+            furigana: furigana[index]?.text,
         };
     });
+}
+
+function alignSupplementalLines(
+    renderLines: EnhancedLyricLine[],
+    plainLines: EnhancedLyricLine[],
+    plainIndices: number[],
+    supplementalLines: EnhancedLyricLine[],
+) {
+    const alignedToPlain = alignTimedLines(
+        plainLines,
+        supplementalLines,
+        MERGE_TIME_TOLERANCE_MS,
+    );
+    const alignedDirectly = alignTimedLines(
+        renderLines,
+        supplementalLines,
+        MERGE_TIME_TOLERANCE_MS,
+    );
+    return plainIndices.map(
+        (plainIndex, renderIndex) =>
+            (plainIndex >= 0 ? alignedToPlain[plainIndex] : null) ??
+            alignedDirectly[renderIndex],
+    );
 }
 
 function alignOriginalLines(primary: EnhancedLyricLine[], originals: EnhancedLyricLine[]) {

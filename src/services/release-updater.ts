@@ -1,4 +1,5 @@
 import packageJson from "../../package.json";
+import { fetchWithTimeout as fetchWithAbortTimeout } from "../utils/async";
 
 const REPOSITORY = "kasou-sekai/Fullscape";
 const LATEST_RELEASE_API = `https://api.github.com/repos/${REPOSITORY}/releases/latest`;
@@ -233,17 +234,13 @@ async function sha256Hex(data: BufferSource) {
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit = {}) {
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), RELEASE_LOAD_TIMEOUT_MS);
     try {
-        return await fetch(url, { ...init, signal: controller.signal });
+        return await fetchWithAbortTimeout(url, init, RELEASE_LOAD_TIMEOUT_MS);
     } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
             throw new Error(`Request timed out after ${RELEASE_LOAD_TIMEOUT_MS / 1000} seconds`);
         }
         throw error;
-    } finally {
-        window.clearTimeout(timeout);
     }
 }
 

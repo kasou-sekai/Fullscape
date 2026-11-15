@@ -131,10 +131,7 @@
         "lyricsSize": {
             "setting": "歌詞字號"
         },
-        "autoHideLyrics": "自動隱藏歌詞 (當歌詞不可用時)",
         "generalHeader": "一般設定",
-        "progressBar": "播放進度條",
-        "playerControls": "播放控制",
         "trimTitle": "縮短標題",
         "trimTitleUpNext": "縮短下一首提示的標題",
         "showAlbum": {
@@ -159,11 +156,6 @@
             "artist": "藝人封面"
         },
         "upnextDisplay": "下一首提示",
-        "contextDisplay": {
-            "always": "永遠顯示",
-            "never": "永不顯示",
-            "mouse": "當滑鼠移動時顯示"
-        },
         "volumeDisplay": {
             "always": "永遠顯示",
             "never": "永不顯示",
@@ -183,16 +175,6 @@
             "vibrantNonAlarming": "不引人注目的活力"
         },
         "staticColor": "顏色選擇 (用於靜態純色)",
-        "themedButtons": "主題色按鈕",
-        "themedIcons": "主題色圖示",
-        "invertColors": {
-            "setting": "反轉顏色",
-            "never": "永不",
-            "always": "永遠",
-            "auto": "自動 (基於背景)"
-        },
-        "verticalMonitorSupport": "垂直顯示器支援",
-        "verticalMonitorSupportDescription": "如果你有垂直顯示器，請啟用此功能。當視窗高度大於寬度時，歌詞將顯示在底部。",
         "backAnimationTime": "背景動畫時間 (用於圖片背景)",
         "animationSpeed": "⭐ 動畫速度 (用於動畫背景)",
         "bpmDrivenMotionDescription": "根據歌曲 BPM 調整背景流動速度與節拍反應強度。",
@@ -262,10 +244,6 @@
                     "title": "背景與動態效果",
                     "description": "調整流體動態、節拍反應、轉場、模糊與亮度。"
                 },
-                "appearance": {
-                    "title": "色彩與對比",
-                    "description": "設定專輯封面色彩在播放畫面中的套用方式。"
-                },
                 "updates": {
                     "title": "更新",
                     "description": "從 GitHub 取得更新或切換版本。"
@@ -283,10 +261,6 @@
                 "troubleshooting": {
                     "title": "疑難排解",
                     "description": "一般情況下不需要開啟診斷功能。"
-                },
-                "controls": {
-                    "title": "播放控制",
-                    "description": "設定進度列與播放控制項的顯示時機。"
                 },
                 "trackInfo": {
                     "title": "歌曲資訊",
@@ -310,10 +284,6 @@
                     "title": "畫面效果",
                     "description": "調整動態背景的最終視覺效果。"
                 },
-                "playbackTheme": {
-                    "title": "封面主題",
-                    "description": "這些選項影響播放畫面；設定視窗按鈕永遠跟隨目前封面。"
-                },
                 "releaseUpdates": {
                     "title": "發佈通道",
                     "description": "自動檢查只負責提示；關閉後可動態選擇 Release，或返回本機安裝版本。"
@@ -322,8 +292,6 @@
             "descriptions": {
                 "language": "變更此外掛的控制項與設定語言。",
                 "fullscreen": "開啟播放畫面時使用系統原生全螢幕。",
-                "progressBar": "選擇進度列持續顯示、滑鼠移動時顯示或隱藏。",
-                "playerControls": "選擇播放控制按鈕的顯示時機。",
                 "showAlbum": "顯示專輯名稱，也可同時顯示發行日期。",
                 "icons": "在播放資訊旁顯示小圖示。",
                 "trimTitle": "移除歌曲標題中的版本與括號資訊。",
@@ -331,15 +299,11 @@
                 "upNextDisplay": "智慧模式只在歌曲即將結束且需要時顯示預覽。",
                 "trimTitleUpNext": "下一首預覽也套用標題精簡。",
                 "upNextTime": "歌曲結束前多少秒可顯示下一首預覽。",
-                "autoHideLyrics": "沒有可用歌詞時隱藏歌詞區域。",
                 "thirdPartyLyrics": "從網易雲音樂與 QQ 音樂補充翻譯、羅馬音、注音或逐字時間軸。",
                 "animationSpeed": "設定流體背景的基礎流動速度。",
                 "transitionTime": "換歌後背景色彩完成轉場所需的時間。",
                 "backgroundBlur": "數值越高，專輯圖與流體色塊越柔和。",
-                "backgroundBrightness": "設定播放背景的整體明暗。",
-                "themedButtons": "使用目前封面色彩為播放按鈕著色。",
-                "themedIcons": "使用目前封面色彩為播放圖示著色。",
-                "invertColors": "選擇淺色或深色文字，或依背景亮度自動決定。"
+                "backgroundBrightness": "設定播放背景的整體明暗。"
             }
         },
         "configReset": "恢復預設"
@@ -356,6 +320,9 @@
         "actionUnavailable": "目前 Spotify 用戶端不支援此佇列操作。"
     },
     "sideView": {
+        "queue": "播放佇列",
+        "tools": "歌詞與佇列",
+        "translation": "歌詞翻譯",
         "showQueue": "顯示播放佇列",
         "showLyrics": "顯示歌詞",
         "unavailable": "目前歌曲沒有可用歌詞。"

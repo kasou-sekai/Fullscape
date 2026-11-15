@@ -8,18 +8,18 @@ import { build } from "esbuild";
 // Keep unrelated UI components outside this test; no production test exports are needed.
 const appPath = resolve("src/app.tsx");
 const appModules = {
-    react: "export default {};",
-    "react-dom": "export default { unmountComponentAtNode() {} };",
+    react: "export default { createElement() {} };",
+    "react-dom":
+        "export default { render(_, node) { globalThis.host.progressRoot = node; }, unmountComponentAtNode(node) { if (globalThis.host.progressRoot === node) globalThis.host.progressWasUnmounted = node.isConnected; } };",
     "./constants/apple-system-symbols": "export const APPLE_SYMBOLS = {};",
     "./constants": "export default {}; export const CLASSES_TO_ADD = [];",
     "./utils/motion": "export const initializeMotionTokens = () => {}; export const animateFeedback = () => {}; export const cancelFeedback = () => {}; export const prefersReducedMotion = () => true; export const MOTION = {};",
     "./utils/selectors": "export default { getExtraBarSelector: () => globalThis.host.extraBar ?? null };",
-    "./resources/strings": 'export default { "en-US": { sideView: {} } };',
     "./utils/overflow-scroll":
         "export const createOverflowScrollAnimation = () => {}; export const getOverflowScrollTiming = () => {};",
     "./services/html-creator": 'export const getHtmlContent = () => "markup";',
     "./services/mousetrap-record": "export const initMoustrapRecord = () => {};",
-    "./services/lyrics-cache": "export const startSharedBridgePresence = () => {};",
+    "./services/lyrics-bridge": "export const startSharedBridgePresence = () => {};",
     "./services/release-updater":
         "export const ReleaseUpdater = { reportRuntimeVersion() {}, shouldStartBundledVersion: async () => true, consumeLoadFailure: () => null };",
     "./ui/components/ProgressBar/ProgressBar": "export default () => {};",
@@ -31,7 +31,7 @@ const appModules = {
     "./ui/components/UpNext/UpNext":
         "export const UpNext = { updateUpNext() {}, updateUpNextShow() {}, teardown() {} };",
     "./ui/components/PlayerControls/PlayerControls":
-        "export const PlayerControls = { showLyricsTools() {}, updatePlayerControls() {}, hidePlayerControls() {} };",
+        "export const PlayerControls = { showLyricsTools() {}, updatePlayerControls() { globalThis.host.controlsUpdated = true; } };",
     "./utils/background": "export const Background = { stop() {}, updateBackground() {} };",
 };
 const { outputFiles } = await build({
@@ -78,6 +78,7 @@ function createHost(playing) {
     const noop = () => {};
     class Element {
         children = new Map();
+        attributes = new Map();
         isConnected = true;
         dataset = {};
         style = { setProperty: noop, removeProperty: noop };
@@ -101,7 +102,12 @@ function createHost(playing) {
         querySelectorAll() {
             return [];
         }
-        setAttribute() {}
+        setAttribute(name, value) {
+            this.attributes.set(name, value);
+        }
+        getAttribute(name) {
+            return this.attributes.get(name) ?? null;
+        }
         toggleAttribute() {}
         addEventListener() {}
         removeEventListener() {}
@@ -118,8 +124,6 @@ function createHost(playing) {
         typography: { preset: "default", family: "", weight: 0 },
         sharedLyricsBridge: true,
         upnextDisplay: "never",
-        playerControls: "never",
-        progressBarDisplay: "never",
     };
     const globalSettings = { locale: "en-US", activationTypes: "keys", autoLaunch: "never" };
     const host = {
@@ -195,8 +199,32 @@ function createHost(playing) {
         player: sandbox.Spicetify.Player,
         platform: sandbox.Spicetify.Platform,
         body: sandbox.document.body,
+        window: sandbox.window,
     };
 }
+
+test("playback controls and progress stay enabled with legacy settings and re-render cleans up", async () => {
+    const { main, host, settings, window } = createHost(true);
+    settings.lyricsDisplay = false;
+    // Bypass config migration in the fixture to confirm these old values cannot affect playback.
+    settings.progressBarDisplay = "never";
+    settings.playerControls = "never";
+    settings.verticalMonitorSupport = false;
+    window.innerWidth = 800;
+    window.innerHeight = 1200;
+    const classes = new Map();
+    host.DOM.container.classList.toggle = (name, active) => classes.set(name, active);
+    await main();
+    await host.callbacks.activate();
+    const previousRoot = host.progressRoot;
+    assert.ok(previousRoot?.isConnected);
+    assert.equal(host.controlsUpdated, true);
+    assert.equal(classes.get("vertical-mode"), true);
+
+    host.callbacks.render();
+    assert.equal(host.progressWasUnmounted, true);
+    assert.equal(previousRoot.isConnected, false);
+});
 
 for (const playing of [true, false]) {
     test(`disabling lyrics stops the ${playing ? "animation frame" : "paused timer"} before replacing its DOM`, async () => {
@@ -354,6 +382,51 @@ test("a delayed or replaced bottom bar gets one working button and keeps the F f
     await replacementButton.onclick();
     assert.deepEqual(body.appended, [host.DOM.style, host.DOM.container]);
     await shortcuts.get("esc")();
+});
+
+test("keyboard-only activation hides the native fullscreen button after player bar replacements", async () => {
+    const { main, host, shortcuts } = createHost(true);
+    host.globalSettings.hideSpotifyFullscreenButton = true;
+    const nativeButton = host.createElement();
+    host.extraBar = host.createElement();
+    host.extraBar.querySelector = (selector) =>
+        selector === '[data-testid="fullscreen-mode-button"]' ? nativeButton : null;
+    await main();
+    assert.equal(nativeButton.style.display, "none");
+    assert.equal(host.extraBar.appended, undefined);
+    assert.equal(typeof shortcuts.get("f"), "function");
+
+    const legacyButton = host.createElement();
+    host.extraBar = host.createElement();
+    host.extraBar.querySelector = (selector) =>
+        selector === 'button[title="Full screen"]' ? legacyButton : null;
+    host.observers[0]();
+    assert.equal(legacyButton.style.display, "none");
+    assert.equal(host.extraBar.appended, undefined);
+});
+
+test("re-render uses the current UI language and the selected lyric size", async () => {
+    const { main, host, settings } = createHost(true);
+    const css = new Map();
+    host.DOM.container.style.setProperty = (name, value) => css.set(name, value);
+    settings.lyricsSize = 12;
+    await main();
+    assert.equal(host.DOM.container.getAttribute("data-locale"), "en-US");
+    assert.equal(host.DOM.sideView.getAttribute("aria-label"), "Show queue");
+    assert.equal(css.get("--lyrics-font-size"), "12px");
+
+    host.globalSettings.locale = "ja-JP";
+    for (const size of [13, 15, 88, 89, 99]) {
+        settings.lyricsSize = size;
+        host.callbacks.render();
+        assert.equal(css.get("--lyrics-font-size"), `${size}px`);
+    }
+    assert.equal(host.DOM.container.getAttribute("data-locale"), "ja-JP");
+    assert.equal(host.DOM.sideView.getAttribute("aria-label"), "キューを表示");
+    assert.equal(
+        host.DOM.container.querySelector("#fullscape-translation").getAttribute("aria-label"),
+        "歌詞の翻訳",
+    );
 });
 
 test("timing corrections also update the lyric templates used after a resize", () => {

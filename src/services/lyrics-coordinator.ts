@@ -1,10 +1,6 @@
 import CFM from "../utils/config";
-import {
-    fetchBridge,
-    supportsRichLyricsBridge,
-    getCachedLyricsFullEntry,
-    getEffectiveCacheSource,
-} from "./lyrics-cache";
+import { fetchBridge, LYRICS_BRIDGE_ORIGIN, supportsRichLyricsBridge } from "./lyrics-bridge";
+import { getCachedLyricsFullEntry, getEffectiveCacheSource } from "./lyrics-cache";
 import type { LyricsCacheEntry } from "./lyrics-cache";
 import type { TrackInfo, EnhancedLyricLine } from "./third-party-lyrics";
 import { MATCHER_VERSION } from "./lyrics-matcher-version";
@@ -18,7 +14,7 @@ type Reply = {
     matcherVersion: string;
     entry?: LyricsCacheEntry;
 };
-const origin = "http://127.0.0.1:24887/lyrics-v2";
+const origin = `${LYRICS_BRIDGE_ORIGIN}/lyrics-v2`;
 const MAX_REPLY_BYTES = 16 * 1024 * 1024;
 const REPLY_TIMEOUT_MS = 2000;
 

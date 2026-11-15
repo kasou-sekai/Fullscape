@@ -15,4 +15,8 @@ const translations: Record<string, any> = {
     "ko-KR": defaultsDeep(koKR, enUS),
 };
 
+export const languageNames = Object.fromEntries(
+    Object.entries(translations).map(([locale, strings]) => [locale, strings.langName]),
+);
+
 export default translations;

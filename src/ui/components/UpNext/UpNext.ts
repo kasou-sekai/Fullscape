@@ -184,7 +184,7 @@ export class UpNext {
         if (key === this.scrollKey && this.scrollAnimation) return;
         this.resetUpNextAnimation();
         this.scrollKey = key;
-        if (overflow <= 1 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        if (overflow <= 1 || prefersReducedMotion()) return;
 
         this.scrollAnimation = createOverflowScrollAnimation(
             DOM.upNextTitleTrack,

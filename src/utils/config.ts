@@ -44,57 +44,49 @@ function getConfig(defaultConfig: Config): Config {
     }
 }
 
-function saveConfig(CONFIG: Config) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(CONFIG));
+function saveConfig(config: Config) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
 }
 
-function resetSetting<K extends keyof Settings>(config: Config, key: K) {
-    config.def[key] = DEFAULTS.def[key];
+function currentConfig() {
+    return (CONFIG ??= getConfig(DEFAULTS));
+}
+
+function saveChange(config: Config, key: string, value: unknown) {
+    saveConfig(config);
+    document.dispatchEvent(new CustomEvent(key, { detail: value }));
 }
 
 const ConfigManager = {
     get<K extends keyof Settings>(key: K): Settings[K] {
-        if (CONFIG === null) {
-            CONFIG = getConfig(DEFAULTS);
-        }
-        return CONFIG.def[key];
+        return currentConfig().def[key];
     },
     set<K extends keyof Settings>(key: K, value: Settings[K]) {
-        if (CONFIG === null) {
-            CONFIG = getConfig(DEFAULTS);
-        }
-        CONFIG.def[key] = value;
-        saveConfig(CONFIG);
-        document.dispatchEvent(new CustomEvent(key, { detail: value }));
+        const config = currentConfig();
+        config.def[key] = value;
+        saveChange(config, key, value);
     },
-    getGlobal(key: keyof Config) {
-        if (CONFIG === null) {
-            CONFIG = getConfig(DEFAULTS);
-        }
-        return CONFIG[key];
+    getGlobal<K extends keyof Config>(key: K): Config[K] {
+        return currentConfig()[key];
     },
     setGlobal<K extends keyof Config>(key: K, value: Config[K]) {
-        if (CONFIG === null) {
-            CONFIG = getConfig(DEFAULTS);
-        }
-        CONFIG[key] = value;
-        saveConfig(CONFIG);
-        document.dispatchEvent(new CustomEvent(key, { detail: value }));
+        const config = currentConfig();
+        config[key] = value;
+        saveChange(config, key, value);
     },
-    resetSettings(key: keyof Settings | null = null, isGlobal = false) {
-        if (CONFIG === null) {
-            CONFIG = getConfig(DEFAULTS);
-        }
+    resetSettings<K extends keyof Settings>(key: K | null = null, isGlobal = false) {
+        const config = currentConfig();
         if (isGlobal) {
             CONFIG = cloneDefaults();
+            saveConfig(CONFIG);
         } else {
             if (key === null) {
-                CONFIG.def = mergeKnownValues(undefined, DEFAULTS.def);
+                config.def = mergeKnownValues(undefined, DEFAULTS.def);
             } else {
-                resetSetting(CONFIG, key);
+                config.def[key] = mergeKnownValues(undefined, DEFAULTS.def[key]);
             }
+            saveConfig(config);
         }
-        saveConfig(CONFIG);
     },
 };
 

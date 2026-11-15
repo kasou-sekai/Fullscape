@@ -4,6 +4,7 @@ import {
     type FuriganaRenderData,
 } from "../utils/furigana";
 import { getOfflineFurigana } from "./offline-furigana-dictionary";
+import { fetchWithTimeout, withTimeout } from "../utils/async";
 
 type DictionaryToken = {
     surface: string;
@@ -114,19 +115,15 @@ async function fetchOnlineDictionaryFurigana(lines: string[]): Promise<FuriganaR
 
     const sourceText = requestLines.join("\n");
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-        let response: Response;
-        try {
-            response = await fetch(SHIRABE_FURIGANA_URL, {
+        const response = await fetchWithTimeout(
+            SHIRABE_FURIGANA_URL,
+            {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ text: sourceText }),
-                signal: controller.signal,
-            });
-        } finally {
-            clearTimeout(timeoutId);
-        }
+            },
+            REQUEST_TIMEOUT_MS,
+        );
         if (response.ok) {
             const payload = (await response.json()) as DictionaryFuriganaResponse;
             const tokens = parseDictionaryTokens(payload);
@@ -146,6 +143,7 @@ async function fetchOnlineDictionaryFurigana(lines: string[]): Promise<FuriganaR
                     { "Content-Type": "application/json" },
                 ),
                 REQUEST_TIMEOUT_MS,
+                "dictionary request timed out",
             );
             const tokens = parseDictionaryTokens(response);
             if (tokens.length)
@@ -193,11 +191,9 @@ async function fetchYomiChunk(lines: string[]): Promise<FuriganaRenderData[]> {
 
     const sourceText = requestLines.join("\n");
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-        let response: Response;
-        try {
-            response = await fetch(YOMI_FURIGANA_URL, {
+        const response = await fetchWithTimeout(
+            YOMI_FURIGANA_URL,
+            {
                 method: "POST",
                 headers: { "Content-Type": "application/x-www-form-urlencoded" },
                 body: new URLSearchParams({
@@ -205,11 +201,9 @@ async function fetchYomiChunk(lines: string[]): Promise<FuriganaRenderData[]> {
                     mode: "furigana",
                     to: "hiragana",
                 }),
-                signal: controller.signal,
-            });
-        } finally {
-            clearTimeout(timeoutId);
-        }
+            },
+            REQUEST_TIMEOUT_MS,
+        );
         if (!response.ok) return emptyResults;
 
         const tokens = parseDictionaryTokens(await response.json());
@@ -246,25 +240,6 @@ function parseDictionaryTokens(value: unknown): DictionaryToken[] {
                   ? tokenRecord.reading
                   : undefined;
         return surface ? [{ surface, reading }] : [];
-    });
-}
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-    return new Promise((resolve, reject) => {
-        const timeoutId = setTimeout(
-            () => reject(new Error("dictionary request timed out")),
-            timeoutMs,
-        );
-        promise.then(
-            (value) => {
-                clearTimeout(timeoutId);
-                resolve(value);
-            },
-            (error) => {
-                clearTimeout(timeoutId);
-                reject(error);
-            },
-        );
     });
 }
 

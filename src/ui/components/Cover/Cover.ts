@@ -51,7 +51,7 @@ export class Cover {
                 Math.min(1, ((event.clientY - rect.top) / rect.height - 0.5) * 2),
             );
             cover.classList.add("is-pressing");
-            cover.style.transform = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            cover.style.transform = prefersReducedMotion()
                 ? "none"
                 : `perspective(900px) rotateX(${-y * 5}deg) rotateY(${x * 5}deg) scale(0.975)`;
         };

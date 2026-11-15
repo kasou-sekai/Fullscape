@@ -1,6 +1,6 @@
-import { prefersReducedMotion } from "./motion";
+import { MAX_BACKGROUND_TRANSITION_SECONDS, MOTION, prefersReducedMotion } from "./motion";
 import Kawarp from "@kawarp/core";
-import { BeatResponsePreset, Settings } from "../types/fullscape";
+import type { BeatResponsePreset, Settings } from "../types/fullscape";
 import { AudioAnalysis, getAudioAnalysis, getAudioMotion } from "../services/audio-analysis";
 import CFM from "./config";
 
@@ -19,7 +19,7 @@ let fluidSmoothedSpeedMultiplier = 1;
 let fluidSmoothedWarpPulse = 0;
 
 const FLUID_RENDER_SCALE = 0.7;
-const FLUID_MOTION_INTERVAL_MS = 80;
+const FLUID_MOTION_INTERVAL_MS = MOTION.beatRefresh;
 const FLUID_BASE_WARP_INTENSITY = 0.82;
 const FLUID_BASE_SCALE = 1.1;
 const FLUID_BASE_SATURATION = 1.45;
@@ -73,11 +73,16 @@ function cancelRotationAnimation() {
 }
 
 function getFluidTransitionDuration() {
-    return Math.min(5000, Math.max(0, Number(CFM.get("backAnimationTime")) || 0) * 1000);
+    const seconds = Math.max(0, Number(CFM.get("backAnimationTime")) || 0);
+    return Math.min(MAX_BACKGROUND_TRANSITION_SECONDS, seconds) * 1000;
 }
 
 function getFluidBaseSpeed() {
-    return Math.min(1.8, Math.max(0.45, 0.45 + rotationSpeed * 3.2));
+    return Math.min(1.8, 0.45 + getRotationSpeed() * 3.2);
+}
+
+function getRotationSpeed() {
+    return Math.min(2, Math.max(0, CFM.get("animationSpeed")));
 }
 
 function getFluidOptions() {
@@ -204,7 +209,7 @@ function updateFluidDebug(
 function syncFluidMotion() {
     if (!fluidRenderer) return;
 
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduceMotion = prefersReducedMotion();
     if (reduceMotion) {
         if (fluidIsPlaying) fluidRenderer.stop();
         fluidIsPlaying = false;
@@ -312,7 +317,7 @@ export function animatedFluidCanvas(
 
         if (!fromResize || !fluidHasImage) {
             const hadImage = fluidHasImage;
-            const shouldAnimate = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+            const shouldAnimate = !prefersReducedMotion();
             const transitionDuration = getFluidTransitionDuration();
             const renderImmediately = !shouldAnimate || !hadImage;
             if (renderImmediately) fluidRenderer.setOptions({ transitionDuration: 0 });
@@ -343,13 +348,6 @@ export const modifyIsAnimationRunning = (value: boolean) => {
         cancelRotationAnimation();
         disposeFluidAnimation();
     }
-};
-
-let rotationSpeed = CFM.get("animationSpeed") as Settings["animationSpeed"];
-
-export const modifyRotationSpeed = (value: number) => {
-    rotationSpeed = Math.min(2, Math.max(0, value));
-    syncFluidMotion();
 };
 
 export function animatedRotatedCanvas(back: HTMLCanvasElement, bgImg: HTMLImageElement) {
@@ -399,7 +397,7 @@ export function animatedRotatedCanvas(back: HTMLCanvasElement, bgImg: HTMLImageE
         ctx.drawImage(bgImg, -radius, -radius, radius * 2, radius * 2);
         ctx.restore();
 
-        if (!prefersReducedMotion()) rotationAngle += rotationSpeed * elapsedFrames;
+        if (!prefersReducedMotion()) rotationAngle += getRotationSpeed() * elapsedFrames;
         rotationFrameId = requestAnimationFrame(draw);
     }
     rotationFrameId = requestAnimationFrame(draw);

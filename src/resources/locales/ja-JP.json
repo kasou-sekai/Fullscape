@@ -71,10 +71,7 @@
         "lyricsSize": {
             "setting": "歌詞の文字サイズ"
         },
-        "autoHideLyrics": "歌詞を自動的に隠す (利用できない場合)",
         "generalHeader": "一般設定",
-        "progressBar": "プログレスバー",
-        "playerControls": "プレーヤーコントロール",
         "trimTitle": "タイトルをトリミング",
         "trimTitleUpNext": "タイトルをトリミング (次は)",
         "trimAlbum": "アルバム名をトリミング",
@@ -100,11 +97,6 @@
             "artist": "アーティスト画像"
         },
         "upnextDisplay": "「次は」を表示",
-        "contextDisplay": {
-            "always": "常に",
-            "never": "表示しない",
-            "mouse": "マウス移動時"
-        },
         "volumeDisplay": {
             "always": "常に",
             "never": "表示しない",
@@ -124,16 +116,6 @@
             "vibrantNonAlarming": "落ち着いた鮮やか"
         },
         "staticColor": "色選択 (静的背景用)",
-        "themedButtons": "テーマボタン",
-        "themedIcons": "テーマアイコン",
-        "invertColors": {
-            "setting": "色を反転",
-            "never": "しない",
-            "always": "常に",
-            "auto": "自動 (背景に基づく)"
-        },
-        "verticalMonitorSupport": "縦型モニターサポート",
-        "verticalMonitorSupportDescription": "縦型モニター設定の場合に有効にしてください。ウィンドウの高さが幅より大きい場合、歌詞が下に表示されます。",
         "backAnimationTime": "背景アニメーション時間 (画像背景)",
         "animationSpeed": "⭐ アニメーション速度 (アニメーション背景)",
         "bpmDrivenMotionDescription": "曲の BPM に応じて背景の流動速度とビート反応の強さを調整します。",
@@ -203,10 +185,6 @@
                     "title": "背景とモーション",
                     "description": "流体モーション、ビート反応、切り替え、ぼかし、明るさを調整します。"
                 },
-                "appearance": {
-                    "title": "色とコントラスト",
-                    "description": "アルバム色を再生画面に適用する方法を設定します。"
-                },
                 "updates": {
                     "title": "更新",
                     "description": "GitHub から更新を取得したり、バージョンを切り替えたりします。"
@@ -224,10 +202,6 @@
                 "troubleshooting": {
                     "title": "トラブルシューティング",
                     "description": "通常、診断機能はオフのままで構いません。"
-                },
-                "controls": {
-                    "title": "再生コントロール",
-                    "description": "シークバーと再生ボタンの表示タイミングを設定します。"
                 },
                 "trackInfo": {
                     "title": "曲情報",
@@ -257,10 +231,6 @@
                     "title": "描画",
                     "description": "アニメーション背景の見た目を調整します。"
                 },
-                "playbackTheme": {
-                    "title": "アルバムテーマ",
-                    "description": "再生画面に適用されます。設定画面のボタンは常に現在のジャケット色になります。"
-                },
                 "releaseUpdates": {
                     "title": "リリースチャンネル",
                     "description": "自動確認は通知のみです。オフにすると Release を動的に選択したり、ローカルインストール版に戻したりできます。"
@@ -269,8 +239,6 @@
             "descriptions": {
                 "language": "このプラグインの操作と設定の言語を変更します。",
                 "fullscreen": "再生画面を開くときにシステムの全画面表示を使います。",
-                "progressBar": "シークバーを常時表示、マウス移動時のみ表示、非表示から選びます。",
-                "playerControls": "再生・一時停止・前後の曲ボタンの表示タイミングを選びます。",
                 "showAlbum": "アルバム名を表示し、必要なら発売日も併記します。",
                 "icons": "再生情報の横に小さなアイコンを表示します。",
                 "trimTitle": "曲名から括弧内や末尾のバージョン表記を除きます。",
@@ -278,15 +246,11 @@
                 "upNextDisplay": "スマートでは曲の終わり付近で必要なときだけ表示します。",
                 "trimTitleUpNext": "次曲プレビューにも曲名の短縮を適用します。",
                 "upNextTime": "曲の終了何秒前から次曲を表示するかを設定します。",
-                "autoHideLyrics": "歌詞がない曲では歌詞エリアを隠します。",
                 "thirdPartyLyrics": "NetEase と QQ Music から翻訳、ローマ字、ふりがな、単語タイミングを補完します。",
                 "animationSpeed": "流体背景の基本速度を設定します。",
                 "transitionTime": "曲が変わった後に背景色が切り替わる時間です。",
                 "backgroundBlur": "値を上げるほどジャケットと流体形状が柔らかくなります。",
-                "backgroundBrightness": "再生背景全体の明るさを設定します。",
-                "themedButtons": "現在のジャケット色を再生ボタンに使います。",
-                "themedIcons": "現在のジャケット色を再生アイコンに使います。",
-                "invertColors": "明るい文字、暗い文字、背景による自動選択を指定します。"
+                "backgroundBrightness": "再生背景全体の明るさを設定します。"
             }
         },
         "configReset": "デフォルトに戻す"
@@ -303,6 +267,9 @@
         "actionUnavailable": "この Spotify クライアントではキュー操作を利用できません。"
     },
     "sideView": {
+        "queue": "キュー",
+        "tools": "歌詞とキュー",
+        "translation": "歌詞の翻訳",
         "showQueue": "キューを表示",
         "showLyrics": "歌詞を表示",
         "unavailable": "この曲の歌詞は利用できません。"

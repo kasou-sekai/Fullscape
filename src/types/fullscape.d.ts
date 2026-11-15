@@ -28,11 +28,7 @@ export type Settings = {
     karaokeLyrics: boolean;
     lyricsSize: number;
     typography: Typography;
-    autoHideLyrics: boolean;
     debugMode: boolean;
-    progressBarDisplay: "never" | "mousemove" | "always";
-    playerControls: "never" | "mousemove" | "always";
-    playbackTimelineResync: boolean;
     trimTitle: boolean;
     trimTitleUpNext: boolean;
     trimAlbum: boolean;
@@ -41,9 +37,6 @@ export type Settings = {
     titleMovingIcon: boolean;
     enableFullscreen: boolean;
     upnextDisplay: "always" | "never" | "smart";
-    themedButtons: boolean;
-    themedIcons: boolean;
-    invertColors: "never" | "always" | "auto";
     backAnimationTime: number;
     animationSpeed: number;
     beatResponsePreset: BeatResponsePreset;
@@ -57,19 +50,6 @@ export type Settings = {
     upnextTimeToShow: number;
     blurSize: number;
     backgroundBrightness: number;
-    verticalMonitorSupport: boolean;
 };
 
 export type Colors = Record<string, string>;
-
-export type SeekbarProps = {
-    isChanging: boolean;
-    data: MouseData | null;
-};
-
-export type MouseData = {
-    begin: number;
-    positionCoord: number;
-    beginClient: number;
-    sliderDimen: number;
-};

@@ -21,12 +21,16 @@ const { outputFiles } = await build({
                         return { path: "config", namespace: "host" };
                     if (path === resolve("src/services/lyrics-cache"))
                         return { path: "cache", namespace: "host" };
+                    if (path === resolve("src/services/lyrics-bridge"))
+                        return { path: "bridge", namespace: "host" };
                 });
                 builder.onLoad({ filter: /.*/, namespace: "host" }, ({ path }) => ({
                     contents:
                         path === "config"
                             ? "export default {get:key=>globalThis.fixture.config[key]};"
-                            : "export const supportsRichLyricsBridge=async()=>globalThis.fixture.supported; export const fetchBridge=(...args)=>globalThis.fixture.fetch(...args); export const getCachedLyricsFullEntry=()=>globalThis.fixture.ordinary ?? null; export const getEffectiveCacheSource=entry=>entry?.cacheSource;",
+                            : path === "cache"
+                              ? "export const getCachedLyricsFullEntry=()=>globalThis.fixture.ordinary ?? null; export const getEffectiveCacheSource=entry=>entry?.cacheSource;"
+                              : 'export const LYRICS_BRIDGE_ORIGIN="http://127.0.0.1:24887"; export const supportsRichLyricsBridge=async()=>globalThis.fixture.supported; export const fetchBridge=(...args)=>globalThis.fixture.fetch(...args);',
                 }));
             },
         },

@@ -145,9 +145,6 @@
             "description": "点击加减按钮调整字号（12–99 像素）。"
         },
         "generalHeader": "通用设置",
-        "progressBar": "播放进度条",
-        "playerControls": "播放控制",
-        "playbackTimelineResync": "校准播放时间轴",
         "trimTitle": "缩短标题",
         "trimTitleUpNext": "缩短标题 (下一首提示)",
         "showAlbum": {
@@ -172,11 +169,6 @@
             "artist": "艺人照片"
         },
         "upnextDisplay": "下一首提示",
-        "contextDisplay": {
-            "always": "总是",
-            "never": "从不",
-            "mouse": "当鼠标移动时"
-        },
         "volumeDisplay": {
             "always": "总是",
             "never": "从不",
@@ -194,14 +186,6 @@
             "lightVibrant": "Light Vibrant",
             "darkVibrant": "Dark Vibrant",
             "vibrantNonAlarming": "Vibrant Non Alarming"
-        },
-        "themedButtons": "主题色按钮",
-        "themedIcons": "主题色图标",
-        "invertColors": {
-            "setting": "反转颜色",
-            "never": "从不",
-            "always": "总是",
-            "auto": "自动(基于背景)"
         },
         "backAnimationTime": "切歌颜色过渡时间",
         "animationSpeed": "基础流动速度",
@@ -312,10 +296,6 @@
                     "title": "背景与动画",
                     "description": "调整流体动画、节拍响应、过渡、模糊和亮度。"
                 },
-                "appearance": {
-                    "title": "颜色与对比度",
-                    "description": "设置专辑封面颜色在播放界面中的应用方式。"
-                },
                 "updates": {
                     "title": "更新",
                     "description": "从 Github 上获取更新或者切换版本。"
@@ -331,10 +311,6 @@
                     "description": "选择如何打开和显示全屏播放界面。"
                 },
                 "troubleshooting": { "title": "故障排查", "description": "诊断功能通常无需开启。" },
-                "controls": {
-                    "title": "播放控制",
-                    "description": "设置进度条和播放控制按钮的显示时机。"
-                },
                 "trackInfo": {
                     "title": "歌曲信息",
                     "description": "选择要显示的歌曲信息及标题精简方式。"
@@ -357,10 +333,6 @@
                     "title": "画面效果",
                     "description": "调整动态背景的最终视觉效果。"
                 },
-                "playbackTheme": {
-                    "title": "封面主题",
-                    "description": "这些选项影响播放界面；设置窗口按钮始终跟随当前歌曲封面。"
-                },
                 "releaseUpdates": {
                     "title": "发布通道",
                     "description": "自动检测只负责提示；关闭后可动态选择 Release，或返回本地安装版本。"
@@ -369,9 +341,6 @@
             "descriptions": {
                 "language": "更改此插件的控件和设置语言。",
                 "fullscreen": "打开播放界面时使用系统原生全屏。",
-                "progressBar": "选择进度条始终显示、随鼠标移动显示或完全隐藏。",
-                "playerControls": "选择播放、暂停、上一首和下一首按钮的显示时机。",
-                "playbackTimelineResync": "每首歌曲播放约 1 秒后短暂暂停并恢复，帮助 Spotify 重新校准播放时间轴。",
                 "showAlbum": "显示专辑名称，也可以同时显示发行日期。",
                 "icons": "在播放信息旁显示小图标。",
                 "trimTitle": "移除当前歌曲标题中的括号版本信息和末尾版本文字。",
@@ -379,15 +348,11 @@
                 "upNextDisplay": "智能模式只在歌曲即将结束且需要时显示预览。",
                 "trimTitleUpNext": "下一首预览也使用标题精简。",
                 "upNextTime": "当前歌曲结束前多少秒可以显示下一首预览。",
-                "autoHideLyrics": "当前歌曲没有可用歌词时隐藏歌词区域。",
                 "thirdPartyLyrics": "从网易云音乐和 QQ 音乐补充缺少的翻译、罗马音、注音或逐字时间轴。",
                 "animationSpeed": "设置流体背景的基础流动速度。",
                 "transitionTime": "切换歌曲后，背景颜色完成过渡所需的时间。",
                 "backgroundBlur": "数值越高，专辑图和流体色块越柔和。",
-                "backgroundBrightness": "设置播放背景的整体明暗程度。",
-                "themedButtons": "使用当前歌曲封面颜色为播放按钮着色。",
-                "themedIcons": "使用当前歌曲封面颜色为播放图标着色。",
-                "invertColors": "选择浅色或深色播放文字，也可以根据背景亮度自动决定。"
+                "backgroundBrightness": "设置播放背景的整体明暗程度。"
             }
         },
         "configReset": "恢复默认"
@@ -404,6 +369,9 @@
         "actionUnavailable": "当前 Spotify 客户端不支持此队列操作。"
     },
     "sideView": {
+        "queue": "播放队列",
+        "tools": "歌词与队列",
+        "translation": "歌词翻译",
         "showQueue": "显示播放队列",
         "showLyrics": "显示歌词",
         "unavailable": "当前歌曲没有可用歌词。"

@@ -53,46 +53,6 @@ class Utils {
         ]);
     }
 
-    // Utility function to add a observer with wait for element support
-    static addObserver(
-        observer: MutationObserver,
-        selector: string,
-        options: MutationObserverInit,
-    ) {
-        const ele = document.querySelector(selector);
-        if (!ele) {
-            setTimeout(() => {
-                if (Utils.isModeActivated()) Utils.addObserver(observer, selector, options);
-            }, 2000);
-            return;
-        }
-        observer.observe(ele, options);
-    }
-
-    // Converting hex to rgb
-    static hexToRgb(hex: string) {
-        // Expand shorthand form (e.g. "03F") to full form (e.g. "0033FF")
-        const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
-        hex = hex.replace(shorthandRegex, function (m, r, g, b) {
-            return r + r + g + g + b + b;
-        });
-        const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-        return result
-            ? `${parseInt(result[1], 16)},${parseInt(result[2], 16)},${parseInt(result[3], 16)}`
-            : null;
-    }
-
-    // converting rgb to hex
-    static rgbToHex(color: { r: number; g: number; b: number }): string {
-        return (
-            "#" +
-            ((1 << 24) + (color.r << 16) + (color.g << 8) + color.b)
-                .toString(16)
-                .slice(1)
-                .toUpperCase()
-        );
-    }
-
     static trimTitle(title: string) {
         const trimmedTitle = title
             .replace(/\(.+?\)/g, "")
@@ -136,25 +96,6 @@ class Utils {
         if (overlay) {
             overlay.classList.toggle("transparent-bg", hideBackground);
         }
-    }
-
-    // Translation string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    static getAvailableLanguages(translations: Record<string, any>) {
-        const languages: Record<string, string> = {};
-        for (const lang in translations) {
-            languages[lang] = translations[lang].langName;
-        }
-        return languages;
-    }
-
-    static getTimeFormatted() {
-        const now = new Date();
-        return now.toLocaleString(navigator.language, {
-            hour: "numeric",
-            minute: "numeric",
-            hour12: undefined,
-        });
     }
 }
 

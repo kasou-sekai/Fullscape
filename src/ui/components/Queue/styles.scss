@@ -17,7 +17,7 @@
         z-index: 3;
         transition:
             opacity var(--fs-motion-feedback) ease,
-            visibility 0s linear 180ms;
+            visibility 0s linear var(--fs-motion-panel);
     }
     &.side-view-queue {
         #fullscape-queue-container {
@@ -33,7 +33,7 @@
             transition:
                 transform var(--transition-duration) var(--transition-function),
                 opacity var(--fs-motion-feedback) ease,
-                visibility 0s linear 180ms;
+                visibility 0s linear var(--fs-motion-panel);
         }
         #fullscape-foreground {
             transform: translateX(0);
@@ -92,7 +92,7 @@
         }
         &:active .queue-artwork-frame {
             transform: scale(0.975);
-            transition-duration: 100ms;
+            transition-duration: var(--fs-motion-queue-press);
         }
         &:focus-visible {
             outline: 2px solid var(--primary-color);
@@ -121,7 +121,7 @@
         transform-origin: center;
         transition:
             transform var(--fs-motion-content) var(--fs-motion-ease),
-            opacity 200ms ease;
+            opacity var(--fs-motion-artwork-opacity) ease;
         &::after {
             position: absolute;
             right: 0;
@@ -176,8 +176,8 @@
         margin-top: 0;
         opacity: 0;
         transition:
-            max-height 260ms var(--fs-motion-ease),
-            margin 260ms var(--fs-motion-ease),
+            max-height var(--fs-motion-queue-caption-reveal) var(--fs-motion-ease),
+            margin var(--fs-motion-queue-caption-reveal) var(--fs-motion-ease),
             opacity var(--fs-motion-feedback) ease;
     }
     .queue-track-artist {

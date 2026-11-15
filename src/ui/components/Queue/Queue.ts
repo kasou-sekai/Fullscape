@@ -1,4 +1,4 @@
-import { MOTION } from "../../../utils/motion";
+import { MOTION, prefersReducedMotion } from "../../../utils/motion";
 import CFM from "../../../utils/config";
 import translations from "../../../resources/strings";
 import ICONS from "../../../constants";
@@ -122,7 +122,7 @@ export class Queue {
         this.scrollGallery = gallery;
         if (
             typeof requestAnimationFrame !== "function" ||
-            window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            prefersReducedMotion()
         )
             return;
         const update = () => {
@@ -335,7 +335,7 @@ export class Queue {
             this.layoutGallery();
             gallery.scrollTop = oldScroll;
             this.setupScrollAnimations(gallery);
-            if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            if (!prefersReducedMotion()) {
                 const bounds = container.getBoundingClientRect();
                 wall.querySelectorAll<HTMLElement>(".queue-tile").forEach((tile) => {
                     const before = previous.get(tile);
@@ -533,7 +533,7 @@ export class Queue {
     private static startTileOverflow(tile: HTMLElement) {
         this.cancelTileOverflow(tile);
         if (tile.classList.contains("queue-tile-lead")) return;
-        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+        if (prefersReducedMotion()) return;
         requestAnimationFrame(() => {
             if (
                 !tile.isConnected ||
@@ -635,7 +635,7 @@ export class Queue {
             }
         }
         this.selected = null;
-        if (this.incoming && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        if (this.incoming && !prefersReducedMotion()) {
             const rect = DOM.cover.getBoundingClientRect();
             const old = document.createElement("div");
             old.className = "queue-artwork-flight";
@@ -672,7 +672,7 @@ export class Queue {
             incoming.uri !== Spicetify.Player.data?.item?.uri ||
             !DOM.container.isConnected ||
             !DOM.container.classList.contains("side-view-queue") ||
-            window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            prefersReducedMotion()
         ) {
             this.cancelFlight();
             return;
@@ -738,7 +738,7 @@ export class Queue {
                 if (this.flight !== flight) return;
                 DOM.cover.classList.remove("queue-artwork-landing");
                 await flight.animate([{ opacity: 1 }, { opacity: 0 }], {
-                    duration: 90,
+                    duration: MOTION.artworkSettle,
                     fill: "forwards",
                 }).finished;
                 if (this.flight === flight) this.cancelFlight();

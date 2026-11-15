@@ -3,6 +3,10 @@ import ICONS from "../constants";
 import { Config, Settings } from "../types/fullscape";
 import { sanitizeHtml } from "./sanitize-html";
 
+function renderDescription(text: string) {
+    return sanitizeHtml(marked.parse(text, { breaks: true }) as string);
+}
+
 export function headerText(text: string, subtext = "") {
     const container = document.createElement("div");
     container.classList.add("setting-subhead");
@@ -12,7 +16,7 @@ export function headerText(text: string, subtext = "") {
     if (subtext) {
         const listSub = document.createElement("div");
         listSub.classList.add("setting-subhead-description");
-        listSub.innerHTML = sanitizeHtml(marked.parse(subtext, { breaks: true }) as string);
+        listSub.innerHTML = renderDescription(subtext);
         container.append(listSub);
     }
     return container;
@@ -33,12 +37,36 @@ export function getSettingCard(
                 <label class="setting-title"></label>
                 <div class="setting-action">${actionContent}</div>
             </div>
-            <div class="setting-description">${sanitizeHtml(marked.parse(description, { breaks: true }) as string)}</div>
+            <div class="setting-description">${renderDescription(description)}</div>
         </div>
     `;
     const titleElement = settingCard.querySelector(".setting-title");
     if (titleElement) titleElement.textContent = title;
     return settingCard;
+}
+
+export function createToggleControl(
+    title: string,
+    key: keyof Settings | keyof Config,
+    checked: boolean,
+    onChange: (checked: boolean) => void,
+    description = "",
+) {
+    const card = getSettingCard(
+        `<label class="switch">
+            <input type="checkbox">
+            <span class="slider"></span>
+        </label>`,
+        title,
+        key,
+        description,
+    );
+    const input = card.querySelector<HTMLInputElement>("input");
+    if (input) {
+        input.checked = checked;
+        input.onchange = () => onChange(input.checked);
+    }
+    return card;
 }
 
 export function createAdjust(

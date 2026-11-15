@@ -10,7 +10,12 @@ import {
     richRuby,
     richGroupEnd,
 } from "../../../services/lyrics-rich-document";
-import { animateFeedback, frameSmoothing, prefersReducedMotion } from "../../../utils/motion";
+import {
+    animateFeedback,
+    frameSmoothing,
+    MOTION,
+    prefersReducedMotion,
+} from "../../../utils/motion";
 import { DOM } from "../../elements";
 import CFM from "../../../utils/config";
 import {
@@ -29,28 +34,34 @@ import {
     getCachedLyricsDebug,
     getCachedLyricsFullEntry,
     getEffectiveCacheSource,
+    setCachedLyrics,
+} from "../../../services/lyrics-cache";
+import {
     getSharedCachedLyrics,
     setSharedBridgeLease,
-    setCachedLyrics,
     syncCachedLyricsToShared,
-} from "../../../services/lyrics-cache";
+} from "../../../services/lyrics-bridge";
 import type { LyricsCacheEntry, LyricsCacheKind } from "../../../services/lyrics-cache";
-import { mergeFuriganaAnnotations, parseFuriganaMarkup } from "../../../utils/furigana";
+import { parseFuriganaMarkup } from "../../../utils/furigana";
 import { fetchDictionaryFurigana } from "../../../services/dictionary-furigana";
 import { preloadOfflineFuriganaDictionary } from "../../../services/offline-furigana-dictionary";
 import { getAudioAnalysis } from "../../../services/audio-analysis";
 import type { FuriganaAnnotation, FuriganaRenderData } from "../../../utils/furigana";
-import {
-    convertChineseText,
-    convertFuriganaRenderData,
-    getChineseLyricsPresentation,
-    getTranslationPresentation,
-} from "../../../utils/chinese-conversion";
+import { getChineseLyricsPresentation } from "../../../utils/chinese-conversion";
 import type { LyricsChineseConversion } from "../../../utils/chinese-conversion";
 
 import { detectTextLanguage } from "../../../utils/text-language";
 import { applyTextLanguage, getTextLanguageTag } from "../../../utils/text-presentation";
 import { freezeMeasuredLyricRows } from "../../../utils/lyric-wrapping";
+import { escapeHtml } from "../../../utils/escape-html";
+import { renderLyricLineContent } from "./rendering";
+import {
+    buildLyricsTimeline,
+    findActiveInterlude,
+    findActiveLineIndex,
+    getInterludeBreatheDuration,
+} from "./timeline";
+import type { LyricInterlude, TimedLyricLine } from "./timeline";
 
 type LyricLine = EnhancedLyricLine;
 type LyricsTrack = TrackInfo & {
@@ -61,16 +72,6 @@ type SpotifyLyricsApiResponse = {
     error?: unknown;
     code?: number | string;
     lyrics?: { lines?: unknown[] };
-};
-type TimedLyricLine = {
-    index: number;
-    time: number;
-};
-type LyricInterlude = {
-    start: number;
-    end: number;
-    anchorIndex: number;
-    nextIndex: number;
 };
 type KaraokeWordRenderState = {
     node: HTMLElement;
@@ -88,12 +89,6 @@ type KaraokeFuriganaRenderState = {
     duration: number;
     releaseDuration: number;
     animation: Animation | null;
-};
-type TimedKaraokeSegment = {
-    text: string;
-    time: number;
-    duration: number;
-    start: number;
 };
 type LyricsDiagnostics = {
     total: number;
@@ -128,22 +123,10 @@ export class Lyrics {
     private static readonly REFETCH_DELAYS_MS = [15000, 45000, 120000];
     private static readonly SHARED_SYNC_POLL_MS = 1000;
     private static readonly SHARED_SYNC_MAX_POLL_MS = 5000;
+    private static readonly LINE_GAP_PX = 22;
+    private static readonly INTERLUDE_HEIGHT_PX = 16;
     private static readonly LINE_RENDER_OVERSCAN = 0.5;
     private static readonly QQ_MUSIC_RENDER_ADVANCE_MS = 200;
-    private static readonly INTERLUDE_MIN_GAP_MS = 4000;
-    private static readonly INTERLUDE_FALLBACK_LINE_DURATION_MS = 2000;
-    private static readonly INTERLUDE_MIN_RELIABLE_INTERVALS = 5;
-    private static readonly INTERLUDE_NORMAL_EXTENSION_MS = 4000;
-    private static readonly INTERLUDE_MAX_MAD_RATIO = 0.35;
-    private static readonly INTERLUDE_MIN_INLIER_RATIO = 0.65;
-    private static readonly INTERLUDE_CREDIT_ROLE_PATTERN =
-        /^(?:作词|作曲|词曲|编曲|制作人|制作发行|音乐制作|音乐总监|发行|录音|人声录音|混音|母带|监制|和声|配唱|人声编辑|录音助理|键盘|吉他|贝斯|贝司|鼓手|鼓|长笛|提琴|录音棚|录音室|原唱|翻唱|作詞|編曲|演奏|録音|混音)\s*[:：]\s*\S/iu;
-    private static readonly INTERLUDE_CREDIT_PHRASE_PATTERN =
-        /^(?:lyrics?|written|composed|arranged|produced|recorded|mixed|mastered|performed|vocals?)\s+by\s+\S/iu;
-    private static readonly INTERLUDE_COPYRIGHT_PATTERN =
-        /(?:未经著作权人许可|不得翻唱翻录重制|all\s+rights\s+reserved|[©℗®])/iu;
-    private static readonly INTERLUDE_BREATH_BEATS = 8;
-    private static readonly INTERLUDE_DEFAULT_BPM = 120;
     private static readonly spotifyRequests = new Map<string, Promise<LyricLine[]>>();
     private static readonly enhancedRequests = new Map<string, Promise<LyricLine[]>>();
     private static readonly prefetchedTrackUris = new Set<string>();
@@ -369,7 +352,9 @@ export class Lyrics {
             if (
                 cachedApple &&
                 !shared?.hidden &&
-                (!useShared || getEffectiveCacheSource(shared) !== "manual" || CFM.get("lyricsSource") === "apple-music") &&
+                (!useShared ||
+                    getEffectiveCacheSource(shared) !== "manual" ||
+                    CFM.get("lyricsSource") === "apple-music") &&
                 this.prefersAppleCandidate()
             ) {
                 this.richDecisionInFlight = false;
@@ -801,9 +786,15 @@ export class Lyrics {
             )
                 return;
             const manualStandard =
-                entry && getEffectiveCacheSource(entry) === "manual" &&
+                entry &&
+                getEffectiveCacheSource(entry) === "manual" &&
                 CFM.get("lyricsSource") !== "apple-music";
-            if (entry?.hidden || manualStandard || rich?.status === "standard" || rich?.status === "hidden") {
+            if (
+                entry?.hidden ||
+                manualStandard ||
+                rich?.status === "standard" ||
+                rich?.status === "hidden"
+            ) {
                 this.appleCandidate = null;
                 this.pendingRichEntry = null;
             } else {
@@ -920,7 +911,8 @@ export class Lyrics {
             this.refetchAttempt = 0;
             return;
         }
-        if (!lines.length || (!initialLoad && !this.shouldApplySharedLyricsEntry(entry, lines))) return;
+        if (!lines.length || (!initialLoad && !this.shouldApplySharedLyricsEntry(entry, lines)))
+            return;
         if (getEffectiveCacheSource(entry) === "manual") {
             this.pendingRichEntry = null;
             // Only an explicit manual choice may invalidate an in-flight local
@@ -1294,7 +1286,7 @@ export class Lyrics {
         if (unavailable) DOM.container.classList.add("lyrics-unavailable");
         else DOM.container.classList.remove("lyrics-unavailable");
         this.stopLoop();
-        this.container.innerHTML = `<div class="lyrics-wrapper"><div class="lyrics-status">${this.escapeHtml(text)}</div></div>`;
+        this.container.innerHTML = `<div class="lyrics-wrapper"><div class="lyrics-status">${escapeHtml(text)}</div></div>`;
         animateFeedback(this.container.querySelector(".lyrics-status"), [
             { opacity: 0 },
             { opacity: 1 },
@@ -1427,10 +1419,9 @@ export class Lyrics {
         this.dictionaryFurigana = [];
         this.renderedLyricsSignature = signature;
         this.dictionaryFuriganaRequestSignature = null;
-        this.timedLines = lines.flatMap((line, index) =>
-            line.time === null ? [] : [{ index, time: line.time }],
-        );
-        this.interludes = this.buildInterludes(lines);
+        const timeline = buildLyricsTimeline(lines);
+        this.timedLines = timeline.timedLines;
+        this.interludes = timeline.interludes;
         this.activeInterlude = null;
         this.lastStatus = this.isSynced ? "synced" : "unsynced";
         this.diagnostics = {
@@ -1575,6 +1566,26 @@ export class Lyrics {
         applyTextLanguage(DOM.title, context);
     }
 
+    static renderLineContent(
+        line: LyricLine,
+        lineIndex: number,
+        chineseConversion: LyricsChineseConversion,
+        songLanguage: ReturnType<typeof detectTextLanguage>,
+        songLanguageTag: string,
+    ) {
+        return renderLyricLineContent(line, {
+            chineseConversion,
+            translationConversion: this.getChineseConversion(),
+            songLanguage,
+            songLanguageTag,
+            showKaraoke: Boolean(CFM.get("karaokeLyrics")),
+            showFurigana: Boolean(CFM.get("showLyricsFurigana")),
+            showRomanization: Boolean(CFM.get("showLyricsRomanization")),
+            showTranslation: Boolean(CFM.get("showLyricsTranslation")),
+            dictionaryFurigana: this.dictionaryFurigana[lineIndex],
+        });
+    }
+
     private static renderLines() {
         if (!this.container) return;
         this.resetLyricsInteraction(false);
@@ -1582,7 +1593,7 @@ export class Lyrics {
         // Keep karaoke nodes mounted so line changes only update compositor-friendly styles.
         // Replacing nearby line content during playback forces synchronous layout and stalls
         // the background animation as well.
-        const chineseConversion = this.getChineseConversion();
+        const chineseConversion = CFM.get("lyricsChineseConversion") as LyricsChineseConversion;
         const originalLyricsText = this.lines.map((line) => line.text).join("\n");
         const chinesePresentation = getChineseLyricsPresentation(
             originalLyricsText,
@@ -1645,65 +1656,6 @@ export class Lyrics {
         this.applyTransforms(true);
         this.updateInterludeDots(this.getSynchronizedPlaybackProgress());
         this.setupResizeObserver();
-    }
-
-    private static renderLineContent(
-        line: LyricLine,
-        lineIndex: number,
-        chineseConversion: LyricsChineseConversion,
-        songLanguage: ReturnType<typeof detectTextLanguage>,
-        songLanguageTag: string,
-    ) {
-        const detectedLineLanguage = getTextLanguageTag(line.text, songLanguage, chineseConversion);
-        const lineLanguage =
-            detectedLineLanguage.startsWith("zh") && songLanguageTag.startsWith("zh")
-                ? songLanguageTag
-                : detectedLineLanguage;
-        const originalConversion = detectedLineLanguage.startsWith("zh")
-            ? chineseConversion
-            : "original";
-        const languageAttributes = `lang="${lineLanguage}" data-text-language="${lineLanguage}"`;
-        const showKaraoke = Boolean(CFM.get("karaokeLyrics")) && this.hasKaraokeText(line);
-        const words = (line.words ?? []).map((word) => ({
-            ...word,
-            text: convertChineseText(word.text, originalConversion),
-        }));
-        const providedFurigana = line.presentation
-            ? richRuby(line)
-            : parseFuriganaMarkup(line.text, line.furigana);
-        const dictionaryFurigana = this.dictionaryFurigana[lineIndex];
-        const renderFurigana = dictionaryFurigana
-            ? {
-                  text: providedFurigana.text,
-                  annotations: mergeFuriganaAnnotations(
-                      providedFurigana.annotations,
-                      dictionaryFurigana.annotations,
-                  ),
-              }
-            : providedFurigana;
-        const furigana = convertFuriganaRenderData(renderFurigana, originalConversion);
-        const visibleAnnotations = CFM.get("showLyricsFurigana") ? furigana.annotations : [];
-        const karaokeText = words.map((word) => word.text).join("");
-        const annotations = karaokeText === furigana.text ? visibleAnnotations : [];
-        const furiganaClass = annotations.length ? " rnp-lyrics-has-furigana" : "";
-        const original = showKaraoke
-            ? `<div class="rnp-lyrics-line-karaoke${furiganaClass}" ${languageAttributes}>${this.renderKaraokeLine(words, annotations)}</div>`
-            : `<div class="rnp-lyrics-line-original${visibleAnnotations.length ? " rnp-lyrics-has-furigana" : ""}" ${languageAttributes}>${this.formatLyricText(furigana.text, visibleAnnotations)}</div>`;
-
-        const romanization =
-            CFM.get("showLyricsRomanization") && line.romanization
-                ? `<div class="rnp-lyrics-line-romaji" lang="en" data-text-language="en">${this.escapeHtml(convertChineseText(line.romanization, originalConversion))}</div>`
-                : "";
-        const translated = getTranslationPresentation(
-            line.translation ?? "",
-            this.getChineseConversion(),
-        );
-        const translation =
-            line.translation && line.translation.trim() !== "//"
-                ? `<div ${CFM.get("showLyricsTranslation") ? "" : "hidden"} class="rnp-lyrics-line-translated" lang="${translated.language}" data-text-language="${translated.language}">${this.escapeHtml(translated.text)}</div>`
-                : "";
-
-        return `${original}${romanization}${translation}`;
     }
 
     private static requestDictionaryFurigana(originalLyricsText: string) {
@@ -1822,274 +1774,6 @@ export class Lyrics {
         return CFM.get("lyricsChineseConversion") as LyricsChineseConversion;
     }
 
-    private static renderKaraokeLine(
-        words: NonNullable<LyricLine["words"]>,
-        annotations: FuriganaAnnotation[],
-    ) {
-        const text = words.map((word) => word.text).join("");
-        const wordStarts = this.getSemanticWordStarts(text);
-        annotations.forEach((annotation) => {
-            for (const offset of wordStarts) {
-                if (offset > annotation.start && offset < annotation.end) {
-                    wordStarts.delete(offset);
-                }
-            }
-        });
-        const splitOffsets = new Set([
-            ...wordStarts,
-            ...annotations.flatMap((annotation) => [annotation.start, annotation.end]),
-        ]);
-        const segments = this.splitKaraokeSegmentsAtOffsets(
-            words.flatMap((word) => this.splitTimedKaraokeWord(word)),
-            splitOffsets,
-        );
-        const phraseGroups: string[] = [];
-        let phrase = "";
-        let semanticWord = "";
-        let activeAnnotation: FuriganaAnnotation | null = null;
-        let annotationStartTime = 0;
-        let annotationEndTime = 0;
-
-        const flushSemanticWord = () => {
-            if (!semanticWord) return;
-            phrase += `<span class="rnp-lyrics-semantic-word">${semanticWord}</span>`;
-            semanticWord = "";
-        };
-        segments.forEach((segment) => {
-            if (this.hasPreferredBreakAtStart(segment.text) && (semanticWord || phrase)) {
-                flushSemanticWord();
-                phraseGroups.push(phrase);
-                phrase = "";
-            }
-            if (wordStarts.has(segment.start)) flushSemanticWord();
-            const annotation = annotations.find((item) => item.start === segment.start);
-            if (annotation) {
-                activeAnnotation = annotation;
-                annotationStartTime = segment.time;
-                annotationEndTime = segment.time + segment.duration;
-                semanticWord +=
-                    '<ruby class="rnp-furigana-ruby rnp-karaoke-ruby"><span class="rnp-furigana-base">';
-            }
-            if (activeAnnotation) {
-                annotationEndTime = Math.max(annotationEndTime, segment.time + segment.duration);
-            }
-            semanticWord += this.renderKaraokeWordSegment(
-                segment.text,
-                segment.time,
-                segment.duration,
-            );
-            const segmentEnd = segment.start + segment.text.length;
-            if (activeAnnotation && segmentEnd >= activeAnnotation.end) {
-                semanticWord += `</span><rt lang="ja" data-time="${annotationStartTime}" data-duration="${Math.max(
-                    80,
-                    annotationEndTime - annotationStartTime,
-                )}">${this.escapeHtml(activeAnnotation.reading)}</rt></ruby>`;
-                activeAnnotation = null;
-            }
-            if (!this.hasPreferredBreakAtEnd(segment.text)) return;
-            flushSemanticWord();
-            phraseGroups.push(phrase);
-            phrase = "";
-        });
-        flushSemanticWord();
-        if (phrase) phraseGroups.push(phrase);
-        return phraseGroups
-            .map(
-                (content) =>
-                    `<span class="rnp-lyrics-break-segment rnp-karaoke-break-segment">${content}</span>`,
-            )
-            .join("<wbr>");
-    }
-
-    private static splitTimedKaraokeWord(word: NonNullable<LyricLine["words"]>[number]) {
-        const segments = this.splitLyricTextAtPreferredBreaks(word.text);
-        const weights = segments.map((segment) => this.getTextTimingWeight(segment));
-        const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || 1;
-        let offset = 0;
-        return segments.map((text, idx) => {
-            const remaining = Math.max(0, word.duration - offset);
-            const duration =
-                idx === segments.length - 1
-                    ? remaining
-                    : (word.duration * weights[idx]) / totalWeight;
-            const segment = {
-                text,
-                time: word.time + offset,
-                duration,
-            };
-            offset += duration;
-            return segment;
-        });
-    }
-
-    private static getSemanticWordStarts(text: string) {
-        const starts = new Set<number>();
-        if (!("Segmenter" in Intl)) return starts;
-        try {
-            const segmenter = new Intl.Segmenter(this.getSegmentationLocale(text), {
-                granularity: "word",
-            });
-            let foundFirstWord = false;
-            for (const segment of segmenter.segment(text)) {
-                if (!segment.isWordLike) continue;
-                const followsOpeningQuote = /[“‘「『《〈«‹][\p{White_Space}\u200b\ufeff]*$/u.test(
-                    text.slice(0, segment.index),
-                );
-                if (foundFirstWord && !followsOpeningQuote) starts.add(segment.index);
-                foundFirstWord = true;
-            }
-        } catch {
-            // Keep the punctuation-based wrapping fallback on older Chromium builds.
-        }
-        return starts;
-    }
-
-    private static getSegmentationLocale(text: string) {
-        if (/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(text)) return "ja";
-        if (/\p{Script=Hangul}/u.test(text)) return "ko";
-        if (/\p{Script=Thai}/u.test(text)) return "th";
-        if (/\p{Script=Han}/u.test(text)) return "zh";
-        return undefined;
-    }
-
-    private static splitKaraokeSegmentsAtOffsets(
-        segments: Array<Omit<TimedKaraokeSegment, "start">>,
-        splitOffsets: Set<number>,
-    ) {
-        const result: TimedKaraokeSegment[] = [];
-        let globalOffset = 0;
-
-        segments.forEach((segment) => {
-            const segmentStart = globalOffset;
-            const segmentEnd = segmentStart + segment.text.length;
-            const localOffsets = Array.from(splitOffsets)
-                .filter((offset) => offset > segmentStart && offset < segmentEnd)
-                .map((offset) => offset - segmentStart)
-                .sort((first, second) => first - second);
-            const boundaries = [0, ...localOffsets, segment.text.length];
-            const texts = boundaries
-                .slice(0, -1)
-                .map((start, index) => segment.text.slice(start, boundaries[index + 1]))
-                .filter(Boolean);
-            const weights = texts.map((text) => this.getTextTimingWeight(text));
-            const totalWeight = weights.reduce((sum, weight) => sum + weight, 0) || 1;
-            let timeOffset = 0;
-            let textOffset = 0;
-
-            texts.forEach((text, index) => {
-                const remaining = Math.max(0, segment.duration - timeOffset);
-                const duration =
-                    index === texts.length - 1
-                        ? remaining
-                        : (segment.duration * weights[index]) / totalWeight;
-                result.push({
-                    text,
-                    time: segment.time + timeOffset,
-                    duration,
-                    start: segmentStart + textOffset,
-                });
-                timeOffset += duration;
-                textOffset += text.length;
-            });
-            globalOffset = segmentEnd;
-        });
-        return result;
-    }
-
-    private static hasPreferredBreakAtEnd(text: string) {
-        return /(?:[\p{White_Space}\u200b\ufeff]|[,.;:!?，。！？、；：…~～\-‐‑‒–—―/\\|)\]）】」』》〉])$/u.test(
-            text,
-        );
-    }
-
-    private static hasPreferredBreakAtStart(text: string) {
-        return /^[“‘「『《〈«‹]/u.test(text);
-    }
-
-    private static renderKaraokeWordSegment(text: string, time: number, duration: number) {
-        return `<span class="rnp-karaoke-word" data-time="${time}" data-duration="${duration}"><span>${this.formatLyricText(text)}</span></span>`;
-    }
-
-    private static splitLyricTextAtPreferredBreaks(text: string) {
-        const trailingBreakSegments = text
-            .match(
-                /.*?(?:[\p{White_Space}\u200b\ufeff]+|[,.;:!?，。！？、；：…~～\-‐‑‒–—―/\\|)\]）】」』》〉]+|$)/gu,
-            )
-            ?.filter(Boolean) ?? [text];
-        return trailingBreakSegments.flatMap((segment) =>
-            segment.split(/(?=[“‘「『《〈«‹])/u).filter(Boolean),
-        );
-    }
-
-    private static getTextTimingWeight(text: string) {
-        return Math.max(
-            1,
-            Array.from(text).filter((char) => !/^[\p{White_Space}\u200b\ufeff]+$/u.test(char))
-                .length,
-        );
-    }
-
-    private static escapeHtml(text: string) {
-        return text
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#039;");
-    }
-
-    private static formatLyricText(text: string, annotations: FuriganaAnnotation[] = []) {
-        return this.formatPlainLyricText(text, annotations);
-    }
-
-    private static formatPlainLyricText(text: string, annotations: FuriganaAnnotation[] = []) {
-        const wordStarts = this.getSemanticWordStarts(text);
-        annotations.forEach((annotation) => {
-            for (const offset of wordStarts) {
-                if (offset > annotation.start && offset < annotation.end) {
-                    wordStarts.delete(offset);
-                }
-            }
-        });
-        let globalOffset = 0;
-        return this.splitLyricTextAtPreferredBreaks(text)
-            .map((segment) => {
-                const segmentStart = globalOffset;
-                const segmentEnd = segmentStart + segment.length;
-                const localStarts = Array.from(wordStarts)
-                    .filter((offset) => offset > segmentStart && offset < segmentEnd)
-                    .map((offset) => offset - segmentStart)
-                    .sort((first, second) => first - second);
-                const annotationBoundaries = annotations
-                    .flatMap((annotation) => [annotation.start, annotation.end])
-                    .filter((offset) => offset > segmentStart && offset < segmentEnd)
-                    .map((offset) => offset - segmentStart);
-                const boundaries = Array.from(
-                    new Set([0, ...localStarts, ...annotationBoundaries, segment.length]),
-                ).sort((first, second) => first - second);
-                const semanticWords = boundaries
-                    .slice(0, -1)
-                    .map((start, index) => {
-                        const end = boundaries[index + 1];
-                        const word = segment.slice(start, end);
-                        if (!word) return "";
-                        const absoluteStart = segmentStart + start;
-                        const absoluteEnd = segmentStart + end;
-                        const annotation = annotations.find(
-                            (item) => item.start === absoluteStart && item.end === absoluteEnd,
-                        );
-                        const content = annotation
-                            ? `<ruby class="rnp-furigana-ruby"><span class="rnp-furigana-base">${this.escapeHtml(word)}</span><rt lang="ja">${this.escapeHtml(annotation.reading)}</rt></ruby>`
-                            : this.escapeHtml(word);
-                        return `<span class="rnp-lyrics-semantic-word">${content}</span>`;
-                    })
-                    .join("");
-                globalOffset = segmentEnd;
-                return `<span class="rnp-lyrics-break-segment">${semanticWords}</span>`;
-            })
-            .join("<wbr>");
-    }
-
     private static startLoop() {
         this.stopLoop();
         const tick = () => {
@@ -2136,14 +1820,14 @@ export class Lyrics {
         // A held line is still visible, but it is no longer singing. Let a real
         // interlude take over; short pauses continue to hold the completed line.
         const singing = candidateActive.some((index) => progress < richGroupEnd(this.lines[index]));
-        const nextInterlude = singing ? null : this.findActiveInterlude(progress);
+        const nextInterlude = singing ? null : findActiveInterlude(this.interludes, progress);
         const active = nextInterlude ? [] : candidateActive;
         const nextIndex =
             rich && active.length
                 ? active[0]
                 : nextInterlude
                   ? -1
-                  : this.findActiveLineIndex(progress);
+                  : findActiveLineIndex(this.timedLines, progress);
         const now = performance.now();
         const jumped =
             rich &&
@@ -2279,40 +1963,6 @@ export class Lyrics {
         this.karaokeAnimationsPlaying = playing;
     }
 
-    private static findActiveLineIndex(progress: number) {
-        let low = 0;
-        let high = this.timedLines.length - 1;
-        let activeIndex = -1;
-        while (low <= high) {
-            const middle = (low + high) >> 1;
-            const line = this.timedLines[middle];
-            if (line.time <= progress) {
-                activeIndex = line.index;
-                low = middle + 1;
-            } else {
-                high = middle - 1;
-            }
-        }
-        return activeIndex;
-    }
-
-    private static findActiveInterlude(progress: number) {
-        let low = 0;
-        let high = this.interludes.length - 1;
-        while (low <= high) {
-            const middle = (low + high) >> 1;
-            const interlude = this.interludes[middle];
-            if (progress < interlude.start) {
-                high = middle - 1;
-            } else if (progress >= interlude.end) {
-                low = middle + 1;
-            } else {
-                return interlude;
-            }
-        }
-        return null;
-    }
-
     private static loadInterludeTempo(trackUri: string) {
         if (this.interludeBpmTrackUri === trackUri) return;
         this.interludeBpmTrackUri = trackUri;
@@ -2322,218 +1972,6 @@ export class Lyrics {
             const tempo = analysis?.track.tempo ?? analysis?.sections[0]?.tempo;
             this.interludeBpm = typeof tempo === "number" && Number.isFinite(tempo) ? tempo : null;
         });
-    }
-
-    private static getInterludeBreatheDuration() {
-        const bpm = this.interludeBpm;
-        const normalizedBpm =
-            typeof bpm === "number" && Number.isFinite(bpm)
-                ? Math.min(220, Math.max(48, bpm))
-                : this.INTERLUDE_DEFAULT_BPM;
-        return (60000 / normalizedBpm) * this.INTERLUDE_BREATH_BEATS;
-    }
-
-    private static hasExplicitLyricEnd(line: LyricLine) {
-        const hasTimedWords = (line.words ?? []).some(
-            (word) => Number.isFinite(word.time) && word.duration > 0,
-        );
-        return (
-            hasTimedWords ||
-            typeof line.presentation?.end === "number" ||
-            (typeof line.duration === "number" && line.duration > 0)
-        );
-    }
-
-    private static normalizeMetadataText(text: string) {
-        return text.replace(/\s+/g, " ").trim();
-    }
-
-    private static isCreditLikeLyrics(line: LyricLine) {
-        const text = this.normalizeMetadataText(line.text);
-        return (
-            this.INTERLUDE_CREDIT_ROLE_PATTERN.test(text) ||
-            this.INTERLUDE_CREDIT_PHRASE_PATTERN.test(text)
-        );
-    }
-
-    private static getLyricsMetadataIndexes(lines: LyricLine[]) {
-        const metadataIndexes = new Set<number>();
-        const creditLike = lines.map((line) => this.isCreditLikeLyrics(line));
-        const boundaryWindow = Math.max(2, Math.ceil(lines.length * 0.1));
-
-        for (let start = 0; start < creditLike.length; ) {
-            if (!creditLike[start]) {
-                start += 1;
-                continue;
-            }
-
-            let end = start;
-            while (end + 1 < creditLike.length && creditLike[end + 1]) end += 1;
-            const isBoundaryBlock =
-                start <= boundaryWindow || end >= lines.length - boundaryWindow - 1;
-            if (isBoundaryBlock) {
-                for (let index = start; index <= end; index += 1) metadataIndexes.add(index);
-            }
-            start = end + 1;
-        }
-
-        lines.forEach((line, index) => {
-            const isTailLine = index >= Math.max(0, lines.length - boundaryWindow);
-            if (
-                isTailLine &&
-                this.INTERLUDE_COPYRIGHT_PATTERN.test(this.normalizeMetadataText(line.text))
-            ) {
-                metadataIndexes.add(index);
-            }
-        });
-
-        return metadataIndexes;
-    }
-
-    private static getMedian(values: number[]) {
-        if (!values.length) return null;
-        const sorted = [...values].sort((first, second) => first - second);
-        const middle = Math.floor(sorted.length / 2);
-        return sorted.length % 2
-            ? sorted[middle]
-            : ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
-    }
-
-    private static getPlainLyricsNormalGap(
-        lines: LyricLine[],
-        timedLines: TimedLyricLine[],
-        metadataIndexes: ReadonlySet<number>,
-    ) {
-        if (lines.some((line) => this.hasExplicitLyricEnd(line))) return null;
-
-        const intervals = timedLines.flatMap((current, index) => {
-            const previous = timedLines[index - 1];
-            if (
-                !previous ||
-                current.index !== previous.index + 1 ||
-                metadataIndexes.has(previous.index) ||
-                metadataIndexes.has(current.index)
-            ) {
-                return [];
-            }
-            const interval = current.time - previous.time;
-            return interval > 0 ? [interval] : [];
-        });
-        if (intervals.length < this.INTERLUDE_MIN_RELIABLE_INTERVALS) return null;
-
-        const median = this.getMedian(intervals);
-        if (!median || median <= 0) return null;
-        const deviations = intervals.map((interval) => Math.abs(interval - median));
-        const mad = this.getMedian(deviations) ?? Number.POSITIVE_INFINITY;
-        const normalBand = Math.max(1500, median * this.INTERLUDE_MAX_MAD_RATIO);
-        const inlierRatio =
-            intervals.filter((interval) => Math.abs(interval - median) <= normalBand).length /
-            intervals.length;
-        if (
-            mad > median * this.INTERLUDE_MAX_MAD_RATIO ||
-            inlierRatio < this.INTERLUDE_MIN_INLIER_RATIO
-        ) {
-            return null;
-        }
-
-        return median + this.INTERLUDE_NORMAL_EXTENSION_MS;
-    }
-
-    private static buildInterludes(lines: LyricLine[]) {
-        const timedLines = lines.flatMap((line, index) =>
-            line.time === null ? [] : [{ index, time: line.time }],
-        );
-        const metadataIndexes = this.getLyricsMetadataIndexes(lines);
-        const plainLyricsNormalGap = this.getPlainLyricsNormalGap(
-            lines,
-            timedLines,
-            metadataIndexes,
-        );
-        const interludes: LyricInterlude[] = [];
-        const rich = lines.some((line) => line.presentation);
-        let richEnd = 0;
-
-        for (let index = 0; index < timedLines.length; index += 1) {
-            const next = timedLines[index];
-            const previous = timedLines[index - 1];
-            if (rich && previous) {
-                richEnd = Math.max(richEnd, richGroupEnd(lines[previous.index]));
-            }
-            if (!previous && next.index !== 0) continue;
-            if (previous && next.index !== previous.index + 1) continue;
-            if (
-                previous &&
-                (metadataIndexes.has(previous.index) || metadataIndexes.has(next.index))
-            ) {
-                continue;
-            }
-
-            if (
-                previous &&
-                plainLyricsNormalGap !== null &&
-                next.time - previous.time <= plainLyricsNormalGap
-            ) {
-                continue;
-            }
-            if (
-                previous &&
-                plainLyricsNormalGap === null &&
-                !this.hasExplicitLyricEnd(lines[previous.index])
-            ) {
-                continue;
-            }
-
-            const plainLyricsMinimumDuration =
-                plainLyricsNormalGap === null
-                    ? null
-                    : Math.max(0, plainLyricsNormalGap - this.INTERLUDE_NORMAL_EXTENSION_MS);
-            const gapStart = previous
-                ? rich
-                    ? richEnd
-                    : this.getLyricLineEnd(
-                          lines[previous.index],
-                          next.time,
-                          plainLyricsMinimumDuration,
-                      )
-                : 0;
-            const gapEnd = Math.max(gapStart, next.time);
-            if (gapEnd - gapStart < this.INTERLUDE_MIN_GAP_MS) continue;
-
-            interludes.push({
-                start: gapStart,
-                end: gapEnd,
-                anchorIndex: previous?.index ?? -1,
-                nextIndex: next.index,
-            });
-        }
-        return interludes;
-    }
-
-    private static getLyricLineEnd(
-        line: LyricLine,
-        nextTime: number,
-        plainLyricsMinimumDuration: number | null = null,
-    ) {
-        if (line.time === null) return nextTime;
-        const timedWordEnd = (line.words ?? []).reduce((end, word) => {
-            const wordEnd = word.time + Math.max(0, word.duration);
-            return Number.isFinite(wordEnd) ? Math.max(end, wordEnd) : end;
-        }, line.time);
-        const explicitEnd =
-            typeof line.duration === "number" && line.duration > 0
-                ? line.time + line.duration
-                : line.time;
-        const measuredEnd = Math.max(timedWordEnd, explicitEnd);
-        if (measuredEnd > line.time) return Math.min(nextTime, measuredEnd);
-
-        // Plain LRC/Spotify lines do not carry an end timestamp. Keep the line
-        // readable for the normal cadence when it is reliable, then use the
-        // remainder as the interlude.
-        const fallbackDuration = Math.min(
-            Math.max(0, nextTime - line.time),
-            Math.max(this.INTERLUDE_FALLBACK_LINE_DURATION_MS, plainLyricsMinimumDuration ?? 0),
-        );
-        return Math.min(nextTime, line.time + fallbackDuration);
     }
 
     private static updateInterludeDots(progress: number) {
@@ -2564,7 +2002,7 @@ export class Lyrics {
         if (remaining < 375) globalOpacity *= Math.max(0, remaining / 375);
 
         if (!reducedMotion) {
-            const breatheDuration = this.getInterludeBreatheDuration();
+            const breatheDuration = getInterludeBreatheDuration(this.interludeBpm);
             scale *= Math.sin(1.5 * Math.PI - (elapsed / breatheDuration) * 2 * Math.PI) / 20 + 1;
             if (elapsed < 2000) scale *= 1 - 2 ** (-10 * (elapsed / 2000));
             if (remaining < 750) {
@@ -3050,11 +2488,11 @@ export class Lyrics {
             this.stabilizeLineWrapping();
             this.measureHeights();
         }
-        const baseGap = Math.max(22, Math.min(58, fontSize * 1.0));
+        const baseGap = this.LINE_GAP_PX;
         const containerHeight = this.containerHeight || lyricsRoot.clientHeight || 1;
         const centerY = containerHeight * 0.38;
         const baseIndent = Math.max(12, Math.min(36, fontSize * 0.8));
-        const interludeHeight = Math.max(16, fontSize);
+        const interludeHeight = this.INTERLUDE_HEIGHT_PX;
         const interludeLineGap = baseGap * 1.5;
 
         type LyricTransform = {
@@ -3315,7 +2753,7 @@ export class Lyrics {
                 this.manualScrollActive ||
                 enteredViewport
                     ? 0
-                    : 520;
+                    : MOTION.lyric;
             node.style.setProperty("--lyrics-line-transform-duration", `${duration}ms`);
             node.style.setProperty(
                 "--lyrics-line-transform-delay",

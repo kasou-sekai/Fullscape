@@ -143,7 +143,7 @@ generic-modal:has(
 // Update and version confirmation dialogs
 .update-dialog {
     --dialog-accent: var(--spice-button-active, #1ed760);
-    animation: update-dialog-in 180ms var(--fs-motion-ease);
+    animation: update-dialog-in var(--fs-motion-panel) var(--fs-motion-ease);
     color: #f5f7f8;
     padding: 2px 2px 4px;
 }
@@ -691,7 +691,7 @@ generic-modal:has(
             height: 18px;
             left: 2px;
             position: absolute;
-            transition: transform 180ms var(--fs-motion-ease);
+            transition: transform var(--fs-motion-panel) var(--fs-motion-ease);
             width: 18px;
         }
     }
