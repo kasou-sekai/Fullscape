@@ -1,7 +1,9 @@
 import { freezeMeasuredLyricRows } from "../../../utils/lyric-wrapping";
 import {
+    columnEnds,
     groupVerses,
     splitCandidates,
+    surroundEnds,
     type LyricSplit,
     type Verse,
     type FocusLyricsLine,
@@ -30,6 +32,8 @@ type Sheet = {
     button: HTMLButtonElement;
     stanzas: HTMLElement[];
     lines: HTMLElement[];
+    columns: HTMLElement[];
+    ends: number[];
 };
 type Book = { sheets: Sheet[]; pageStart: number | null };
 type PrintLayout = { size: number; columns: number };
@@ -96,16 +100,20 @@ export class FocusLyrics {
         }
         this.verses = state.status === "ready" ? groupVerses(state.lines, state.duration) : [];
         const seed = hashTrack(state.trackKey);
-        this.view.dataset.layout = LAYOUTS[seed % LAYOUTS.length];
         this.view.classList.toggle(
             "is-serif",
-            (hashTrack(`${state.trackKey}:font`) >>> 9) % 3 === 0,
+            (hashTrack(`${state.trackKey}:font`) >>> 9) % 3 !== 0,
         );
         const direction = (seed >>> 12) & 3;
         this.view.classList.toggle(
             "is-vertical",
             (/^ja\b/i.test(this.root.lang) && direction !== 0) ||
                 (/^zh\b/i.test(this.root.lang) && direction === 1),
+        );
+        const stagger = (hashTrack(`${state.trackKey}:alignment`) >>> 9) % 2 !== 0;
+        this.view.style.setProperty(
+            "--focus-single-align",
+            stagger ? (this.view.classList.contains("is-vertical") ? "end" : "center") : "start",
         );
         this.render(state);
     }
@@ -134,6 +142,17 @@ export class FocusLyrics {
     }
 
     private typeset(state: FocusLyricsState): Book {
+        const seed = hashTrack(state.trackKey);
+        this.view.dataset.layout = LAYOUTS[seed % LAYOUTS.length];
+        if (state.title && (hashTrack(`${state.trackKey}:surround`) >>> 9) % 4 === 0) {
+            const ends = surroundEnds(this.verses);
+            if (ends) {
+                const surrounded = this.fitSurround(state, ends);
+                if (surrounded) return surrounded;
+                this.view.dataset.layout = LAYOUTS[seed % LAYOUTS.length];
+            }
+        }
+
         const single = { sheets: [this.createSheet(this.verses, 0, state)], pageStart: null };
         this.mount(single);
         if (!this.verses.length || this.fit(single, TYPE_SIZES)) return single;
@@ -149,23 +168,39 @@ export class FocusLyrics {
             if (this.fit(book, COMPACT_SIZES)) return book;
         }
 
-        // Shrink complete verses before wrapping, and wrap before fragmenting
-        // a verse. Keep the candidate with the fewest folded lines.
+        // Shrink complete verses before wrapping. Even the densest
+        // arrangement moves only whole verses between columns or sheets.
         this.view.classList.add("allow-line-wrap");
         const wrapped = this.findWrappedLayout(books);
         if (wrapped) return wrapped;
 
-        const split = splitCandidates(this.verses, true)[0];
-        const dense = split ? this.createSpread(split, state) : single;
-        this.mount(dense);
-        this.view.classList.remove("allow-line-wrap");
-        if (this.fit(dense, [...TYPE_SIZES, ...COMPACT_SIZES])) return dense;
-        this.view.classList.add("allow-line-wrap");
-        const wrappedDense = this.findWrappedLayout([dense]);
-        if (wrappedDense) return wrappedDense;
-        this.fitDense(dense);
-        this.freezeWrappedLines(dense);
-        return dense;
+        let best = { book: single, type: { size: 0, columns: 1 } };
+        for (const book of books) {
+            this.mount(book);
+            const type = this.findDenseLayout(book);
+            if (type.size > best.type.size) best = { book, type };
+        }
+        this.mount(best.book);
+        this.setType(best.book, best.type);
+        this.freezeWrappedLines(best.book);
+        return best.book;
+    }
+
+    private fitSurround(state: FocusLyricsState, ends: number[]): Book | null {
+        const sheet = this.createSheet(this.verses, 0, state);
+        const book = { sheets: [sheet], pageStart: null };
+        this.view.dataset.layout = "surround";
+        this.mount(book);
+        this.createColumns(sheet, ends.length);
+        this.placeStanzas(sheet, ends);
+        const header = sheet.print.querySelector<HTMLElement>(".focus-lyrics-header");
+        if (!header) return null;
+        for (const size of TYPE_SIZES) {
+            sheet.paper.style.setProperty("--focus-lyric-size", `${size}cqw`);
+            if (header.offsetHeight > sheet.columns[1].clientHeight) continue;
+            if (sheet.columns.every(fitsBox) && sheet.lines.every(fitsBox)) return book;
+        }
+        return null;
     }
 
     private mount(book: Book) {
@@ -193,10 +228,6 @@ export class FocusLyrics {
         print.className = "focus-lyrics-print";
         const copy = document.createElement("div");
         copy.className = "focus-lyrics-copy";
-        copy.dataset.short = String(
-            verses.reduce((count, verse) => count + verse.lines.length, 0) <= 9,
-        );
-
         if (state?.title || state?.artist) {
             const header = document.createElement("header");
             header.className = "focus-lyrics-header";
@@ -256,7 +287,7 @@ export class FocusLyrics {
         );
         button.onclick = () => this.requestPage(index);
         leaf.append(paper, button);
-        return { leaf, paper, print, copy, button, stanzas, lines };
+        return { leaf, paper, print, copy, button, stanzas, lines, columns: [], ends: [] };
     }
 
     private currentPlaybackPage(): Page | null {
@@ -370,10 +401,10 @@ export class FocusLyrics {
         return false;
     }
 
-    private fittingColumns(book: Book, size: number, allowVerseBreak = false) {
+    private fittingColumns(book: Book, size: number) {
         const maxColumns = book.sheets.length === 1 ? 2 : 3;
         for (let columns = 1; columns <= maxColumns; columns += 1) {
-            if (this.setType(book, { size, columns }, allowVerseBreak)) return columns;
+            if (this.setType(book, { size, columns })) return columns;
         }
         return 0;
     }
@@ -405,17 +436,13 @@ export class FocusLyrics {
         return best.book;
     }
 
-    private fitDense(book: Book) {
+    private findDenseLayout(book: Book): PrintLayout {
         let low = 0;
         let high = COMPACT_SIZES[COMPACT_SIZES.length - 1];
         let bestColumns = 1;
-        // Dense pages may still fit an unusually long verse intact. Only
-        // release column boundaries when even the compact size needs it.
-        const allowVerseBreak = !this.fittingColumns(book, high * 0.8);
-        if (allowVerseBreak) book.sheets.forEach(({ paper }) => paper.classList.add("is-dense"));
         for (let step = 0; step < 11; step += 1) {
             const size = (low + high) / 2;
-            const columns = this.fittingColumns(book, size, allowVerseBreak);
+            const columns = this.fittingColumns(book, size);
             if (columns) {
                 low = size;
                 bestColumns = columns;
@@ -423,31 +450,56 @@ export class FocusLyrics {
                 high = size;
             }
         }
-        this.setType(book, { size: low, columns: bestColumns }, allowVerseBreak);
+        return { size: low, columns: bestColumns };
     }
 
-    private setType(book: Book, { size, columns }: PrintLayout, allowVerseBreak = false) {
+    private createColumns(sheet: Sheet, count: number) {
+        if (sheet.columns.length === count) return;
+        sheet.copy.dataset.columns = String(count);
+        sheet.copy.style.setProperty("--focus-lyric-columns", String(count));
+        sheet.columns = Array.from({ length: count }, () => {
+            const column = document.createElement("div");
+            column.className = "focus-lyrics-column";
+            return column;
+        });
+        sheet.columns[0].append(...sheet.stanzas);
+        sheet.copy.replaceChildren(...sheet.columns);
+        sheet.ends = [sheet.stanzas.length];
+    }
+
+    private placeStanzas(sheet: Sheet, ends: number[]) {
+        if (
+            ends.length === sheet.ends.length &&
+            ends.every((end, index) => end === sheet.ends[index])
+        )
+            return;
+        sheet.columns.forEach((column, index) => {
+            column.replaceChildren(...sheet.stanzas.slice(ends[index - 1] ?? 0, ends[index]));
+        });
+        sheet.ends = ends;
+    }
+
+    private setType(book: Book, { size, columns }: PrintLayout) {
         const wrap = this.view.classList.contains("allow-line-wrap");
         const vertical = this.view.classList.contains("is-vertical");
-        for (const { paper } of book.sheets) {
-            paper.style.setProperty("--focus-lyric-size", `${size}cqw`);
-            paper.style.setProperty("--focus-lyric-columns", String(columns));
+        for (const sheet of book.sheets) {
+            sheet.paper.style.setProperty("--focus-lyric-size", `${size}cqw`);
+            const count = Math.min(columns, sheet.stanzas.length);
+            this.createColumns(sheet, count);
+            if (count > 1) {
+                const weights = sheet.stanzas.map((verse) => {
+                    const bounds = verse.getBoundingClientRect();
+                    return vertical ? bounds.width : bounds.height;
+                });
+                this.placeStanzas(sheet, columnEnds(weights, count));
+            }
         }
         return book.sheets.every(
-            ({ print, copy, lines, stanzas }) =>
-                print.scrollHeight <= print.clientHeight + 1 &&
-                print.scrollWidth <= print.clientWidth + 1 &&
-                copy.scrollWidth <= copy.clientWidth + 1 &&
-                copy.scrollHeight <= copy.clientHeight + 1 &&
-                (allowVerseBreak ||
-                    columns === 1 ||
-                    stanzas.every((verse) => verse.getClientRects().length <= 1)) &&
-                (wrap ||
-                    lines.every((line) =>
-                        vertical
-                            ? line.scrollHeight <= line.clientHeight + 1
-                            : line.scrollWidth <= line.clientWidth + 1,
-                    )),
+            ({ print, copy, lines, columns: boxes }) =>
+                fitsBox(print) &&
+                fitsBox(copy) &&
+                boxes.every(fitsBox) &&
+                (wrap || lines.every(fitsBox)),
         );
     }
 
@@ -459,6 +511,10 @@ export class FocusLyrics {
             }
         }
     }
+}
+
+function fitsBox(box: HTMLElement) {
+    return box.scrollHeight <= box.clientHeight + 1 && box.scrollWidth <= box.clientWidth + 1;
 }
 
 function wrapsLine(line: HTMLElement, vertical: boolean) {

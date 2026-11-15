@@ -139,21 +139,27 @@
 
     .focus-lyrics-copy {
         flex: 0 0 auto;
-        min-width: 0;
-        column-count: var(--focus-lyric-columns);
+        display: grid;
+        min-inline-size: 0;
+        grid-template-columns: repeat(var(--focus-lyric-columns), minmax(0, 1fr));
+        align-items: start;
         column-gap: 4.8cqw;
-        column-fill: balance;
         font-size: var(--focus-lyric-size);
         font-weight: 400;
         line-height: 1.33;
     }
 
+    .focus-lyrics-column {
+        min-inline-size: 0;
+    }
+
     .focus-lyrics-verse {
         margin: 0;
-        orphans: 2;
-        widows: 2;
-        break-inside: avoid;
         text-align: start;
+    }
+
+    .focus-lyrics-copy[data-columns="1"] .focus-lyrics-verse {
+        text-align: var(--focus-single-align, start);
     }
 
     .focus-lyrics-verse[data-space="verse"] {
@@ -166,7 +172,6 @@
 
     .focus-lyrics-line {
         display: block;
-        break-inside: avoid;
         white-space: pre;
     }
 
@@ -200,10 +205,6 @@
         .focus-lyrics-title,
         .focus-lyrics-header::after {
             margin-inline: auto;
-        }
-
-        .focus-lyrics-copy[data-short="true"] .focus-lyrics-verse {
-            text-align: center;
         }
     }
 
@@ -241,6 +242,76 @@
         }
     }
 
+    &[data-layout="surround"] {
+        .focus-lyrics-print {
+            display: block;
+        }
+
+        .focus-lyrics-header {
+            position: absolute;
+            z-index: 1;
+            top: 50%;
+            left: 50%;
+            width: calc((100% - 4cqw) / 3);
+            transform: translate(-50%, -50%);
+            text-align: center;
+            writing-mode: horizontal-tb;
+        }
+
+        .focus-lyrics-title {
+            max-inline-size: none;
+            font-size: 4.8cqw;
+            margin-inline: auto;
+        }
+
+        .focus-lyrics-artist {
+            font-size: 2.35cqw;
+        }
+
+        .focus-lyrics-header::after {
+            margin: 1.6cqw auto 0;
+        }
+
+        .focus-lyrics-copy {
+            position: absolute;
+            inset: 0;
+            grid-template: repeat(3, minmax(0, 1fr)) / repeat(3, minmax(0, 1fr));
+            align-items: stretch;
+            gap: 2cqw;
+            writing-mode: horizontal-tb;
+        }
+
+        .focus-lyrics-column {
+            display: flex;
+            min-block-size: 0;
+            flex-direction: column;
+            justify-content: safe center;
+
+            &:nth-child(1) {
+                grid-area: 1 / 1 / 2 / -1;
+            }
+            &:nth-child(2) {
+                grid-area: 2 / 3 / 3 / 4;
+            }
+            &:nth-child(3) {
+                grid-area: 3 / 1 / 4 / -1;
+            }
+            &:nth-child(4) {
+                grid-area: 2 / 1 / 3 / 2;
+            }
+        }
+
+        .focus-lyrics-verse {
+            flex-shrink: 0;
+            text-align: center;
+        }
+
+        &.is-vertical .focus-lyrics-column {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+        }
+    }
+
     &.is-serif {
         font-family: "Iowan Old Style", "Palatino Linotype", var(--focus-local-serif, Georgia),
             serif;
@@ -264,10 +335,6 @@
         .focus-lyrics-title {
             font-weight: 510;
         }
-    }
-
-    .is-dense .focus-lyrics-verse {
-        break-inside: auto;
     }
 
     &.is-vertical {

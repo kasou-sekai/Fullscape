@@ -107,8 +107,7 @@ function divideAtRefrains(verses: Verse[]) {
             !spans.every((start) => {
                 for (let index = start; index < start + length; index += 1) {
                     const owner = owners.get(index);
-                    if (owner && (owner.start !== start || owner.length !== length))
-                        return false;
+                    if (owner && (owner.start !== start || owner.length !== length)) return false;
                 }
                 return true;
             })
@@ -148,33 +147,70 @@ function divideAtRefrains(verses: Verse[]) {
 
 export type LyricSplit = [Verse[], Verse[]];
 
-export function splitCandidates(verses: Verse[], insideVerse = false): LyricSplit[] {
-    const weights = verses.map(({ lines }) =>
-        lines.map(({ text }) => Math.max(1, Array.from(text).length / 26)),
-    );
-    const total = weights.flat().reduce((sum, weight) => sum + weight, 0);
-    let consumed = 0;
-    const cuts: Array<{ verse: number; line: number; distance: number }> = [];
-    weights.forEach((lines, verse) => {
-        lines.forEach((weight, line) => {
-            if (consumed > 0 && (line === 0 || insideVerse)) {
-                cuts.push({ verse, line, distance: Math.abs(consumed - total * 0.46) });
-            }
-            consumed += weight;
-        });
-    });
+function verseWeight({ lines }: Verse) {
+    return lines.reduce((sum, { text }) => sum + Math.max(1, Array.from(text).length / 26), 0);
+}
 
+export function splitCandidates(verses: Verse[]): LyricSplit[] {
+    const weights = verses.map(verseWeight);
+    const target = weights.reduce((sum, weight) => sum + weight, 0) * 0.46;
+    let consumed = 0;
+    const cuts = weights.slice(0, -1).map((weight, index) => {
+        consumed += weight;
+        return { index: index + 1, distance: Math.abs(consumed - target) };
+    });
     return cuts
         .sort((a, b) => a.distance - b.distance)
         .slice(0, 3)
-        .map(({ verse, line }) => {
-            const first = verses.slice(0, verse);
-            const second = verses.slice(verse);
-            if (line) {
-                const split = verses[verse];
-                first.push({ ...split, lines: split.lines.slice(0, line) });
-                second[0] = { ...split, space: "none", lines: split.lines.slice(line) };
+        .map(({ index }) => [verses.slice(0, index), verses.slice(index)]);
+}
+
+export function columnEnds(weights: number[], columns: number): number[] {
+    if (columns === 1) return [weights.length];
+
+    // Find the smallest block size that can hold the ordered, complete verses.
+    let low = Math.max(...weights);
+    let high = weights.reduce((sum, weight) => sum + weight, 0);
+    while (high - low > 0.01) {
+        const limit = (low + high) / 2;
+        let count = 1;
+        let used = 0;
+        for (const weight of weights) {
+            if (used + weight > limit) {
+                count += 1;
+                used = 0;
             }
-            return [first, second];
-        });
+            used += weight;
+        }
+        if (count > columns) low = limit;
+        else high = limit;
+    }
+    const ends: number[] = [];
+    let used = 0;
+    for (const [index, weight] of weights.entries()) {
+        const remaining = columns - ends.length - 1;
+        if (
+            remaining > 0 &&
+            index > (ends.at(-1) ?? 0) &&
+            (used + weight > high || weights.length - index === remaining)
+        ) {
+            ends.push(index);
+            used = 0;
+        }
+        used += weight;
+    }
+    ends.push(weights.length);
+    return ends;
+}
+
+export function surroundEnds(verses: Verse[]): number[] | null {
+    if (verses.filter(({ marker }) => !marker).length < 4) return null;
+    const weights = verses.map(verseWeight);
+    const ends = columnEnds(weights, 4);
+    const sideWeights = ends.map((end, index) => {
+        const start = ends[index - 1] ?? 0;
+        if (verses.slice(start, end).every(({ marker }) => marker)) return 0;
+        return weights.slice(start, end).reduce((sum, weight) => sum + weight, 0);
+    });
+    return Math.min(...sideWeights) >= Math.max(...sideWeights) * 0.57 ? ends : null;
 }

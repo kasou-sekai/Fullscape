@@ -7,7 +7,7 @@ const { outputFiles } = await build({
     format: "esm",
     write: false,
 });
-const { groupVerses, splitCandidates } = await import(
+const { columnEnds, groupVerses, splitCandidates, surroundEnds } = await import(
     `data:text/javascript;base64,${Buffer.from(outputFiles[0].contents).toString("base64")}`
 );
 
@@ -20,7 +20,10 @@ test("recurring refrains form whole paragraphs and retain their original text", 
     const opening = ["The old station is empty", "Two trains went past"];
     const bridge = ["Turning the page", "The clock ran slow"];
     const ending = ["Another year is gone"];
-    const verses = groupVerses(untimed([...opening, ...refrain, ...bridge, ...repeated, ...ending]), 0);
+    const verses = groupVerses(
+        untimed([...opening, ...refrain, ...bridge, ...repeated, ...ending]),
+        0,
+    );
     assert.deepEqual(textOf(verses), [opening, refrain, bridge, repeated, ending]);
 });
 
@@ -30,10 +33,13 @@ test("an authored long stanza stays intact and interludes break between verses",
     const lines = untimed([...stanza, "", ...second, "♪", "Somewhere after the rain"]);
     const verses = groupVerses(lines, 0);
     assert.deepEqual(textOf(verses), [stanza, second, ["♪"], ["Somewhere after the rain"]]);
-    assert.deepEqual(verses.map(({ space }) => space), ["none", "verse", "interlude", "verse"]);
+    assert.deepEqual(
+        verses.map(({ space }) => space),
+        ["none", "verse", "interlude", "verse"],
+    );
 });
 
-test("page candidates use stanza boundaries before considering a split inside a verse", () => {
+test("page candidates only use stanza boundaries", () => {
     const first = ["A room before dawn", "The windows are bright"];
     const middle = Array.from({ length: 12 }, (_, index) => `A different line ${index}`);
     const last = ["Until the evening comes"];
@@ -45,6 +51,24 @@ test("page candidates use stanza boundaries before considering a split inside a 
         assert.ok([...left, ...right].includes(verses[1]));
     }
     assert.deepEqual(splitCandidates([verses[1]]), []);
-    const [left, right] = splitCandidates([verses[1]], true)[0];
-    assert.deepEqual(textOf([...left, ...right]).flat(), middle);
+});
+
+test("sizes columns by keeping contiguous stanzas together, including oversized stanzas", () => {
+    assert.deepEqual(columnEnds([18, 21, 4, 24], 2), [2, 4]);
+    assert.deepEqual(columnEnds([1, 1, 100, 1, 1], 3), [2, 3, 5]);
+    assert.deepEqual(columnEnds([6, 6, 6, 6], 4), [1, 2, 3, 4]);
+});
+
+test("the center title layout requires usable, comparable stanzas on four sides", () => {
+    const lyrics = groupVerses(
+        untimed(["Evening sky", "", "Morning wind", "", "Open window", "", "Lights nearby"]),
+        0,
+    );
+    assert.deepEqual(surroundEnds(lyrics), [1, 2, 3, 4]);
+    assert.equal(surroundEnds(lyrics.slice(0, 3)), null);
+    const long = {
+        ...lyrics[0],
+        lines: untimed(Array.from({ length: 14 }, (_, index) => `An unmatched line ${index}`)),
+    };
+    assert.equal(surroundEnds([long, ...lyrics.slice(1)]), null);
 });
