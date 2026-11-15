@@ -14,7 +14,6 @@ export type FocusLyricsState = {
     trackKey: string;
     title: string;
     artist: string;
-    duration: number;
     progress: number;
     lines: readonly FocusLyricsLine[];
     status: "loading" | "empty" | "ready";
@@ -82,7 +81,6 @@ export class FocusLyrics {
             previous.trackKey === state.trackKey &&
             previous.title === state.title &&
             previous.artist === state.artist &&
-            previous.duration === state.duration &&
             previous.lines === state.lines &&
             previous.status === state.status &&
             previous.loadingLabel === state.loadingLabel &&
@@ -98,7 +96,7 @@ export class FocusLyrics {
             this.requested = 0;
             this.playbackPage = null;
         }
-        this.verses = state.status === "ready" ? groupVerses(state.lines, state.duration) : [];
+        this.verses = state.status === "ready" ? groupVerses(state.lines) : [];
         const seed = hashTrack(state.trackKey);
         this.view.classList.toggle(
             "is-serif",

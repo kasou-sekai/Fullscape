@@ -1,3 +1,5 @@
+import { buildLyricsTimeline } from "../Lyrics/timeline";
+
 export type FocusLyricsLine = {
     startTime: number | null;
     endTime?: number | null;
@@ -10,53 +12,81 @@ export type Verse = {
     marker?: boolean;
 };
 
-const MUSIC_MARKER =
-    /^(?:[♪♫♬𝄞]+|[[(（【{]?\s*(?:instrumental|music(?:al break)?|intro|outro|interlude|solo|break|bridge)\s*[\])）】}]?\s*[♪♫♬𝄞]*)$/iu;
+const MUSIC_NOTE = /^[♩♪♫♬𝄞🎵🎶]+$/u;
+const MUSIC_LABEL =
+    /^[[(（【{]?\s*(?:instrumental|music(?:al break)?|intro|outro|interlude|solo|break|bridge)\s*[\])）】}]?\s*[♪♫♬𝄞]*$/iu;
+const MIN_REFRAIN_LINES = 3;
 
-export function groupVerses(lines: readonly FocusLyricsLine[], duration: number): Verse[] {
+export function groupVerses(lines: readonly FocusLyricsLine[]): Verse[] {
+    const entries = lines.map((line) => {
+        const text = line.text.trim();
+        const note = MUSIC_NOTE.test(text.replace(/[\s\p{Cf}\uFE0E\uFE0F]/gu, ""));
+        return { ...line, text, note, label: MUSIC_LABEL.test(text) };
+    });
+    const { interludes } = buildLyricsTimeline(
+        entries.map(({ text, note, label, startTime, endTime }) => {
+            const time = text && !note && !label ? startTime : null;
+            return {
+                text,
+                time,
+                duration: time !== null && endTime !== undefined ? endTime - time : undefined,
+            };
+        }),
+    );
+    const gaps = new Set(
+        interludes.filter(({ anchorIndex }) => anchorIndex >= 0).map(({ nextIndex }) => nextIndex),
+    );
     const verses: Verse[] = [];
-    const lyricCount = lines.filter(
-        ({ text }) => text.trim() && !MUSIC_MARKER.test(text.trim()),
-    ).length;
-    const longGap = Math.max(5800, (duration / Math.max(lyricCount, 1)) * 1.9);
-    let previous: FocusLyricsLine | undefined;
     let space: Verse["space"] = "none";
     let current: Verse | undefined;
-    for (const line of lines) {
-        const text = line.text.trim();
-        if (!text) {
-            space = "verse";
+    let blankAfterLyrics = false;
+    let hasAuthoredBreak = false;
+    let sawLyric = false;
+    for (const [index, { text, startTime, endTime, note, label }] of entries.entries()) {
+        if (!text || note) {
+            if (!text && sawLyric) blankAfterLyrics = true;
+            if (note) space = "interlude";
+            else if (space !== "interlude") space = "verse";
             current = undefined;
             continue;
         }
-        const lastStart = previous?.startTime ?? 0;
-        const lastEnd = previous?.endTime ?? lastStart + (previous ? 1800 : 0);
-        if (line.startTime !== null && line.startTime - lastEnd >= longGap) {
+        if (gaps.has(index)) {
             space = "interlude";
             current = undefined;
         }
-        if (line.startTime !== null) previous = line;
-        if (MUSIC_MARKER.test(text)) {
-            verses.push({ lines: [{ ...line, text }], space: "interlude", marker: true });
+        if (label) {
+            verses.push({
+                lines: [{ text, startTime, endTime }],
+                space: "interlude",
+                marker: true,
+            });
             space = "verse";
             current = undefined;
             continue;
         }
+        if (blankAfterLyrics) {
+            hasAuthoredBreak = true;
+            blankAfterLyrics = false;
+        }
         if (!current) {
-            current = { lines: [], space };
+            current = { lines: [], space: verses.length ? space : "none" };
             verses.push(current);
             space = "none";
         }
-        current.lines.push({ ...line, text });
+        current.lines.push({ text, startTime, endTime });
+        sawLyric = true;
     }
-    return divideAtRefrains(verses);
+
+    return hasAuthoredBreak ? verses : divideAtRefrains(verses);
 }
 
 function divideAtRefrains(verses: Verse[]) {
     const keys: string[] = [];
+    const starts: number[] = [];
     const ends: number[] = [];
     for (const verse of verses) {
-        const end = keys.length + verse.lines.length;
+        const start = keys.length;
+        const end = start + verse.lines.length;
         for (const { text } of verse.lines) {
             keys.push(
                 verse.marker
@@ -66,34 +96,47 @@ function divideAtRefrains(verses: Verse[]) {
                           .toLowerCase()
                           .replace(/[\s\p{P}]+/gu, ""),
             );
+            starts.push(start);
             ends.push(end);
         }
     }
 
-    const previousPairs = new Map<string, { first: number; last: number }>();
+    const previousPassages = new Map<string, { first: number; last: number }>();
     const repeats: Array<{ earlier: number; later: number; length: number }> = [];
-    for (let later = 0; later + 1 < keys.length; later += 1) {
-        const first = keys[later];
-        const second = keys[later + 1];
-        if (!first || !second || first === second || ends[later] <= later + 1) continue;
-        const pair = JSON.stringify([first, second]);
-        const seen = previousPairs.get(pair);
+    for (let later = 0; later + MIN_REFRAIN_LINES <= keys.length; later += 1) {
+        if (ends[later] - later < MIN_REFRAIN_LINES) continue;
+        const lead = keys.slice(later, later + MIN_REFRAIN_LINES);
+        if (lead.some((key) => !key)) continue;
+        const signature = JSON.stringify(lead);
+        const seen = previousPassages.get(signature);
         if (seen) {
             for (const earlier of new Set([seen.first, seen.last])) {
                 const limit = Math.min(
-                    later - earlier,
+                    later - earlier - 2,
                     ends[earlier] - earlier,
                     ends[later] - later,
                     24,
                 );
-                let length = 2;
+                if (limit < MIN_REFRAIN_LINES) continue;
+                let length = MIN_REFRAIN_LINES;
                 while (length < limit && keys[earlier + length] === keys[later + length])
                     length += 1;
-                repeats.push({ earlier, later, length });
+                if (new Set(keys.slice(later, later + length)).size < MIN_REFRAIN_LINES) continue;
+
+                // A nearly identical neighboring line often belongs to a
+                // slightly varied chorus. Leave that passage intact.
+                const hasContinuation =
+                    (earlier > starts[earlier] &&
+                        later > starts[later] &&
+                        relatedLine(keys[earlier - 1], keys[later - 1])) ||
+                    (earlier + length < ends[earlier] &&
+                        later + length < ends[later] &&
+                        relatedLine(keys[earlier + length], keys[later + length]));
+                if (!hasContinuation) repeats.push({ earlier, later, length });
             }
             seen.last = later;
         } else {
-            previousPairs.set(pair, { first: later, last: later });
+            previousPassages.set(signature, { first: later, last: later });
         }
     }
 
@@ -143,6 +186,21 @@ function divideAtRefrains(verses: Verse[]) {
         });
         return chunks;
     });
+}
+
+function relatedLine(first: string, second: string) {
+    if (first === second) return true;
+    const length = Math.min(first.length, second.length);
+    if (length < 5) return false;
+    let prefix = 0;
+    while (prefix < length && first[prefix] === second[prefix]) prefix += 1;
+    let suffix = 0;
+    while (
+        suffix < length - prefix &&
+        first[first.length - suffix - 1] === second[second.length - suffix - 1]
+    )
+        suffix += 1;
+    return prefix + suffix >= Math.ceil(Math.max(first.length, second.length) * 0.72);
 }
 
 export type LyricSplit = [Verse[], Verse[]];

@@ -90,7 +90,6 @@ export class FocusPage {
             trackKey,
             title,
             artist,
-            duration,
             progress,
             lines: this.lines,
             status: this.status,
