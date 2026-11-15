@@ -1,10 +1,12 @@
+import { freezeMeasuredLyricRows } from "../../../utils/lyric-wrapping";
+import {
+    groupVerses,
+    splitCandidates,
+    type LyricSplit,
+    type Verse,
+    type FocusLyricsLine,
+} from "./lyric-structure";
 import "./focus-lyrics.scss";
-
-export type FocusLyricsLine = {
-    startTime: number | null;
-    endTime?: number | null;
-    text: string;
-};
 
 export type FocusLyricsState = {
     trackKey: string;
@@ -19,7 +21,6 @@ export type FocusLyricsState = {
     showSheetLabel: string;
 };
 
-type Verse = { lines: FocusLyricsLine[]; space: "none" | "verse" | "interlude"; marker?: boolean };
 type Page = 0 | 1;
 type Sheet = {
     leaf: HTMLElement;
@@ -27,13 +28,15 @@ type Sheet = {
     print: HTMLElement;
     copy: HTMLElement;
     button: HTMLButtonElement;
+    stanzas: HTMLElement[];
+    lines: HTMLElement[];
 };
-
-const MUSIC_MARKER =
-    /^(?:[♪♫♬𝄞]+|[[(（【{]?\s*(?:instrumental|music(?:al break)?|intro|outro|interlude|solo|break|bridge)\s*[\])）】}]?\s*[♪♫♬𝄞]*)$/iu;
+type Book = { sheets: Sheet[]; pageStart: number | null };
+type PrintLayout = { size: number; columns: number };
 
 const LAYOUTS = ["masthead", "inset", "colophon"] as const;
 const TYPE_SIZES = [3.45, 3.1, 2.8, 2.65, 2.5];
+const COMPACT_SIZES = [2.3, 2.1];
 const FRONT_POSE = "translate(0, 0) rotate(0deg)";
 const BACK_POSE = "translate(-5.4%, 3.6%) rotate(-3deg)";
 const LIFTED_POSE = "translate(-113%, -8%) rotate(-8deg)";
@@ -94,7 +97,10 @@ export class FocusLyrics {
         this.verses = state.status === "ready" ? groupVerses(state.lines, state.duration) : [];
         const seed = hashTrack(state.trackKey);
         this.view.dataset.layout = LAYOUTS[seed % LAYOUTS.length];
-        this.view.classList.toggle("is-serif", Boolean(seed & 8));
+        this.view.classList.toggle(
+            "is-serif",
+            (hashTrack(`${state.trackKey}:font`) >>> 9) % 3 === 0,
+        );
         const direction = (seed >>> 12) & 3;
         this.view.classList.toggle(
             "is-vertical",
@@ -114,32 +120,10 @@ export class FocusLyrics {
 
     private render(state: FocusLyricsState) {
         this.cancelAnimations();
-        this.pageStart = null;
-        const single = this.createSheet(this.verses, 0, state);
-        this.sheets = [single];
-        this.view.dataset.sheets = "1";
-        this.view.replaceChildren(single.leaf);
-
-        if (this.verses.length && !this.fit([single], 2)) {
-            const spread = splitVerses(this.verses);
-            if (spread) {
-                const sheets = [
-                    this.createSheet(spread[0], 0, state),
-                    this.createSheet(spread[1], 1),
-                ];
-                this.sheets = sheets;
-                this.view.dataset.sheets = "2";
-                this.view.replaceChildren(...sheets.map(({ leaf }) => leaf));
-                if (!this.fit(sheets, 3)) this.fitDense(sheets);
-                this.pageStart =
-                    spread[1]
-                        .filter((verse) => !verse.marker)
-                        .flatMap((verse) => verse.lines)
-                        .find((line) => line.startTime !== null)?.startTime ?? null;
-            } else {
-                this.fitDense([single]);
-            }
-        }
+        this.view.classList.remove("allow-line-wrap");
+        const book = this.typeset(state);
+        this.sheets = book.sheets;
+        this.pageStart = book.pageStart;
 
         const automatic = this.currentPlaybackPage();
         if (this.sheets.length === 1) this.requested = 0;
@@ -147,6 +131,57 @@ export class FocusLyrics {
         this.playbackPage = automatic;
         this.arrange(this.requested);
         this.width = this.view.clientWidth;
+    }
+
+    private typeset(state: FocusLyricsState): Book {
+        const single = { sheets: [this.createSheet(this.verses, 0, state)], pageStart: null };
+        this.mount(single);
+        if (!this.verses.length || this.fit(single, TYPE_SIZES)) return single;
+
+        const splits = splitCandidates(this.verses);
+        const books = [single, ...splits.map((split) => this.createSpread(split, state))];
+        for (const book of books.slice(1)) {
+            this.mount(book);
+            if (this.fit(book, TYPE_SIZES)) return book;
+        }
+        for (const book of books) {
+            this.mount(book);
+            if (this.fit(book, COMPACT_SIZES)) return book;
+        }
+
+        // Shrink complete verses before wrapping, and wrap before fragmenting
+        // a verse. Keep the candidate with the fewest folded lines.
+        this.view.classList.add("allow-line-wrap");
+        const wrapped = this.findWrappedLayout(books);
+        if (wrapped) return wrapped;
+
+        const split = splitCandidates(this.verses, true)[0];
+        const dense = split ? this.createSpread(split, state) : single;
+        this.mount(dense);
+        this.view.classList.remove("allow-line-wrap");
+        if (this.fit(dense, [...TYPE_SIZES, ...COMPACT_SIZES])) return dense;
+        this.view.classList.add("allow-line-wrap");
+        const wrappedDense = this.findWrappedLayout([dense]);
+        if (wrappedDense) return wrappedDense;
+        this.fitDense(dense);
+        this.freezeWrappedLines(dense);
+        return dense;
+    }
+
+    private mount(book: Book) {
+        this.view.dataset.sheets = String(book.sheets.length);
+        this.view.replaceChildren(...book.sheets.map(({ leaf }) => leaf));
+    }
+
+    private createSpread([first, second]: LyricSplit, state: FocusLyricsState): Book {
+        const firstTimed = second
+            .filter(({ marker }) => !marker)
+            .flatMap(({ lines }) => lines)
+            .find(({ startTime }) => startTime !== null);
+        return {
+            sheets: [this.createSheet(first, 0, state), this.createSheet(second, 1)],
+            pageStart: firstTimed?.startTime ?? null,
+        };
     }
 
     private createSheet(verses: Verse[], index: Page, state?: FocusLyricsState): Sheet {
@@ -182,6 +217,8 @@ export class FocusLyrics {
             print.append(header);
         }
 
+        const stanzas: HTMLElement[] = [];
+        const lines: HTMLElement[] = [];
         for (const verse of verses) {
             const block = document.createElement("p");
             block.className = "focus-lyrics-verse";
@@ -193,8 +230,10 @@ export class FocusLyrics {
                 line.dir = "auto";
                 line.textContent = text;
                 block.append(line);
+                lines.push(line);
             }
             copy.append(block);
+            stanzas.push(block);
         }
 
         if (!verses.length && state) {
@@ -217,7 +256,7 @@ export class FocusLyrics {
         );
         button.onclick = () => this.requestPage(index);
         leaf.append(paper, button);
-        return { leaf, paper, print, copy, button };
+        return { leaf, paper, print, copy, button, stanzas, lines };
     }
 
     private currentPlaybackPage(): Page | null {
@@ -324,28 +363,59 @@ export class FocusLyrics {
         delete this.view.dataset.turning;
     }
 
-    private fit(sheets: Sheet[], maxColumns: number) {
-        for (const size of TYPE_SIZES) {
-            if (this.fittingColumns(sheets, size, maxColumns)) return true;
+    private fit(book: Book, sizes: number[]) {
+        for (const size of sizes) {
+            if (this.fittingColumns(book, size)) return true;
         }
         return false;
     }
 
-    private fittingColumns(sheets: Sheet[], size: number, maxColumns: number) {
+    private fittingColumns(book: Book, size: number, allowVerseBreak = false) {
+        const maxColumns = book.sheets.length === 1 ? 2 : 3;
         for (let columns = 1; columns <= maxColumns; columns += 1) {
-            if (this.setType(sheets, size, columns)) return columns;
+            if (this.setType(book, { size, columns }, allowVerseBreak)) return columns;
         }
         return 0;
     }
 
-    private fitDense(sheets: Sheet[]) {
-        for (const { paper } of sheets) paper.classList.add("is-dense");
+    private findWrappedLayout(books: Book[]) {
+        const sizes = [...TYPE_SIZES, ...COMPACT_SIZES];
+        let best: { book: Book; type: PrintLayout; wraps: number } | undefined;
+        const vertical = this.view.classList.contains("is-vertical");
+        for (const book of books) {
+            this.mount(book);
+            const maxColumns = book.sheets.length === 1 ? 2 : 3;
+            for (const size of sizes) {
+                for (let columns = 1; columns <= maxColumns; columns += 1) {
+                    const type = { size, columns };
+                    if (!this.setType(book, type)) continue;
+                    const wraps = book.sheets.reduce(
+                        (total, { lines }) =>
+                            total + lines.filter((line) => wrapsLine(line, vertical)).length,
+                        0,
+                    );
+                    if (!best || wraps < best.wraps) best = { book, type, wraps };
+                }
+            }
+        }
+        if (!best) return null;
+        this.mount(best.book);
+        this.setType(best.book, best.type);
+        this.freezeWrappedLines(best.book);
+        return best.book;
+    }
+
+    private fitDense(book: Book) {
         let low = 0;
-        let high = TYPE_SIZES[TYPE_SIZES.length - 1];
-        let bestColumns = 3;
+        let high = COMPACT_SIZES[COMPACT_SIZES.length - 1];
+        let bestColumns = 1;
+        // Dense pages may still fit an unusually long verse intact. Only
+        // release column boundaries when even the compact size needs it.
+        const allowVerseBreak = !this.fittingColumns(book, high * 0.8);
+        if (allowVerseBreak) book.sheets.forEach(({ paper }) => paper.classList.add("is-dense"));
         for (let step = 0; step < 11; step += 1) {
             const size = (low + high) / 2;
-            const columns = this.fittingColumns(sheets, size, 3);
+            const columns = this.fittingColumns(book, size, allowVerseBreak);
             if (columns) {
                 low = size;
                 bestColumns = columns;
@@ -353,95 +423,47 @@ export class FocusLyrics {
                 high = size;
             }
         }
-        this.setType(sheets, low, bestColumns);
+        this.setType(book, { size: low, columns: bestColumns }, allowVerseBreak);
     }
 
-    private setType(sheets: Sheet[], size: number, columns: number) {
-        for (const { paper } of sheets) {
+    private setType(book: Book, { size, columns }: PrintLayout, allowVerseBreak = false) {
+        const wrap = this.view.classList.contains("allow-line-wrap");
+        const vertical = this.view.classList.contains("is-vertical");
+        for (const { paper } of book.sheets) {
             paper.style.setProperty("--focus-lyric-size", `${size}cqw`);
             paper.style.setProperty("--focus-lyric-columns", String(columns));
         }
-        return sheets.every(
-            ({ print, copy }) =>
+        return book.sheets.every(
+            ({ print, copy, lines, stanzas }) =>
                 print.scrollHeight <= print.clientHeight + 1 &&
                 print.scrollWidth <= print.clientWidth + 1 &&
-                copy.scrollWidth <= copy.clientWidth + 1,
+                copy.scrollWidth <= copy.clientWidth + 1 &&
+                copy.scrollHeight <= copy.clientHeight + 1 &&
+                (allowVerseBreak ||
+                    columns === 1 ||
+                    stanzas.every((verse) => verse.getClientRects().length <= 1)) &&
+                (wrap ||
+                    lines.every((line) =>
+                        vertical
+                            ? line.scrollHeight <= line.clientHeight + 1
+                            : line.scrollWidth <= line.clientWidth + 1,
+                    )),
         );
     }
-}
 
-function groupVerses(lines: readonly FocusLyricsLine[], duration: number) {
-    const verses: Verse[] = [];
-    const lyricCount = lines.filter(
-        (line) => line.text.trim() && !MUSIC_MARKER.test(line.text.trim()),
-    ).length;
-    const longGap = Math.max(5800, (duration / Math.max(lyricCount, 1)) * 1.9);
-    let previous: FocusLyricsLine | undefined;
-    let space: Verse["space"] = "none";
-    let current: Verse | undefined;
-    for (const line of lines) {
-        const text = line.text.trim();
-        if (!text) {
-            space = "verse";
-            current = undefined;
-            continue;
-        }
-        const start = line.startTime;
-        const lastStart = previous?.startTime ?? 0;
-        const lastEnd = previous?.endTime ?? lastStart + (previous ? 1800 : 0);
-        if (start !== null && start - lastEnd >= longGap) {
-            space = "interlude";
-            current = undefined;
-        }
-        if (line.startTime !== null) previous = line;
-
-        if (MUSIC_MARKER.test(text)) {
-            verses.push({ lines: [{ ...line, text }], space: "interlude", marker: true });
-            space = "verse";
-            current = undefined;
-            continue;
-        }
-        if (!current || current.lines.length >= 9) {
-            current = { lines: [], space };
-            verses.push(current);
-            space = "none";
-        }
-        current.lines.push({ ...line, text });
-    }
-    return verses;
-}
-
-function splitVerses(verses: Verse[]): [Verse[], Verse[]] | null {
-    // Favor authored breaks, with a split inside the verse when a stanza would dominate a sheet.
-    const weights = verses.map(({ lines }) =>
-        lines.map(({ text }) => Math.max(1, Array.from(text).length / 26)),
-    );
-    const total = weights.flat().reduce((sum, weight) => sum + weight, 0);
-    let consumed = 0;
-    let score = Infinity;
-    let split: { verse: number; line: number } | undefined;
-    for (let verse = 0; verse < verses.length; verse += 1) {
-        for (let line = 0; line < weights[verse].length; line += 1) {
-            if (consumed > 0) {
-                const penalty = line === 0 && verses[verse].space !== "none" ? 0 : total * 0.045;
-                const candidate = Math.abs(consumed - total * 0.46) + penalty;
-                if (candidate < score) {
-                    score = candidate;
-                    split = { verse, line };
-                }
+    private freezeWrappedLines(book: Book) {
+        const vertical = this.view.classList.contains("is-vertical");
+        for (const { lines } of book.sheets) {
+            for (const line of lines) {
+                if (wrapsLine(line, vertical)) freezeMeasuredLyricRows(line, line, true);
             }
-            consumed += weights[verse][line];
         }
     }
-    if (!split) return null;
-    const first = verses.slice(0, split.verse);
-    const second = verses.slice(split.verse);
-    if (split.line) {
-        const verse = verses[split.verse];
-        first.push({ ...verse, lines: verse.lines.slice(0, split.line) });
-        second[0] = { ...verse, space: "none", lines: verse.lines.slice(split.line) };
-    }
-    return [first, second];
+}
+
+function wrapsLine(line: HTMLElement, vertical: boolean) {
+    const thickness = vertical ? line.offsetWidth : line.offsetHeight;
+    return thickness > Number.parseFloat(getComputedStyle(line).lineHeight) * 1.5;
 }
 
 function hashTrack(track: string) {

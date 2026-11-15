@@ -9,6 +9,7 @@
     width: 100%;
     min-width: 0;
     color: var(--paper-ink);
+    font-family: system-ui, sans-serif;
 
     &[data-sheets="2"] {
         padding-inline-start: 7%;
@@ -165,8 +166,18 @@
 
     .focus-lyrics-line {
         display: block;
-        overflow-wrap: anywhere;
+        break-inside: avoid;
+        white-space: pre;
+    }
+
+    &.allow-line-wrap .focus-lyrics-line {
         white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+
+    .focus-lyrics-line .rnp-lyrics-fixed-row {
+        white-space: pre;
+        overflow-wrap: normal;
     }
 
     .focus-lyrics-marker {

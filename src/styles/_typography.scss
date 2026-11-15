@@ -33,14 +33,14 @@ $korean: "Noto Serif CJK KR", "Noto Serif KR", "Source Han Serif KR", AppleMyung
         --fullscape-serif-font: #{$japanese};
     }
     &,
-    & * {
+    & *:not(.focus-lyrics, .focus-lyrics *) {
         font-family: var(--fullscape-serif-font) !important;
     }
 }
 
 [data-fullscape-font="custom"] #{$surfaces} {
     &,
-    & * {
+    & *:not(.focus-lyrics, .focus-lyrics *) {
         font-family: var(--fullscape-custom-font, system-ui, sans-serif) !important;
     }
 }

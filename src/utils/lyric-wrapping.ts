@@ -2,15 +2,27 @@ type Position = { node: Node; offset: number };
 
 // Read the browser's actual line breaks, including its shaping, word-breaking
 // rules and ruby layout. Do not estimate widths from character counts.
-export function freezeMeasuredLyricRows(source: HTMLElement, target: HTMLElement) {
+export function freezeMeasuredLyricRows(
+    source: HTMLElement,
+    target: HTMLElement,
+    balance = source.matches(".rnp-lyrics-line-karaoke, .rnp-lyrics-line-original"),
+) {
     const range = document.createRange();
     let starts: Position[] = [];
     let baseline: number | null = null;
-    const tolerance = Number.parseFloat(getComputedStyle(source).fontSize) * 0.5;
+    const style = getComputedStyle(source);
+    const writingMode = style.writingMode;
+    const tolerance = Number.parseFloat(style.fontSize) * 0.5;
     const record = (position: Position, rect: DOMRect) => {
         if (!rect.width || !rect.height) return;
-        if (baseline !== null && rect.bottom > baseline + tolerance) starts.push(position);
-        baseline = rect.bottom;
+        const blockEnd =
+            writingMode === "vertical-rl"
+                ? -rect.left
+                : writingMode === "vertical-lr"
+                  ? rect.right
+                  : rect.bottom;
+        if (baseline !== null && blockEnd > baseline + tolerance) starts.push(position);
+        baseline = blockEnd;
     };
     const visit = (node: Node) => {
         if (node instanceof HTMLElement) {
@@ -51,26 +63,27 @@ export function freezeMeasuredLyricRows(source: HTMLElement, target: HTMLElement
         return starts.length;
     };
     const rowCount = measure();
-    const originalWidth = source.style.width;
+    const originalSize = source.style.inlineSize;
     // Chromium does not reliably balance preserved spaces and timed inline
     // boxes. Find the narrowest measured width that keeps the existing row
     // count; the browser still chooses legal word/ruby boundaries itself.
     if (
         rowCount > 1 &&
         rowCount <= 6 &&
-        source.matches(".rnp-lyrics-line-karaoke, .rnp-lyrics-line-original") &&
+        balance &&
         !source.textContent?.includes("\n") &&
         !source.querySelector("br")
     ) {
-        let upper = source.getBoundingClientRect().width;
+        const bounds = source.getBoundingClientRect();
+        let upper = writingMode.startsWith("vertical") ? bounds.height : bounds.width;
         let lower = upper / rowCount;
         for (let attempt = 0; attempt < 9 && upper - lower > 1; attempt++) {
             const width = (lower + upper) / 2;
-            source.style.width = `${width}px`;
+            source.style.inlineSize = `${width}px`;
             if (measure() <= rowCount) upper = width;
             else lower = width;
         }
-        source.style.width = `${Math.ceil(upper)}px`;
+        source.style.inlineSize = `${Math.ceil(upper)}px`;
         measure();
     }
 
@@ -89,6 +102,6 @@ export function freezeMeasuredLyricRows(source: HTMLElement, target: HTMLElement
             rows.append(document.createElement("br"));
         }
     });
-    source.style.width = originalWidth;
+    source.style.inlineSize = originalSize;
     target.replaceChildren(rows);
 }
