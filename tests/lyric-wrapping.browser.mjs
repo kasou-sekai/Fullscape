@@ -27,7 +27,11 @@ test(
         const directory = mkdtempSync(join(tmpdir(), "fullscape-wrapping-"));
         try {
             const bundle = await build({
-                entryPoints: ["src/utils/lyric-wrapping.ts"],
+                stdin: {
+                    contents: `export { freezeMeasuredLyricRows } from "./src/utils/lyric-wrapping";
+                               export { applyTypography } from "./src/utils/typography";`,
+                    resolveDir: process.cwd(),
+                },
                 bundle: true,
                 format: "iife",
                 globalName: "Wrapping",
@@ -110,7 +114,29 @@ test(
                     results.push({name,kind,width,activeWeight,activeWordWeights,regular,unchanged,originalBreaks,originalSpacing,karaokeIntact,balancedTail,preserved,rows,naturalRows,activeRows,naturalPositions,active});
                 }
             }
+            root.innerHTML = '<div class="rnp-lyrics-line active"><div class="rnp-lyrics-line-content"><div class="rnp-lyrics-line-original" id="original" lang="ja" data-text-language="ja"><ruby>世界<rt id="ruby" lang="ja">せかい</rt></ruby></div><div id="translation" lang="zh-CN" data-text-language="zh-CN">世界</div><div id="romaji" lang="en" data-text-language="en">sekai</div></div></div>';
+            document.querySelector('#fullscape-display').insertAdjacentHTML('afterbegin', '<div id="fullscape-title-text-track" lang="zh-TW" data-text-language="zh-TW">歌名</div><button><span id="queue-artist" lang="ko">가수</span></button><span id="up-next" lang="en" data-text-language="en">Coming up</span>');
+            document.body.insertAdjacentHTML('beforeend', '<generic-modal><div id="fullscape-config-container" data-locale="zh-TW"><select id="font-option"><option>字型</option></select></div></generic-modal><p id="spotify">Spotify</p>');
+            function fonts() {
+                return Object.fromEntries(['original','ruby','translation','romaji','fullscape-title-text-track','queue-artist','up-next','font-option','spotify'].map(id => {
+                    const { fontFamily, fontWeight } = getComputedStyle(document.getElementById(id));
+                    return [id, { fontFamily, fontWeight }];
+                }));
+            }
+            const defaults = fonts();
+            Wrapping.applyTypography({ preset: 'serif', family: '', weight: 0 });
+            const serif = fonts();
+            Wrapping.applyTypography({ preset: 'custom', family: 'Times New Roman', weight: 800 });
+            const custom = fonts();
+            Wrapping.applyTypography({ preset: 'default', family: 'Times New Roman', weight: 300 });
+            const weightOnly = fonts();
+            Wrapping.applyTypography({ preset: 'default', family: '', weight: 0 });
+            const restored = fonts();
             document.body.innerHTML = '<pre id="results">'+JSON.stringify(results)+'</pre>';
+            const report = document.createElement('pre');
+            report.id = 'typography';
+            report.textContent = JSON.stringify({ defaults, serif, custom, weightOnly, restored });
+            document.body.append(report);
             </script>`;
             const path = join(directory, "test.html");
             writeFileSync(path, html);
@@ -134,6 +160,34 @@ test(
             const match = result.stdout.match(/<pre id="results">(.*?)<\/pre>/s);
             assert.ok(match, result.stdout);
             const results = JSON.parse(match[1].replaceAll("&quot;", '"').replaceAll("&amp;", "&"));
+            const typography = result.stdout.match(/<pre id="typography">(.*?)<\/pre>/s);
+            assert.ok(typography, result.stdout);
+            const { defaults, serif, custom, weightOnly, restored } = JSON.parse(typography[1]);
+            assert.deepEqual(restored, defaults);
+            for (const [id, font] of Object.entries({
+                original: "Noto Serif CJK JP",
+                ruby: "Noto Serif CJK JP",
+                translation: "Noto Serif CJK SC",
+                romaji: "Noto Serif",
+                "fullscape-title-text-track": "Noto Serif CJK TC",
+                "queue-artist": "Noto Serif CJK KR",
+                "up-next": "Noto Serif",
+                "font-option": "Noto Serif CJK TC",
+            })) {
+                assert.ok(serif[id].fontFamily.startsWith(`"${font}"`), JSON.stringify(serif[id]));
+                assert.equal(serif[id].fontWeight, defaults[id].fontWeight);
+                assert.deepEqual(custom[id], {
+                    fontFamily: '"Times New Roman", sans-serif',
+                    fontWeight: "800",
+                });
+                assert.deepEqual(weightOnly[id], {
+                    fontFamily: defaults[id].fontFamily,
+                    fontWeight: "300",
+                });
+            }
+            assert.deepEqual(custom.spotify, defaults.spotify);
+            assert.deepEqual(serif.spotify, defaults.spotify);
+            assert.deepEqual(weightOnly.spotify, defaults.spotify);
             assert.equal(results.length, 27);
             const tails = results.filter((result) =>
                 ["JapaneseTail", "EnglishTail"].includes(result.name),

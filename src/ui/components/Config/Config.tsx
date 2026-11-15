@@ -7,6 +7,7 @@ import { Config, Settings } from "../../../types/fullscape";
 import Utils from "../../../utils/utils";
 import { DOM } from "../../elements";
 import { headerText, getSettingCard, createAdjust } from "../../../utils/setting";
+import { getTypography, typographyWeights } from "../../../utils/typography";
 import SeekableProgressBar from "../ProgressBar/ProgressBar";
 import { modifyRotationSpeed } from "../../../utils/animation";
 import { Lyrics } from "../Lyrics/Lyrics";
@@ -260,6 +261,62 @@ export class ConfigManager {
             toggle.onchange = (evt) => callback((evt?.target as HTMLInputElement)?.checked);
         }
         return settingCard;
+    }
+
+    private static createTypographySetting(locale: string) {
+        const strings = translations[locale].settings.typography;
+        const settings = getTypography(CFM.get("typography"));
+        const card = getSettingCard(
+            `<div class="typography-controls">
+                <select class="typography-preset"></select>
+                <div class="gen-input typography-family" hidden>
+                    <input type="text" maxlength="120" placeholder="Georgia" spellcheck="false">
+                </div>
+                <select class="typography-weight"></select>
+            </div>`,
+            strings.setting,
+            "typography",
+            strings.description,
+        );
+        const preset = card.querySelector<HTMLSelectElement>(".typography-preset");
+        const familyField = card.querySelector<HTMLElement>(".typography-family");
+        const family = familyField?.querySelector<HTMLInputElement>("input");
+        const weight = card.querySelector<HTMLSelectElement>(".typography-weight");
+        if (!preset || !familyField || !family || !weight) return card;
+        preset.setAttribute("aria-label", strings.preset);
+        family.setAttribute("aria-label", strings.family);
+        weight.setAttribute("aria-label", strings.weight);
+        preset.add(new Option(strings.default, "default"));
+        preset.add(new Option(strings.serif, "serif"));
+        preset.add(new Option(strings.custom, "custom"));
+        typographyWeights.forEach((value) => {
+            weight.add(
+                new Option(
+                    value ? `${strings.weight} ${value}` : strings.defaultWeight,
+                    String(value),
+                ),
+            );
+        });
+        preset.value = settings.preset;
+        family.value = settings.family;
+        weight.value = String(settings.weight);
+        familyField.hidden = settings.preset !== "custom";
+
+        const save = () => {
+            familyField.hidden = preset.value !== "custom";
+            const next = getTypography({
+                preset: preset.value as Settings["typography"]["preset"],
+                family: family.value,
+                weight: Number(weight.value),
+            });
+            family.value = next.family;
+            CFM.set("typography", next);
+        };
+        preset.onchange = family.onchange = weight.onchange = save;
+        family.onkeydown = (event) => {
+            if (event.key === "Enter") family.blur();
+        };
+        return card;
     }
 
     private static formatLyricTime(time: number | null) {
@@ -1162,6 +1219,7 @@ export class ConfigManager {
         const layout = strings.layout;
         this.configContainer = document.createElement("div");
         this.configContainer.id = "fullscape-config-container";
+        this.configContainer.dataset.locale = LOCALE;
         const sections = [
             {
                 id: "general",
@@ -1417,6 +1475,7 @@ export class ConfigManager {
                                 ),
                             strings.lyricsSize.description,
                         ),
+                        this.createTypographySetting(LOCALE),
                         this.createToggle(
                             strings.autoHideLyrics,
                             "autoHideLyrics",

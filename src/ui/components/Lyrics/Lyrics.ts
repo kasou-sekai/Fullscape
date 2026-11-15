@@ -356,10 +356,15 @@ export class Lyrics {
                 this.bestSharedPreferredEntry(track),
             ]);
             if (!this.isCurrentLoad(sequence)) return;
-            const useShared =
-                shared && (!bypassAutomaticSharedCache || getEffectiveCacheSource(shared) === "manual");
             const cachedLines = this.getPreparedLyricsFromCache(track);
-            this.ordinaryCandidate = useShared ? this.linesForEntry(shared) : cachedLines;
+            const sharedLines = shared && this.linesForEntry(shared);
+            const useShared =
+                shared &&
+                (getEffectiveCacheSource(shared) === "manual" ||
+                    (!bypassAutomaticSharedCache &&
+                        (!cachedLines?.length ||
+                            this.compareLyricsQuality(sharedLines ?? [], cachedLines) >= 0)));
+            this.ordinaryCandidate = useShared ? sharedLines : cachedLines;
             if (cachedApple) this.appleCandidate = cachedApple;
             if (
                 cachedApple &&
@@ -504,11 +509,17 @@ export class Lyrics {
     // ---- internal helpers ----
 
     private static getPreparedLyricsFromCache(track: LyricsTrack) {
-        const kind: LyricsCacheKind = CFM.get("thirdPartyLyrics")
-            ? this.getEnhancedCacheKind()
-            : "spotify";
-        const cached = getCachedLyricsFullEntry(track.uri, kind);
-        return cached && this.isPreferredCacheEntry(cached) ? this.linesForEntry(cached) : null;
+        const kinds: LyricsCacheKind[] = CFM.get("thirdPartyLyrics")
+            ? [this.getEnhancedCacheKind(), "enhanced", "enhanced-relaxed", "spotify"]
+            : ["spotify"];
+        let best: LyricsCacheEntry | null = null;
+        for (const kind of new Set(kinds)) {
+            const entry = getCachedLyricsFullEntry(track.uri, kind);
+            if (!entry || !this.isPreferredCacheEntry(entry)) continue;
+            if (getEffectiveCacheSource(entry) === "manual") return this.linesForEntry(entry);
+            if (!best || this.compareLyricsQuality(entry.lines, best.lines) > 0) best = entry;
+        }
+        return best ? this.linesForEntry(best) : null;
     }
 
     private static async getPreparedLyrics(
@@ -777,48 +788,47 @@ export class Lyrics {
         try {
             const track = this.getCurrentTrack(trackUri);
             const displayingRich = this.lines.some((line) => line.presentation);
-            if (CFM.get("lyricsSource") !== "standard") {
-                const rich = await this.coordinator
-                    .refresh(track)
-                    .catch(() => null);
-                if (
-                    !this.isCurrentTrack(trackUri) ||
-                    !this.isCurrentLoad(sequence) ||
-                    this.richDecisionInFlight
-                )
-                    return;
-                if (rich?.entry) {
-                    this.appleCandidate = rich.entry;
-                    if (this.prefersAppleCandidate()) {
-                        if (displayingRich || !this.isSynced || !this.lines.length)
-                            this.applyRichEntry(rich.entry);
-                        else this.pendingRichEntry = rich.entry;
-                        return;
-                    }
-                }
-                if (
-                    displayingRich &&
-                    (rich?.status === "unchanged" ||
-                        !rich ||
-                        (rich.status !== "standard" && rich.status !== "hidden"))
-                )
-                    return;
-                if (rich?.status === "standard" || rich?.status === "hidden") {
-                    this.appleCandidate = null;
-                    this.pendingRichEntry = null;
-                }
-                if (displayingRich) {
-                    this.richFallbackAuthorized = true;
-                    this.lastSharedSyncSignature = null;
-                }
-            }
-            const entry = await this.bestSharedPreferredEntry(track);
+            const [rich, entry] = await Promise.all([
+                CFM.get("lyricsSource") === "standard"
+                    ? null
+                    : this.coordinator.refresh(track).catch(() => null),
+                this.bestSharedPreferredEntry(track),
+            ]);
             if (
                 !this.isCurrentTrack(trackUri) ||
                 !this.isCurrentLoad(sequence) ||
                 this.richDecisionInFlight
             )
                 return;
+            const manualStandard =
+                entry && getEffectiveCacheSource(entry) === "manual" &&
+                CFM.get("lyricsSource") !== "apple-music";
+            if (entry?.hidden || manualStandard || rich?.status === "standard" || rich?.status === "hidden") {
+                this.appleCandidate = null;
+                this.pendingRichEntry = null;
+            } else {
+                if (rich?.entry) this.appleCandidate = rich.entry;
+                if (
+                    entry?.lines.length &&
+                    (!this.ordinaryCandidate?.length ||
+                        this.compareLyricsQuality(entry.lines, this.ordinaryCandidate) >= 0)
+                ) {
+                    this.ordinaryCandidate = this.linesForEntry(entry);
+                }
+                if (this.appleCandidate && this.prefersAppleCandidate()) {
+                    if (rich?.entry) {
+                        if (displayingRich || !this.isSynced || !this.lines.length)
+                            this.applyRichEntry(rich.entry);
+                        else this.pendingRichEntry = rich.entry;
+                    }
+                    return;
+                }
+                this.pendingRichEntry = null;
+            }
+            if (displayingRich && entry) {
+                this.richFallbackAuthorized = true;
+                this.lastSharedSyncSignature = null;
+            }
             const signature = entry ? this.cacheEntrySignature(entry) : null;
             if (!signature) {
                 // Only publish local state after the bridge read has had a
@@ -3383,22 +3393,25 @@ export class Lyrics {
         this.lastMeasuredFontSize = this.getFontSize();
     }
 
+    static refreshLayout() {
+        if (!this.lyricsRoot || !this.isSynced) return;
+        this.stabilizeLineWrapping();
+        this.measureHeights();
+        this.applyTransforms(true);
+    }
+
     private static setupResizeObserver() {
         if (!this.lyricsRoot || typeof ResizeObserver === "undefined") return;
         this.stopResizeObserver();
         this.resizeObserver = new ResizeObserver(() => {
             if (this.manualScrollActive) this.resetLyricsInteraction(false);
-            this.stabilizeLineWrapping();
-            this.measureHeights();
-            this.applyTransforms(true);
+            this.refreshLayout();
         });
         this.resizeObserver.observe(this.lyricsRoot);
         const root = this.lyricsRoot;
         void document.fonts?.ready.then(() => {
             if (this.lyricsRoot !== root || !root.isConnected) return;
-            this.stabilizeLineWrapping();
-            this.measureHeights();
-            this.applyTransforms(true);
+            this.refreshLayout();
         });
     }
 

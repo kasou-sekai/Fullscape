@@ -13,6 +13,7 @@ export const DEFAULTS: Config = {
         lyricsChineseConversion: "original",
         karaokeLyrics: true,
         lyricsSize: 42,
+        typography: { preset: "default", family: "", weight: 0 },
         autoHideLyrics: true,
         debugMode: false,
         progressBarDisplay: "always",

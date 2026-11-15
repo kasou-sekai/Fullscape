@@ -12,7 +12,7 @@ import "./styles.scss";
 import { layoutQueue } from "./layout";
 import { getQueueTileMotion } from "./motion";
 import Utils from "../../../utils/utils";
-import { applyTextLanguage } from "../../../utils/text-presentation";
+import { applyTextLanguage, getTextLanguageTag } from "../../../utils/text-presentation";
 
 type ArtworkOrigin = { uri: string; src: string; rect: DOMRect };
 type LayoutDestination = {
@@ -44,6 +44,13 @@ export class Queue {
             entry.artists,
             entry.imageUrl,
         ]);
+    }
+
+    static refreshLayout() {
+        this.layoutGallery();
+        this.container
+            ?.querySelectorAll<HTMLElement>(".queue-tile:is(:hover, :focus-visible)")
+            .forEach((tile) => this.startTileOverflow(tile));
     }
 
     private static layoutGallery() {
@@ -300,9 +307,11 @@ export class Queue {
             wall.className = "queue-wall";
             const upNextLabel = document.createElement("h2");
             upNextLabel.className = "queue-wall-label queue-up-next-label";
+            upNextLabel.lang = "en";
             upNextLabel.textContent = "Up Next";
             const heading = document.createElement("h2");
             heading.className = "queue-wall-label queue-heading";
+            heading.lang = "en";
             heading.textContent = "Queue";
             wall.append(upNextLabel, heading);
             for (const [index, entry] of entries.entries()) {
@@ -476,6 +485,7 @@ export class Queue {
         const subtitle = document.createElement("span");
         subtitle.className = "queue-track-artist";
         subtitle.textContent = artist;
+        subtitle.lang = getTextLanguageTag(artist);
         const titleViewport = document.createElement("span");
         titleViewport.className = "queue-track-title-viewport";
         titleViewport.append(title);

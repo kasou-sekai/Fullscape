@@ -207,6 +207,12 @@ test(
  L.confirmDisplayedSelection=()=>{};globalThis.testSyncEnabled=true;
  await L.syncSharedCacheForCurrentTrack();L.stopLoop();
  result.manualOffsetHandoff={family:L.getDiagnostics().sourceFamily,time:L.lines[0].time};
+ L.appleCandidate=null;L.ordinaryCandidate=null;
+ L.applyRichEntry({kind:'enhanced',trackUri:'spotify:track:test',lines:[legacy],sourceFamily:'apple-music'});L.stopLoop();
+ L.coordinator.refresh=async()=>({status:'unchanged'});
+ L.bestSharedPreferredEntry=async()=>({kind:'enhanced',trackUri:'spotify:track:test',cacheSource:'plugin',sourceName:'NetEase',lines:[translated],metadata:{title:'Example',artist:'Artist'}});
+ await L.syncSharedCacheForCurrentTrack();L.stopLoop();
+ result.preferredOrdinaryHandoff=L.getDiagnostics().sourceFamily;
  globalThis.testSyncEnabled=false;L.currentTrackUri=null;L.coordinator.refresh=originalRefresh;L.bestSharedPreferredEntry=originalShared;L.confirmDisplayedSelection=originalConfirm;
  const lineFixture=${JSON.stringify(lineFixture).replace("<", "\u003c")};
  if(lineFixture.length){
@@ -343,6 +349,7 @@ test(
             assert.equal(value.delayedOffset, 1500);
             assert.equal(value.appliedOffset, 1000);
             assert.deepEqual(value.manualOffsetHandoff, { family: "standard", time: 500 });
+            assert.equal(value.preferredOrdinaryHandoff, "standard");
             assert.equal(value.displayedSource, "apple-music");
             if (process.env.FULLSCAPE_LINE_FIXTURE)
                 assert.deepEqual(value.lineFixture, { lines: 48, words: 0, tier: 10 });

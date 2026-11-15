@@ -14,6 +14,8 @@ import {
     prefersReducedMotion,
 } from "./utils/motion";
 import CFM from "./utils/config";
+import { getTextLanguageTag } from "./utils/text-presentation";
+import { applyTypography } from "./utils/typography";
 
 import translations from "./resources/strings";
 import ICONS, { CLASSES_TO_ADD } from "./constants";
@@ -739,6 +741,7 @@ async function startFullscape() {
     }
 
     function render() {
+        applyTypography(CFM.get("typography"));
         cancelPlaybackTimelineResync();
         playbackDeviceDebugUpdatedAt = 0;
         playbackDeviceDebugRequest = null;
@@ -974,6 +977,7 @@ async function startFullscape() {
                 }
                 const artist = document.createElement("span");
                 artist.textContent = name ?? "";
+                artist.lang = getTextLanguageTag(artist.textContent);
                 if (uri) artist.dataset.uri = uri;
                 artist.onclick = () => handleNavigation(artist.dataset.uri ?? "");
                 DOM.artist.append(artist);
@@ -981,6 +985,7 @@ async function startFullscape() {
 
             if (DOM.album) {
                 DOM.album.innerText = albumText || "";
+                DOM.album.lang = getTextLanguageTag(albumText || "");
                 DOM.album.setAttribute("uri", meta?.album_uri || "");
                 updatedAlbum = true;
             }
@@ -1315,6 +1320,16 @@ async function startFullscape() {
         updateMetadataOverflow();
         updateLyricsBounds();
     }
+
+    document.addEventListener("typography", () => {
+        applyTypography(CFM.get("typography"));
+        if (!Utils.isModeActivated()) return;
+        updateMetadataOverflow();
+        updateLyricsBounds();
+        Lyrics.refreshLayout();
+        Queue.refreshLayout();
+        if (UpNext.upNextShown) UpNext.setupScrollingAnimation();
+    });
 
     ConfigManager.init(
         render,

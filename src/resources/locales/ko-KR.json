@@ -57,6 +57,17 @@
             "deleted": "사전 삭제됨",
             "error": "작업 실패"
         },
+        "typography": {
+            "setting": "글꼴 및 굵기",
+            "description": "가사, 곡 정보, 재생 대기열 등 Fullscape 전체에 적용됩니다. 사용자 지정 시 설치된 글꼴 이름을 입력하세요.",
+            "preset": "글꼴 프리셋",
+            "default": "기본값 (언어별)",
+            "serif": "세리프 (언어별)",
+            "custom": "사용자 지정",
+            "family": "설치된 글꼴 이름",
+            "weight": "굵기",
+            "defaultWeight": "기본 굵기"
+        },
         "lyricsSize": {
             "setting": "가사 글자 크기"
         },

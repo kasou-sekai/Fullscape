@@ -129,6 +129,17 @@
             "furiganaData": "注音数据",
             "dynamic": "动态逐字"
         },
+        "typography": {
+            "setting": "字体与字重",
+            "description": "应用于整个 Fullscape，包括歌词、歌曲信息和队列。自定义时请输入本机已安装的字体名称。",
+            "preset": "字体预设",
+            "default": "默认（按语言）",
+            "serif": "衬线（按语言）",
+            "custom": "自定义",
+            "family": "本机字体名称",
+            "weight": "字重",
+            "defaultWeight": "默认字重"
+        },
         "lyricsSize": {
             "setting": "歌词字号",
             "description": "点击加减按钮调整字号（12–99 像素）。"

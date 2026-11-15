@@ -1,0 +1,54 @@
+$surfaces: ":is(#fullscape-display, #fullscape-default-button, generic-modal:has(:is(#fullscape-config-container, #fullscape-update-prompt, #fullscape-version-confirmation, #fullscape-update-fallback)))";
+
+$serif: "Noto Serif", Georgia, "Times New Roman", "DejaVu Serif", serif;
+$simplified: "Noto Serif CJK SC", "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun,
+    "AR PL SungtiL GB", serif;
+$traditional: "Noto Serif CJK TC", "Noto Serif TC", "Source Han Serif TC", "Songti TC", PMingLiU,
+    MingLiU, "AR PL Mingti2L Big5", serif;
+$japanese: "Noto Serif CJK JP", "Noto Serif JP", "Source Han Serif JP", "Hiragino Mincho ProN",
+    "Yu Mincho", "MS PMincho", "IPA PMincho", serif;
+$korean: "Noto Serif CJK KR", "Noto Serif KR", "Source Han Serif KR", AppleMyungjo, Batang,
+    NanumMyeongjo, serif;
+
+[data-fullscape-font="serif"] #{$surfaces} {
+    --fullscape-serif-font: #{$serif};
+
+    @each $language,
+        $family in ("zh-CN": $simplified, "zh-TW": $traditional, "ja": $japanese, "ko": $korean)
+    {
+        &:is(
+                [data-locale^="#{$language}"],
+                :has(#fullscape-config-container[data-locale^="#{$language}"])
+            ),
+        & :is([data-locale^="#{$language}"], [lang]:lang(#{$language})) {
+            --fullscape-serif-font: #{$family};
+        }
+    }
+
+    & [lang]:lang(en, und) {
+        --fullscape-serif-font: #{$serif};
+    }
+
+    & rt {
+        --fullscape-serif-font: #{$japanese};
+    }
+    &,
+    & * {
+        font-family: var(--fullscape-serif-font) !important;
+    }
+}
+
+[data-fullscape-font="custom"] #{$surfaces} {
+    &,
+    & * {
+        font-family: var(--fullscape-custom-font, system-ui, sans-serif) !important;
+    }
+}
+
+[data-fullscape-font-weight] #{$surfaces} {
+    &,
+    & * {
+        font-weight: var(--fullscape-font-weight) !important;
+        font-synthesis-weight: auto !important;
+    }
+}

@@ -57,6 +57,17 @@
             "deleted": "辞書を削除しました",
             "error": "操作に失敗しました"
         },
+        "typography": {
+            "setting": "フォントと太さ",
+            "description": "歌詞、曲情報、再生キューなど、Fullscape 全体に適用されます。カスタムではインストール済みのフォント名を入力します。",
+            "preset": "フォントプリセット",
+            "default": "標準（言語別）",
+            "serif": "セリフ（言語別）",
+            "custom": "カスタム",
+            "family": "インストール済みのフォント名",
+            "weight": "太さ",
+            "defaultWeight": "標準の太さ"
+        },
         "lyricsSize": {
             "setting": "歌詞の文字サイズ"
         },

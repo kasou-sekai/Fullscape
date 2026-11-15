@@ -9,6 +9,12 @@ export type Config = {
 
 export type BeatResponsePreset = "off" | "low" | "medium" | "high" | "custom";
 
+export type Typography = {
+    preset: "default" | "serif" | "custom";
+    family: string;
+    weight: number;
+};
+
 export type Settings = {
     lyricsDisplay: boolean;
     thirdPartyLyrics: boolean;
@@ -21,6 +27,7 @@ export type Settings = {
     lyricsChineseConversion: "original" | "simplified" | "traditional";
     karaokeLyrics: boolean;
     lyricsSize: number;
+    typography: Typography;
     autoHideLyrics: boolean;
     debugMode: boolean;
     progressBarDisplay: "never" | "mousemove" | "always";

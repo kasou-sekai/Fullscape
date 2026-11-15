@@ -129,6 +129,17 @@
             "furiganaData": "furigana data",
             "dynamic": "dynamic"
         },
+        "typography": {
+            "setting": "Font and Weight",
+            "description": "Applies throughout Fullscape, including lyrics, track details, and the queue. Custom fonts use an installed font name.",
+            "preset": "Font preset",
+            "default": "Default (by language)",
+            "serif": "Serif (by language)",
+            "custom": "Custom",
+            "family": "Installed font name",
+            "weight": "Weight",
+            "defaultWeight": "Default weight"
+        },
         "lyricsSize": {
             "setting": "Lyrics Font Size",
             "description": "Use the +/- buttons to set a custom size (12–99 px)."

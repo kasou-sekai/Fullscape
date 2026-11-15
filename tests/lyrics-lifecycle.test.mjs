@@ -79,6 +79,7 @@ function createHost(playing) {
     class Element {
         children = new Map();
         isConnected = true;
+        dataset = {};
         style = { setProperty: noop, removeProperty: noop };
         classList = { add: noop, remove: noop, toggle: noop, contains: () => false };
         markup = "";
@@ -101,6 +102,7 @@ function createHost(playing) {
             return [];
         }
         setAttribute() {}
+        toggleAttribute() {}
         addEventListener() {}
         removeEventListener() {}
         remove() {
@@ -113,6 +115,7 @@ function createHost(playing) {
     const shortcuts = new Map();
     const settings = {
         lyricsDisplay: true,
+        typography: { preset: "default", family: "", weight: 0 },
         sharedLyricsBridge: true,
         upnextDisplay: "never",
         playerControls: "never",
@@ -143,6 +146,7 @@ function createHost(playing) {
         localStorage: { getItem: () => null, setItem: noop },
         document: {
             body: new Element(),
+            documentElement: new Element(),
             querySelector: () => null,
             createElement: () => new Element(),
             getElementById: (id) => host.extraBar?.appended?.find((node) => node.id === id) ?? null,

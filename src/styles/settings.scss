@@ -575,6 +575,16 @@ generic-modal:has(
         text-align: right;
     }
 
+    .typography-controls {
+        display: grid;
+        gap: 8px;
+        width: 100%;
+
+        .typography-family input {
+            padding-inline-end: 11px;
+        }
+    }
+
     .offline-furigana-actions {
         align-items: center;
         display: flex;

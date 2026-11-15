@@ -177,13 +177,13 @@ export class UpNext {
     }
 
     static setupScrollingAnimation() {
-        const key = DOM.upNextPrimaryText.innerText + ":" + DOM.upNextTitleViewport.clientWidth;
-        if (key === this.scrollKey && this.scrollAnimation) return;
-        this.resetUpNextAnimation();
-        this.scrollKey = key;
         const overflow = Math.ceil(
             DOM.upNextPrimaryText.offsetWidth - DOM.upNextTitleViewport.clientWidth,
         );
+        const key = `${DOM.upNextPrimaryText.innerText}:${DOM.upNextTitleViewport.clientWidth}:${overflow}`;
+        if (key === this.scrollKey && this.scrollAnimation) return;
+        this.resetUpNextAnimation();
+        this.scrollKey = key;
         if (overflow <= 1 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
         this.scrollAnimation = createOverflowScrollAnimation(

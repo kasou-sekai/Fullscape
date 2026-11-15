@@ -117,6 +117,17 @@
             "furiganaData": "注音資料",
             "dynamic": "動態逐字"
         },
+        "typography": {
+            "setting": "字型與字重",
+            "description": "套用至整個 Fullscape，包括歌詞、歌曲資訊和佇列。自訂時請輸入本機已安裝的字型名稱。",
+            "preset": "字型預設",
+            "default": "預設（依語言）",
+            "serif": "襯線（依語言）",
+            "custom": "自訂",
+            "family": "本機字型名稱",
+            "weight": "字重",
+            "defaultWeight": "預設字重"
+        },
         "lyricsSize": {
             "setting": "歌詞字號"
         },

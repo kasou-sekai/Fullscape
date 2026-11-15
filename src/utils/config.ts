@@ -53,7 +53,7 @@ function resetSetting<K extends keyof Settings>(config: Config, key: K) {
 }
 
 const ConfigManager = {
-    get(key: keyof Settings) {
+    get<K extends keyof Settings>(key: K): Settings[K] {
         if (CONFIG === null) {
             CONFIG = getConfig(DEFAULTS);
         }
