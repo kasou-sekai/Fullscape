@@ -328,6 +328,37 @@ test("the booklet gets the classic interlude timeline with backing vocal timing"
     assert.equal(nextIndex, 2);
 });
 
+test("instrumental-only notices are unavailable in both lyrics views", async () => {
+    const { main, Lyrics, host, frames } = createHost(true);
+    await main();
+    const notice = [{ time: 0, text: "此歌曲为没有填词的纯音乐，请您欣赏。" }];
+    Lyrics.applyLines(notice);
+    assert.match(host.DOM.lyrics.innerHTML, /Lyrics unavailable/);
+    assert.doesNotMatch(host.DOM.lyrics.innerHTML, /纯音乐/);
+    assert.equal(frames.size, 0);
+
+    Lyrics.teardown();
+    let presentation;
+    Lyrics.attach(host.createElement(), (state) => {
+        presentation = state;
+    });
+    Lyrics.applyLines(notice);
+    assert.equal(presentation.status, "empty");
+    assert.equal(presentation.lines.length, 0);
+});
+
+test("instrumental notice filtering handles cached variants without losing actual lyrics", () => {
+    const { Lyrics } = createHost(true);
+    const notice = [
+        { time: 0, text: "此歌曲為沒有填詞的純音樂，" },
+        { time: 1000, text: "請您欣賞。" },
+    ];
+    assert.equal(Lyrics.linesForEntry({ lines: notice }).length, 0);
+    const song = [...notice, { time: 2000, text: "Still singing" }];
+    assert.equal(Lyrics.linesForEntry({ lines: song }), song);
+    assert.ok(Lyrics.compareLyricsQuality(song, notice) > 0);
+});
+
 test("a lyrics response arriving after disable cannot render or restart work", async () => {
     const { main, Lyrics, host, settings, frames, timers, player, platform } = createHost(true);
     settings.sharedLyricsBridge = false;

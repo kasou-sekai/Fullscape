@@ -3,6 +3,7 @@ import {
     lyricsPreferenceScore,
 } from "../../../services/lyrics-preference";
 import { traceLyricsBridge } from "../../../services/lyrics-bridge-trace";
+import { isInstrumentalNotice } from "../../../services/lyrics-content";
 import { LyricsCoordinator } from "../../../services/lyrics-coordinator";
 import {
     activeRichLines,
@@ -693,6 +694,7 @@ export class Lyrics {
     }
 
     private static linesForEntry(entry: LyricsCacheEntry): LyricLine[] {
+        if (isInstrumentalNotice(entry.lines)) return [];
         const configuredOffset = Number(entry.offsetMilliseconds ?? 0);
         const manualOffset =
             !entry.timingOffsetApplied && Number.isFinite(configuredOffset) ? configuredOffset : 0;
@@ -922,9 +924,14 @@ export class Lyrics {
             this.refetchAttempt = 0;
             return;
         }
-        if (!lines.length || (!initialLoad && !this.shouldApplySharedLyricsEntry(entry, lines)))
+        const manual = getEffectiveCacheSource(entry) === "manual";
+        if (!lines.length) {
+            if (!isInstrumentalNotice(entry.lines) || (!manual && this.lines.length && !initialLoad))
+                return;
+        } else if (!initialLoad && !this.shouldApplySharedLyricsEntry(entry, lines)) {
             return;
-        if (getEffectiveCacheSource(entry) === "manual") {
+        }
+        if (manual) {
             this.pendingRichEntry = null;
             // Only an explicit manual choice may invalidate an in-flight local
             // enrichment request. Automatic bridge entries can render in the
@@ -999,7 +1006,7 @@ export class Lyrics {
 
     private static lyricsQualityScore(lines: LyricLine[]) {
         return lyricsPreferenceScore(
-            lines,
+            isInstrumentalNotice(lines) ? [] : lines,
             lines.some((line) => line.presentation) ? "apple-music" : "standard",
         );
     }
@@ -1059,6 +1066,7 @@ export class Lyrics {
                     offsetMilliseconds: 0,
                     timingOffsetApplied: false,
                 });
+                if (isInstrumentalNotice(lines)) return [];
                 return lines.length || !automaticFallback
                     ? lines
                     : this.linesForEntry(automaticFallback);
@@ -1340,7 +1348,7 @@ export class Lyrics {
         return (
             !this.ordinaryCandidate?.length ||
             compareLyricsPreference(
-                apple.lines,
+                this.linesForEntry(apple),
                 this.ordinaryCandidate,
                 "apple-music",
                 "standard",
@@ -1406,6 +1414,10 @@ export class Lyrics {
     }
 
     private static applyLines(lines: LyricLine[]) {
+        if (!lines.length || isInstrumentalNotice(lines)) {
+            this.renderStatus("Lyrics unavailable", true);
+            return;
+        }
         if (!lines.some((line) => line.presentation)) {
             this.ordinaryCandidate = lines;
             if (this.appleCandidate && this.prefersAppleCandidate()) {

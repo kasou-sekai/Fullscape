@@ -1,4 +1,5 @@
 import { lyricsPreferenceScore } from "./lyrics-preference";
+import { isInstrumentalNotice } from "./lyrics-content";
 import type { RichPresentation } from "./lyrics-rich-document";
 import { decryptQrc } from "qrc-decoder";
 import { fetchWithTimeout, withTimeout } from "../utils/async";
@@ -396,6 +397,10 @@ async function evaluateLyricsCandidate(
         }
 
         const candidateLines = parsed.dynamicLines.length ? parsed.dynamicLines : parsed.lines;
+        if (isInstrumentalNotice(candidateLines)) {
+            candidateDebug.reason = `${preliminaryReason}；候选仅包含纯音乐提示`;
+            return null;
+        }
         candidateDebug.first = firstMeaningfulLine(candidateLines) ?? null;
         candidateDebug.preview = previewMeaningfulLines(candidateLines);
         const strictMatchResult = strictMetadataMatches
