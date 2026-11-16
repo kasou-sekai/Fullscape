@@ -252,6 +252,7 @@ export class FocusLyrics {
             const block = document.createElement("p");
             block.className = "focus-lyrics-verse";
             block.dataset.space = verse.space;
+            if (verse.trailingInterlude) block.classList.add("focus-lyrics-trailing-interlude");
             if (verse.marker) block.classList.add("focus-lyrics-marker");
             for (const { text } of verse.lines) {
                 const line = document.createElement("span");

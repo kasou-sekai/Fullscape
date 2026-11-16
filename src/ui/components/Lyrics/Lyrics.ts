@@ -69,6 +69,7 @@ export type LyricsPresentation = {
     status: "loading" | "empty" | "ready";
     synced: boolean;
     lines: readonly LyricLine[];
+    interludes: readonly LyricInterlude[];
 };
 type LyricsTrack = TrackInfo & {
     uri: string;
@@ -1314,6 +1315,7 @@ export class Lyrics {
             status,
             synced: this.isSynced,
             lines: this.lines,
+            interludes: this.isSynced ? this.interludes : [],
         });
     }
 

@@ -1,4 +1,3 @@
-import { richLineEnd } from "../../../services/lyrics-rich-document";
 import type { LyricsPresentation } from "../Lyrics/Lyrics";
 import type { Settings } from "../../../types/fullscape";
 import {
@@ -45,17 +44,16 @@ export class FocusPage {
         this.lyrics = new FocusLyrics(this.lyricsRoot);
     }
 
-    presentLyrics = ({ trackUri, status, synced, lines }: LyricsPresentation) => {
+    presentLyrics = ({ trackUri, status, synced, lines, interludes }: LyricsPresentation) => {
         if (trackUri !== this.trackUri) return;
         const text = lines.map((line) => line.text).join("\n");
         const { conversion } = getChineseLyricsPresentation(text, this.chineseConversion);
         this.lyricsRoot.lang = lines.length ? getTextLanguageTag(text, undefined, conversion) : "";
-        this.lines = lines.flatMap((line) => {
-            const startTime = synced ? line.time : null;
-            const endTime = richLineEnd(line);
+        const gaps = new Set(interludes.map(({ nextIndex }) => nextIndex));
+        this.lines = lines.flatMap((line, index) => {
             const lyric = {
-                startTime,
-                endTime: startTime !== null && endTime > startTime ? endTime : undefined,
+                startTime: synced ? line.time : null,
+                interludeBefore: gaps.has(index),
                 text: convertChineseText(parseFuriganaMarkup(line.text).text, conversion),
             };
             return line.sectionBreakBefore ? [{ startTime: null, text: "" }, lyric] : [lyric];

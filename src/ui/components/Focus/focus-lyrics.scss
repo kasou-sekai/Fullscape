@@ -167,7 +167,11 @@
     }
 
     .focus-lyrics-verse[data-space="interlude"] {
-        padding-block-start: 0.9em;
+        padding-block-start: max(1lh, 1.7cqw);
+    }
+
+    .focus-lyrics-trailing-interlude {
+        padding-block-end: max(1lh, 1.7cqw);
     }
 
     .focus-lyrics-line {

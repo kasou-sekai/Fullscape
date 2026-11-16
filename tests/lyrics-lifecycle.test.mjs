@@ -293,12 +293,39 @@ test("the focus booklet receives authored blank lines and unsynced status withou
     Lyrics.applyLines(lines);
     assert.equal(received.at(-1).status, "ready");
     assert.equal(received.at(-1).synced, false);
+    assert.equal(received.at(-1).interludes.length, 0);
     assert.equal(received.at(-1).lines.length, 2);
     assert.equal(received.at(-1).lines[1].sectionBreakBefore, true);
     assert.equal(book.innerHTML, "");
     assert.equal(frames.size, 0);
     Lyrics.teardown();
     assert.equal(Lyrics.presenter, null);
+});
+
+test("the booklet gets the classic interlude timeline with backing vocal timing", async () => {
+    const { main, Lyrics, host } = createHost(true);
+    await main();
+    Lyrics.teardown();
+    let presentation;
+    Lyrics.attach(host.createElement(), (state) => {
+        presentation = state;
+    });
+    Lyrics.applyLines([
+        {
+            text: "First phrase",
+            time: 0,
+            presentation: { end: 2 },
+            backgrounds: [{ text: "Held harmony", time: 1500, presentation: { end: 6.5 } }],
+        },
+        { text: "Second phrase", time: 10000, presentation: { end: 11 } },
+        { text: "After a pause", time: 20000, presentation: { end: 22 } },
+    ]);
+    assert.equal(presentation.synced, true);
+    assert.equal(presentation.interludes, Lyrics.interludes);
+    assert.equal(presentation.interludes.length, 1);
+    const { start, nextIndex } = presentation.interludes[0];
+    assert.equal(start, 11000);
+    assert.equal(nextIndex, 2);
 });
 
 test("a lyrics response arriving after disable cannot render or restart work", async () => {

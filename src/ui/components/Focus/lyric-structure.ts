@@ -1,8 +1,6 @@
-import { buildLyricsTimeline } from "../Lyrics/timeline";
-
 export type FocusLyricsLine = {
     startTime: number | null;
-    endTime?: number | null;
+    interludeBefore?: boolean;
     text: string;
 };
 
@@ -10,6 +8,7 @@ export type Verse = {
     lines: FocusLyricsLine[];
     space: "none" | "verse" | "interlude";
     marker?: boolean;
+    trailingInterlude?: boolean;
 };
 
 const MUSIC_NOTE = /^[♩♪♫♬𝄞🎵🎶]+$/u;
@@ -23,26 +22,17 @@ export function groupVerses(lines: readonly FocusLyricsLine[]): Verse[] {
         const note = MUSIC_NOTE.test(text.replace(/[\s\p{Cf}\uFE0E\uFE0F]/gu, ""));
         return { ...line, text, note, label: MUSIC_LABEL.test(text) };
     });
-    const { interludes } = buildLyricsTimeline(
-        entries.map(({ text, note, label, startTime, endTime }) => {
-            const time = text && !note && !label ? startTime : null;
-            return {
-                text,
-                time,
-                duration: time !== null && endTime !== undefined ? endTime - time : undefined,
-            };
-        }),
-    );
-    const gaps = new Set(
-        interludes.filter(({ anchorIndex }) => anchorIndex >= 0).map(({ nextIndex }) => nextIndex),
-    );
     const verses: Verse[] = [];
     let space: Verse["space"] = "none";
     let current: Verse | undefined;
     let blankAfterLyrics = false;
     let hasAuthoredBreak = false;
     let sawLyric = false;
-    for (const [index, { text, startTime, endTime, note, label }] of entries.entries()) {
+    for (const { text, startTime, note, label, interludeBefore } of entries) {
+        if (interludeBefore) {
+            space = "interlude";
+            current = undefined;
+        }
         if (!text || note) {
             if (!text && sawLyric) blankAfterLyrics = true;
             if (note) space = "interlude";
@@ -50,13 +40,9 @@ export function groupVerses(lines: readonly FocusLyricsLine[]): Verse[] {
             current = undefined;
             continue;
         }
-        if (gaps.has(index)) {
-            space = "interlude";
-            current = undefined;
-        }
         if (label) {
             verses.push({
-                lines: [{ text, startTime, endTime }],
+                lines: [{ text, startTime }],
                 space: "interlude",
                 marker: true,
             });
@@ -69,15 +55,18 @@ export function groupVerses(lines: readonly FocusLyricsLine[]): Verse[] {
             blankAfterLyrics = false;
         }
         if (!current) {
-            current = { lines: [], space: verses.length ? space : "none" };
+            current = { lines: [], space: !verses.length && space === "verse" ? "none" : space };
             verses.push(current);
             space = "none";
         }
-        current.lines.push({ text, startTime, endTime });
+        current.lines.push({ text, startTime });
         sawLyric = true;
     }
 
-    return hasAuthoredBreak ? verses : divideAtRefrains(verses);
+    const result = hasAuthoredBreak ? verses : divideAtRefrains(verses);
+    const last = result.at(-1);
+    if (last && space === "interlude") last.trailingInterlude = true;
+    return result;
 }
 
 function divideAtRefrains(verses: Verse[]) {

@@ -46,8 +46,9 @@ test("standalone Spotify notes mark one gap and lyric text with a note is retain
     assert.deepEqual(textOf(verses), [["First verse ♪"], ["Next verse"]]);
     assert.deepEqual(
         verses.map(({ space }) => space),
-        ["none", "interlude"],
+        ["interlude", "interlude"],
     );
+    assert.equal(verses.at(-1).trailingInterlude, true);
     assert.deepEqual(groupVerses(untimed(["♪", "♫"])), []);
 });
 
@@ -81,15 +82,19 @@ test("supplied blank lines keep authored paragraphs even when they contain an ex
     assert.deepEqual(textOf(groupVerses(untimed([...first, "", ...second]))), [first, second]);
 });
 
-test("uses the shared timing gap based on local lyric cadence", () => {
-    const times = [0, 3000, 6000, 9000, 12000, 24000, 27000, 30000, 33000];
-    const lines = times.map((startTime) => ({ text: `Lyric at ${startTime}`, startTime }));
+test("classic interludes keep their blank space even next to an authored blank", () => {
+    const lines = [
+        { text: "Opening", startTime: 8000, interludeBefore: true },
+        { text: "Still singing", startTime: 10000 },
+        { text: "", startTime: null },
+        { text: "Singing again", startTime: 20000, interludeBefore: true },
+    ];
     const verses = groupVerses(lines);
     assert.deepEqual(
         verses.map(({ lines, space }) => [lines.length, space]),
         [
-            [5, "none"],
-            [4, "interlude"],
+            [2, "interlude"],
+            [1, "interlude"],
         ],
     );
 });
