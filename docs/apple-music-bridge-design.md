@@ -171,6 +171,7 @@ Shiori 独立使用普通自动搜索需要退出协作模式。这样正常连�
 浏览器富文档区分：document、voice/agent、主句、背景子句、词和嵌套音节。
 
 - 每句有稳定 key、start/end、agent、alignment、parentKey、role。
+- Apple Music 主句可携带原始 TTML 的段落编号 `sectionIndex`。Focus 有编号时按源段落排版，缺少编号时沿用分段推断。
 - background 是父句的子层，不成为独立滚动焦点，不贡献主唱首句匹配。
 - 每词/音节保留显式 start/end 和文本范围，不能用另一个声部的下一句来推断结束。
 - DOM 文本范围统一 UTF-16，并保留词/音节层级；不能混用 Swift Character、JS code point 和 UTF-16 的索引。

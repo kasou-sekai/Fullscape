@@ -1,7 +1,11 @@
 .focus-lyrics {
-    --paper-ink: #292823;
-    --paper-muted: #6a645a;
-    --paper-rule: #ad9278;
+    --paper-stock: #fcfaf6;
+    --paper-ink: #2a2824;
+    --paper-muted: #625d55;
+    --paper-rule: #8a8174;
+    --paper-band: #f0ece4;
+    --paper-grain: rgb(70 62 49 / 3%);
+    --paper-seam: color-mix(in srgb, var(--paper-rule) 28%, transparent);
     position: relative;
     display: grid;
     isolation: isolate;
@@ -10,6 +14,36 @@
     min-width: 0;
     color: var(--paper-ink);
     font-family: system-ui, sans-serif;
+
+    &[data-paper="oat"] {
+        --paper-stock: #f4f0e8;
+        --paper-rule: #938572;
+        --paper-band: #eae5db;
+    }
+
+    &[data-paper="stone"] {
+        --paper-stock: #f1efec;
+        --paper-rule: #88837e;
+        --paper-band: #e9e5e1;
+    }
+
+    &[data-paper="mist"] {
+        --paper-stock: #eef1f1;
+        --paper-rule: #7f8889;
+        --paper-band: #e5ebeb;
+    }
+
+    &[data-paper="sage"] {
+        --paper-stock: #eff1eb;
+        --paper-rule: #818879;
+        --paper-band: #e6e9e0;
+    }
+
+    &[data-paper="vellum"] {
+        --paper-stock: #f8f5ef;
+        --paper-rule: #8c857b;
+        --paper-band: #ede9e0;
+    }
 
     &[data-sheets="2"] {
         padding-inline-start: 7%;
@@ -42,7 +76,7 @@
     }
 
     .focus-lyrics-sheet-button:hover {
-        box-shadow: inset 0 0 0 1px rgb(130 101 62 / 36%);
+        box-shadow: inset 0 0 0 1px var(--paper-rule);
     }
 
     .focus-lyrics-sheet-button:focus-visible {
@@ -62,24 +96,24 @@
         box-sizing: border-box;
         width: 100%;
         min-width: 0;
-        aspect-ratio: 1;
-        border: 1px solid rgb(89 73 48 / 12%);
+        aspect-ratio: var(--paper-aspect, 1);
+        border: 1px solid var(--paper-seam);
         background:
-            radial-gradient(ellipse at 29% 54%, rgb(92 75 50 / 5%) 0 0.4px, transparent 0.9px) 0 0 /
+            radial-gradient(ellipse at 29% 54%, var(--paper-grain) 0 0.4px, transparent 0.9px) 0 0 /
                 5px 7px,
-            radial-gradient(ellipse at 73% 18%, rgb(92 75 50 / 3%) 0 0.4px, transparent 1px) 0 0 /
+            radial-gradient(ellipse at 73% 18%, var(--paper-grain) 0 0.35px, transparent 1px) 0 0 /
                 11px 13px,
-            #fff;
+            var(--paper-stock);
         box-shadow:
-            0 8px 28px rgb(57 43 25 / 8%),
-            0 1px 2px rgb(57 43 25 / 5%);
+            0 1px 2px rgb(57 43 25 / 7%),
+            0 9px 27px rgb(57 43 25 / 10%);
     }
 
     .focus-lyrics-paper::before {
         position: absolute;
         inset: 3.6%;
-        border-block-start: 1px solid rgb(123 99 70 / 19%);
-        border-inline-start: 1px solid rgb(123 99 70 / 19%);
+        border-block-start: 1px solid var(--paper-seam);
+        border-inline-start: 1px solid var(--paper-seam);
         width: 5.5%;
         height: 5.5%;
         content: "";
@@ -89,7 +123,7 @@
     .focus-lyrics-leaf:nth-child(even) .focus-lyrics-paper::before {
         inset: 3.6% 3.6% auto auto;
         border-inline-start: 0;
-        border-inline-end: 1px solid rgb(123 99 70 / 19%);
+        border-inline-end: 1px solid var(--paper-seam);
     }
 
     .focus-lyrics-print {
@@ -144,7 +178,7 @@
         grid-template-columns: repeat(var(--focus-lyric-columns), minmax(0, 1fr));
         align-items: start;
         column-gap: 4.8cqw;
-        font-size: var(--focus-lyric-size);
+        font-size: max(12px, var(--focus-lyric-size));
         font-weight: 400;
         line-height: 1.33;
     }
@@ -153,20 +187,43 @@
         min-inline-size: 0;
     }
 
+    .focus-lyrics-copy[data-flow="stanzas"] {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        row-gap: 0.9em;
+
+        &.is-measuring-stanzas .focus-lyrics-verse {
+            inline-size: max-content;
+        }
+
+        .focus-lyrics-verse[data-space="verse"] {
+            padding-block-start: 0;
+        }
+    }
+
+    .focus-lyrics-stanza-row {
+        display: grid;
+        min-inline-size: 0;
+        align-items: start;
+        column-gap: inherit;
+    }
+
     .focus-lyrics-verse {
         margin: 0;
         text-align: start;
     }
 
     .focus-lyrics-copy[data-columns="1"] .focus-lyrics-verse {
-        text-align: var(--focus-single-align, start);
+        text-align: var(--focus-single-align, var(--focus-edition-align, start));
     }
 
     .focus-lyrics-verse[data-space="verse"] {
         padding-block-start: 0.58em;
     }
 
-    .focus-lyrics-verse[data-space="interlude"] {
+    .focus-lyrics-verse[data-space="interlude"],
+    .focus-lyrics-line.is-after-interlude {
         padding-block-start: max(1lh, 1.7cqw);
     }
 
@@ -201,9 +258,31 @@
         overflow-wrap: anywhere;
     }
 
+    &[data-layout="folio"] {
+        .focus-lyrics-print {
+            inset: 9% 8%;
+        }
+
+        .focus-lyrics-header::after {
+            inline-size: 100%;
+        }
+    }
+
     &[data-layout="masthead"] {
+        --paper-aspect: 0.96;
+        --focus-single-align: center;
+
+        .focus-lyrics-print {
+            inset: 8% 8.5%;
+            gap: 5cqw;
+        }
+
         .focus-lyrics-header {
             text-align: center;
+        }
+
+        .focus-lyrics-title {
+            font-size: 7.55cqw;
         }
 
         .focus-lyrics-title,
@@ -213,8 +292,14 @@
     }
 
     &[data-layout="inset"] {
+        .focus-lyrics-header::after {
+            inline-size: 6.5cqw;
+            block-size: 2px;
+        }
+
         .focus-lyrics-title {
             max-inline-size: 12ch;
+            font-size: 7.15cqw;
         }
 
         .focus-lyrics-copy {
@@ -223,8 +308,14 @@
     }
 
     &[data-layout="colophon"] {
+        .focus-lyrics-print {
+            gap: 6cqw;
+        }
+
         .focus-lyrics-header {
             order: 1;
+            display: flex;
+            flex-direction: column;
             align-self: end;
             max-inline-size: 100%;
             text-align: end;
@@ -235,14 +326,199 @@
             margin-inline-start: auto;
         }
 
+        .focus-lyrics-title {
+            font-size: 5.5cqw;
+        }
+
         .focus-lyrics-header::after {
             margin-block: 0 2.5cqw;
             order: -1;
+        }
+    }
+
+    &[data-layout="banner"] {
+        --paper-aspect: 0.94;
+
+        .focus-lyrics-leaf:first-child .focus-lyrics-paper::before,
+        .focus-lyrics-header::after {
+            display: none;
+        }
+
+        .focus-lyrics-print:has(> .focus-lyrics-header) {
+            inset: 0 0 6.5%;
+            justify-content: flex-start;
+            gap: 4.2cqw;
+
+            .focus-lyrics-copy {
+                margin-inline: 7%;
+            }
+        }
+
+        .focus-lyrics-header {
+            padding: 5.5cqw 7% 4.3cqw;
+            background: var(--paper-band);
+            border-block-end: 1px solid var(--paper-seam);
+        }
+
+        .focus-lyrics-title {
+            max-inline-size: none;
+            font-size: 7.1cqw;
+        }
+
+        .focus-lyrics-artist {
+            letter-spacing: 0.085em;
+        }
+    }
+
+    &[data-layout="stanza-bands"] {
+        .focus-lyrics-header {
+            text-align: center;
+        }
+
+        .focus-lyrics-title,
+        .focus-lyrics-header::after {
+            margin-inline: auto;
+        }
+
+        .focus-lyrics-header::after {
+            inline-size: 24%;
+        }
+    }
+
+    &[data-layout="stanza-columns"] {
+        .focus-lyrics-header::after {
+            inline-size: 100%;
+        }
+    }
+
+    &[data-layout="stanza-insets"] {
+        .focus-lyrics-print {
+            gap: 5.2cqw;
+        }
+
+        .focus-lyrics-header {
+            text-align: end;
+        }
+
+        .focus-lyrics-title,
+        .focus-lyrics-header::after {
+            margin-inline-start: auto;
+        }
+    }
+
+    &[data-layout="sidebar"] {
+        --paper-aspect: 1.08;
+
+        .focus-lyrics-print:has(> .focus-lyrics-header) {
+            inset: 8.5% 7%;
+            display: grid;
+            grid-template-columns: minmax(0, 0.29fr) minmax(0, 0.71fr);
+            align-items: safe center;
+            gap: 4cqw;
         }
 
         .focus-lyrics-header {
             display: flex;
             flex-direction: column;
+            align-self: stretch;
+            justify-content: center;
+            padding-inline-end: 3cqw;
+            border-inline-end: 1px solid var(--paper-rule);
+        }
+
+        .focus-lyrics-title {
+            font-size: 5.7cqw;
+        }
+
+        .focus-lyrics-header::after {
+            inline-size: 5cqw;
+        }
+    }
+
+    &[data-layout="broadsheet"] {
+        .focus-lyrics-print {
+            gap: 4.5cqw;
+        }
+
+        .focus-lyrics-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 3cqw;
+            padding-block: 1.5cqw 1.7cqw;
+            border-block-start: 2px solid var(--paper-rule);
+            border-block-end: 1px solid var(--paper-seam);
+        }
+
+        .focus-lyrics-header::after {
+            display: none;
+        }
+
+        .focus-lyrics-title {
+            font-size: 6.8cqw;
+        }
+
+        .focus-lyrics-artist {
+            max-inline-size: 33%;
+            margin-block-start: 0;
+            text-align: end;
+        }
+
+        .focus-lyrics-column + .focus-lyrics-column {
+            position: relative;
+
+            &::before {
+                position: absolute;
+                inset-block: 0;
+                inset-inline-start: -2.4cqw;
+                border-inline-start: 1px solid var(--paper-seam);
+                content: "";
+            }
+        }
+    }
+
+    &[data-layout="staggered"] {
+        --paper-aspect: 0.97;
+
+        .focus-lyrics-header {
+            align-self: end;
+            max-inline-size: 76%;
+            text-align: end;
+        }
+
+        .focus-lyrics-header::after {
+            margin-inline-start: auto;
+        }
+
+        .focus-lyrics-copy[data-columns="2"] {
+            grid-template-columns: minmax(0, 1.09fr) minmax(0, 0.91fr);
+            column-gap: 5.5cqw;
+
+            .focus-lyrics-column:nth-child(2) {
+                margin-block-start: 6cqw;
+            }
+        }
+    }
+
+    &[data-layout="tategaki"] {
+        --focus-single-align: start;
+
+        .focus-lyrics-print {
+            inset: 8%;
+            gap: 5cqw;
+        }
+
+        .focus-lyrics-header {
+            padding-block-end: 2.6cqw;
+            border-block-end: 1px solid var(--paper-rule);
+        }
+
+        .focus-lyrics-header::after {
+            display: none;
+        }
+
+        .focus-lyrics-title {
+            font-size: 7cqw;
         }
     }
 
@@ -356,6 +632,18 @@
         .focus-lyrics-artist {
             margin: 0;
             margin-block-start: 1.35cqw;
+        }
+    }
+
+    &.is-extended[data-layout="folio"] {
+        .focus-lyrics-paper {
+            aspect-ratio: auto;
+        }
+
+        .focus-lyrics-print {
+            position: relative;
+            inset: auto;
+            padding: 8% 7%;
         }
     }
 }

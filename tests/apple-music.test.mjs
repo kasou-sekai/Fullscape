@@ -131,6 +131,12 @@ test("rich validation rejects malformed optional fields and oversized word text"
     assert.equal(api.validRichLines([{ ...main, translation: "你好", duration: null }]), true);
 });
 
+test("rich section identifiers survive document validation and grouping", () => {
+    const line = { ...main, presentation: { ...main.presentation, sectionIndex: 0 } };
+    assert.equal(api.validRichLines([line]), true);
+    assert.equal(api.groupRichLines([line, background])[0].presentation.sectionIndex, 0);
+});
+
 test("background vocals keep their owner active until their own timeline ends", () => {
     const tail = { ...background, presentation: { ...background.presentation, end: 18 } };
     const next = { ...right, time: 17000, presentation: { ...right.presentation, end: 20 } };

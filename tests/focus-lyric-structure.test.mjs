@@ -27,6 +27,16 @@ test("recurring refrains form whole paragraphs and retain their original text", 
     assert.deepEqual(textOf(verses), [opening, refrain, bridge, repeated, ending]);
 });
 
+test("adjacent refrains split at a lyric onset, keeping simultaneous lines together", () => {
+    const refrain = ["The old road shines", "A train crosses the river", "All the lights go out"];
+    const lyrics = [...refrain, ...refrain];
+    assert.deepEqual(textOf(groupVerses(untimed(lyrics))), [refrain, refrain]);
+
+    const starts = [0, 3000, 6000, 6000, 9000, 12000];
+    const overlapping = lyrics.map((text, index) => ({ text, startTime: starts[index] }));
+    assert.deepEqual(textOf(groupVerses(overlapping)), [lyrics]);
+});
+
 test("an authored long stanza stays intact and interludes break between verses", () => {
     const stanza = Array.from({ length: 14 }, (_, index) => `Line ${index + 1} of the opening`);
     const second = ["An evening in winter", "A cold wind from the west"];
@@ -52,7 +62,7 @@ test("standalone Spotify notes mark one gap and lyric text with a note is retain
     assert.deepEqual(groupVerses(untimed(["♪", "♫"])), []);
 });
 
-test("a two-line repeat and a longer repeat with a varied ending do not carve out stanzas", () => {
+test("an isolated two-line hook stays in context and a varied refrain keeps its full ending", () => {
     const phrases = [
         "街の明かりは消えてゆく",
         "ひとりで夜明けを待つ",
@@ -72,7 +82,13 @@ test("a two-line repeat and a longer repeat with a varied ending do not carve ou
         "形のない音に溶けてゆけ",
         "夜の幕が下りる",
     ];
-    assert.deepEqual(textOf(groupVerses(untimed(phrases))), [phrases]);
+    assert.deepEqual(textOf(groupVerses(untimed(phrases))), [
+        phrases.slice(0, 6),
+        phrases.slice(6, 10),
+        phrases.slice(10, 12),
+        phrases.slice(12, 16),
+        phrases.slice(16),
+    ]);
 });
 
 test("supplied blank lines keep authored paragraphs even when they contain an exact repeat", () => {
@@ -86,8 +102,12 @@ test("classic interludes keep their blank space even next to an authored blank",
     const lines = [
         { text: "Opening", startTime: 8000, interludeBefore: true },
         { text: "Still singing", startTime: 10000 },
-        { text: "", startTime: null },
-        { text: "Singing again", startTime: 20000, interludeBefore: true },
+        {
+            text: "Singing again",
+            startTime: 20000,
+            sectionBreakBefore: true,
+            interludeBefore: true,
+        },
     ];
     const verses = groupVerses(lines);
     assert.deepEqual(
@@ -97,6 +117,91 @@ test("classic interludes keep their blank space even next to an authored blank",
             [1, "interlude"],
         ],
     );
+});
+
+test("explicit section headings separate lyrics and stay out of repeat matching", () => {
+    const chorus = ["The water is rising", "The fire is fading", "The morning is near"];
+    const lines = untimed(["[Verse 1: Singer]", ...chorus, "【サビ】", "", ...chorus]);
+    const verses = groupVerses(lines);
+    assert.deepEqual(textOf(verses), [
+        ["[Verse 1: Singer]", ...chorus],
+        ["【サビ】", ...chorus],
+    ]);
+    assert.ok(verses.every(({ heading }) => heading));
+});
+
+test("a pause after singing creates ordinary stanza spacing and a held voice suppresses it", () => {
+    const lines = Array.from({ length: 10 }, (_, index) => {
+        const startTime = index * 3000;
+        return {
+            text: `Unrelated lyric ${index}`,
+            startTime,
+            endTime: startTime + (index === 3 ? 1500 : 2800),
+        };
+    });
+    assert.deepEqual(
+        groupVerses(lines).map(({ lines, space }) => [lines.length, space]),
+        [
+            [4, "none"],
+            [6, "verse"],
+        ],
+    );
+    lines[2].endTime = lines[4].startTime + 100;
+    assert.deepEqual(
+        groupVerses(lines).map(({ lines }) => lines.length),
+        [10],
+    );
+});
+
+test("start-only lyrics can break at a clear change in local cadence", () => {
+    const times = [0, 1800, 3600, 5400, 9300, 11100, 12900, 14700];
+    const lines = times.map((startTime, index) => ({
+        startTime,
+        text: `Unrelated lyric ${index}`,
+    }));
+    assert.deepEqual(
+        groupVerses(lines).map(({ lines }) => lines.length),
+        [4, 4],
+    );
+    assert.deepEqual(
+        groupVerses(untimed(lines.map(({ text }) => text))).map(({ lines }) => lines.length),
+        [8],
+    );
+});
+
+test("source sections govern layout even with repeats, blanks, and long pauses", () => {
+    const refrain = ["The old road shines", "A train crosses the river", "All the lights go out"];
+    const lyrics = [
+        ...refrain.map((text) => ({ text, startTime: null, sectionIndex: 0 })),
+        { text: "♪", startTime: null, sectionIndex: 0 },
+        ...refrain.map((text) => ({ text, startTime: null, sectionIndex: 0 })),
+        { text: "Another morning", startTime: 30000, sectionIndex: 1, interludeBefore: true },
+        { text: "", startTime: null },
+        { text: "The clouds break", startTime: 32000, sectionIndex: 1, sectionBreakBefore: true },
+    ];
+    const verses = groupVerses(lyrics);
+    assert.deepEqual(textOf(verses), [
+        [...refrain, ...refrain],
+        ["Another morning", "The clouds break"],
+    ]);
+    assert.deepEqual(
+        verses.map(({ space }) => space),
+        ["none", "interlude"],
+    );
+    assert.equal(verses[0].lines[3].interludeBefore, true);
+});
+
+test("separate source sections survive a duet line starting after the next section begins", () => {
+    const lines = [
+        { text: "First voice", startTime: 0, sectionIndex: 0 },
+        { text: "New phrase", startTime: 5000, sectionIndex: 1 },
+        { text: "Earlier voice continues", startTime: 5100, sectionIndex: 0 },
+        { text: "Following line", startTime: 7000, sectionIndex: 1 },
+    ];
+    assert.deepEqual(textOf(groupVerses(lines)), [
+        ["First voice", "Earlier voice continues"],
+        ["New phrase", "Following line"],
+    ]);
 });
 
 test("page candidates only use stanza boundaries", () => {

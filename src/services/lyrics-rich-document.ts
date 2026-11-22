@@ -13,6 +13,8 @@ export type RichPresentation = {
     alignment?: "left" | "center" | "right";
     isBackground: boolean;
     parentKey?: string;
+    /** Identifies the source TTML division, including repeated sections of the same type. */
+    sectionIndex?: number;
     end?: number;
     timingMode?: string;
     element: TimedTextElement;

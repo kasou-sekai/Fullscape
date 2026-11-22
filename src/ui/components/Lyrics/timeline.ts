@@ -188,7 +188,7 @@ function normalizeMetadataText(text: string) {
     return text.replace(/\s+/g, " ").trim();
 }
 
-function getMedian(values: number[]) {
+export function getMedian(values: number[]) {
     if (!values.length) return null;
     const sorted = [...values].sort((first, second) => first - second);
     const middle = Math.floor(sorted.length / 2);
@@ -240,16 +240,8 @@ function getLyricLineEnd(
     plainLyricsMinimumDuration: number | null = null,
 ) {
     if (line.time === null) return nextTime;
-    const timedWordEnd = (line.words ?? []).reduce((end, word) => {
-        const wordEnd = word.time + Math.max(0, word.duration);
-        return Number.isFinite(wordEnd) ? Math.max(end, wordEnd) : end;
-    }, line.time);
-    const explicitEnd =
-        typeof line.duration === "number" && line.duration > 0
-            ? line.time + line.duration
-            : line.time;
-    const measuredEnd = Math.max(timedWordEnd, explicitEnd);
-    if (measuredEnd > line.time) return Math.min(nextTime, measuredEnd);
+    const measuredEnd = getMeasuredLyricEnd(line);
+    if (measuredEnd !== undefined) return Math.min(nextTime, measuredEnd);
 
     // Plain LRC/Spotify lines do not carry an end timestamp. Keep the line
     // readable for the normal cadence when it is reliable, then use the
@@ -259,4 +251,20 @@ function getLyricLineEnd(
         Math.max(INTERLUDE_FALLBACK_LINE_DURATION_MS, plainLyricsMinimumDuration ?? 0),
     );
     return Math.min(nextTime, line.time + fallbackDuration);
+}
+
+export function getMeasuredLyricEnd(line: EnhancedLyricLine) {
+    if (line.time === null) return undefined;
+    const richEnd = line.presentation ? richGroupEnd(line) : line.time;
+    if (richEnd > line.time) return richEnd;
+    const explicitEnd =
+        typeof line.duration === "number" && line.duration > 0
+            ? line.time + line.duration
+            : line.time;
+    const timedWordEnd = (line.words ?? []).reduce((end, word) => {
+        const wordEnd = word.time + Math.max(0, word.duration);
+        return Number.isFinite(wordEnd) ? Math.max(end, wordEnd) : end;
+    }, line.time);
+    const measuredEnd = Math.max(timedWordEnd, explicitEnd);
+    return measuredEnd > line.time ? measuredEnd : undefined;
 }

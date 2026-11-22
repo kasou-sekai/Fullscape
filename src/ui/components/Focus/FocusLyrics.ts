@@ -1,4 +1,6 @@
 import { freezeMeasuredLyricRows } from "../../../utils/lyric-wrapping";
+import { lyricEdition, type LyricLayout } from "./lyric-edition";
+import { isStanzaLayout, stanzaRows, type StanzaLayout } from "./stanza-layout";
 import {
     columnEnds,
     groupVerses,
@@ -37,7 +39,6 @@ type Sheet = {
 type Book = { sheets: Sheet[]; pageStart: number | null };
 type PrintLayout = { size: number; columns: number };
 
-const LAYOUTS = ["masthead", "inset", "colophon"] as const;
 const TYPE_SIZES = [3.45, 3.1, 2.8, 2.65, 2.5];
 const COMPACT_SIZES = [2.3, 2.1];
 const FRONT_POSE = "translate(0, 0) rotate(0deg)";
@@ -57,15 +58,23 @@ export class FocusLyrics {
     private requested: Page = 0;
     private animations: Animation[] = [];
     private width = 0;
+    private resizeFrame: number | undefined;
+    private edition = lyricEdition();
+    private preferredLayout: LyricLayout | undefined;
+    private renderedLayout: LyricLayout = "folio";
 
     constructor(private readonly root: HTMLElement) {
         this.view.className = "focus-lyrics";
         this.view.setAttribute("aria-label", "Song lyrics");
         root.append(this.view);
         this.observer = new ResizeObserver(() => {
-            if (this.state && Math.abs(this.view.clientWidth - this.width) > 1) {
-                this.render(this.state);
-            }
+            if (this.resizeFrame !== undefined || Math.abs(this.view.clientWidth - this.width) <= 1)
+                return;
+            this.resizeFrame = requestAnimationFrame(() => {
+                this.resizeFrame = undefined;
+                if (this.state && Math.abs(this.view.clientWidth - this.width) > 1)
+                    this.render(this.state);
+            });
         });
         this.observer.observe(this.view);
         void document.fonts.ready.then(() => {
@@ -95,29 +104,16 @@ export class FocusLyrics {
             this.front = 0;
             this.requested = 0;
             this.playbackPage = null;
+            if (previous) this.edition = lyricEdition(this.renderedLayout, this.edition.paper);
+            this.preferredLayout = undefined;
         }
         this.verses = state.status === "ready" ? groupVerses(state.lines) : [];
-        const seed = hashTrack(state.trackKey);
-        this.view.classList.toggle(
-            "is-serif",
-            (hashTrack(`${state.trackKey}:font`) >>> 9) % 3 !== 0,
-        );
-        const direction = (seed >>> 12) & 3;
-        this.view.classList.toggle(
-            "is-vertical",
-            (/^ja\b/i.test(this.root.lang) && direction !== 0) ||
-                (/^zh\b/i.test(this.root.lang) && direction === 1),
-        );
-        const stagger = (hashTrack(`${state.trackKey}:alignment`) >>> 9) % 2 !== 0;
-        this.view.style.setProperty(
-            "--focus-single-align",
-            stagger ? (this.view.classList.contains("is-vertical") ? "end" : "center") : "start",
-        );
         this.render(state);
     }
 
     destroy() {
         this.observer.disconnect();
+        if (this.resizeFrame !== undefined) cancelAnimationFrame(this.resizeFrame);
         this.cancelAnimations();
         this.sheets = [];
         this.state = null;
@@ -126,8 +122,20 @@ export class FocusLyrics {
 
     private render(state: FocusLyricsState) {
         this.cancelAnimations();
-        this.view.classList.remove("allow-line-wrap");
+        this.view.classList.remove("allow-line-wrap", "is-extended");
+        const { paper, serif, direction, centered } = this.edition;
+        const vertical =
+            (/^ja\b/i.test(this.root.lang) && direction < 0.64) ||
+            (/^zh\b/i.test(this.root.lang) && direction < 0.28);
+        this.view.dataset.paper = paper;
+        this.view.classList.toggle("is-serif", serif);
+        this.view.classList.toggle("is-vertical", vertical);
+        this.view.style.setProperty(
+            "--focus-edition-align",
+            centered ? (vertical ? "end" : "center") : "start",
+        );
         const book = this.typeset(state);
+        if (this.verses.length) this.preferredLayout ??= this.renderedLayout;
         this.sheets = book.sheets;
         this.pageStart = book.pageStart;
 
@@ -140,26 +148,53 @@ export class FocusLyrics {
     }
 
     private typeset(state: FocusLyricsState): Book {
-        const seed = hashTrack(state.trackKey);
-        this.view.dataset.layout = LAYOUTS[seed % LAYOUTS.length];
-        if (state.title && (hashTrack(`${state.trackKey}:surround`) >>> 9) % 4 === 0) {
-            const ends = surroundEnds(this.verses);
-            if (ends) {
-                const surrounded = this.fitSurround(state, ends);
-                if (surrounded) return surrounded;
-                this.view.dataset.layout = LAYOUTS[seed % LAYOUTS.length];
-            }
+        const single = { sheets: [this.createSheet(this.verses, 0, state)], pageStart: null };
+        const layouts = this.availableLayouts(state);
+        const fallback = layouts.find((layout) => !spaceIntensive(layout)) ?? "folio";
+        if (!this.verses.length) {
+            this.changeLayout(fallback);
+            this.mount(single);
+            return single;
         }
 
-        const single = { sheets: [this.createSheet(this.verses, 0, state)], pageStart: null };
-        this.mount(single);
-        if (!this.verses.length || this.fit(single, TYPE_SIZES)) return single;
+        let spreads: Book[] | undefined;
+        const getSpreads = () =>
+            (spreads ??= splitCandidates(this.verses).map((split) =>
+                this.createSpread(split, state),
+            ));
+        // Allow a few expressive layouts to compete before fitting a full,
+        // compact reading layout. Keep the preferred design across resizes.
+        for (const layout of layouts.slice(0, 3)) {
+            this.changeLayout(layout);
+            if (layout === "surround") {
+                const ends = surroundEnds(this.verses);
+                const surrounded = ends && this.fitSurround(state, ends);
+                if (surrounded) return surrounded;
+                continue;
+            }
+            const columns = layout === "broadsheet" || layout === "staggered" ? 2 : 1;
+            const tryBook = (book: Book) => {
+                this.mount(book);
+                return isStanzaLayout(layout)
+                    ? this.fitStanzaRows(book, layout)
+                    : this.fit(book, TYPE_SIZES, columns);
+            };
+            if (tryBook(single)) return single;
+            for (const book of getSpreads()) {
+                if (tryBook(book)) return book;
+            }
+            if (layout === fallback) break;
+        }
 
-        const splits = splitCandidates(this.verses);
-        const books = [single, ...splits.map((split) => this.createSpread(split, state))];
-        for (const book of books.slice(1)) {
-            this.mount(book);
-            if (this.fit(book, TYPE_SIZES)) return book;
+        const books = [single, ...getSpreads()];
+        const needsStandardFit = this.renderedLayout !== fallback;
+        this.changeLayout(fallback);
+        this.mount(single);
+        if (needsStandardFit) {
+            for (const book of books) {
+                this.mount(book);
+                if (this.fit(book, TYPE_SIZES)) return book;
+            }
         }
         for (const book of books) {
             this.mount(book);
@@ -169,25 +204,124 @@ export class FocusLyrics {
         // Shrink complete verses before wrapping. Even the densest
         // arrangement moves only whole verses between columns or sheets.
         this.view.classList.add("allow-line-wrap");
-        const wrapped = this.findWrappedLayout(books);
-        if (wrapped) return wrapped;
-
-        let best = { book: single, type: { size: 0, columns: 1 } };
-        for (const book of books) {
-            this.mount(book);
-            const type = this.findDenseLayout(book);
-            if (type.size > best.type.size) best = { book, type };
+        const adaptive = layouts.find(isStanzaLayout);
+        if (adaptive) {
+            this.changeLayout(adaptive);
+            for (const book of books) {
+                this.mount(book);
+                if (this.fitStanzaRows(book, adaptive)) {
+                    this.freezeWrappedLines(book);
+                    return book;
+                }
+            }
+            this.changeLayout(fallback);
         }
-        this.mount(best.book);
-        this.setType(best.book, best.type);
-        this.freezeWrappedLines(best.book);
-        return best.book;
+        return this.findWrappedLayout(books) ?? this.extendPaper(books);
+    }
+
+    private changeLayout(layout: LyricLayout) {
+        this.renderedLayout = layout;
+        this.view.dataset.layout = layout;
+    }
+
+    private availableLayouts(state: FocusLyricsState) {
+        const vertical = this.view.classList.contains("is-vertical");
+        const width = this.view.clientWidth;
+        const stanzas = this.verses.filter(({ marker }) => !marker);
+        const layouts = this.edition.layouts.filter((layout) => {
+            switch (layout) {
+                case "sidebar":
+                    return Boolean(
+                        state.title && !vertical && width >= 400 && state.lines.length <= 44,
+                    );
+                case "surround":
+                    return Boolean(state.title && width >= 420 && stanzas.length >= 4);
+                case "staggered":
+                case "broadsheet":
+                    return !vertical && width >= 360 && stanzas.length >= 3;
+                case "stanza-bands":
+                case "stanza-columns":
+                case "stanza-insets":
+                    return width >= 340 && stanzas.length >= 3;
+                case "banner":
+                    return Boolean(state.title && !vertical);
+                case "tategaki":
+                    return Boolean(state.title && vertical);
+                default:
+                    return true;
+            }
+        });
+        const favorite = this.preferredLayout;
+        if (favorite && layouts.includes(favorite))
+            return [favorite, ...layouts.filter((layout) => layout !== favorite)];
+
+        // Irregular material benefits from measuring the stanzas before trying
+        // a uniform page. Keep the shuffled order among the adaptive layouts.
+        if (hasVariedStanzas(stanzas)) {
+            const adaptive = layouts.filter(isStanzaLayout).slice(0, 2);
+            return [
+                ...adaptive,
+                ...layouts.filter((layout) => !adaptive.some((row) => row === layout)),
+            ];
+        }
+        return layouts;
+    }
+
+    private fitStanzaRows(book: Book, layout: StanzaLayout) {
+        const vertical = this.view.classList.contains("is-vertical");
+        for (const size of TYPE_SIZES) {
+            let adapted = false;
+            for (const sheet of book.sheets) {
+                sheet.paper.style.setProperty("--focus-lyric-size", `${size}cqw`);
+                sheet.copy.dataset.flow = "stanzas";
+                delete sheet.copy.dataset.columns;
+                sheet.columns = [];
+                sheet.ends = [];
+
+                const inlineSize = vertical ? sheet.copy.clientHeight : sheet.copy.clientWidth;
+                const gutter = Number.parseFloat(getComputedStyle(sheet.copy).columnGap) || 0;
+                sheet.copy.classList.add("is-measuring-stanzas");
+                sheet.copy.replaceChildren(...sheet.stanzas);
+                const measures = sheet.stanzas.map((stanza) => ({
+                    inlineSize: vertical ? stanza.offsetHeight : stanza.offsetWidth,
+                    blockSize: vertical ? stanza.offsetWidth : stanza.offsetHeight,
+                    ownRow:
+                        stanza.dataset.space === "interlude" ||
+                        stanza.classList.contains("focus-lyrics-marker"),
+                }));
+                sheet.copy.classList.remove("is-measuring-stanzas");
+
+                let start = 0;
+                const rows = stanzaRows(measures, inlineSize, gutter, layout).map(
+                    ({ fractions, align }) => {
+                        const row = document.createElement("div");
+                        row.className = "focus-lyrics-stanza-row";
+                        if (align) {
+                            row.style.inlineSize = `${fractions[0] * 100}%`;
+                            row.style.alignSelf = align;
+                        }
+                        row.style.gridTemplateColumns = fractions
+                            .map(
+                                (fraction) =>
+                                    `minmax(0, ${fractions.length === 1 ? 1 : fraction}fr)`,
+                            )
+                            .join(" ");
+                        row.append(...sheet.stanzas.slice(start, start + fractions.length));
+                        start += fractions.length;
+                        adapted ||= Boolean(align) || fractions.length > 1;
+                        return row;
+                    },
+                );
+                sheet.copy.replaceChildren(...rows);
+            }
+            if (adapted && this.fits(book)) return true;
+        }
+        return false;
     }
 
     private fitSurround(state: FocusLyricsState, ends: number[]): Book | null {
         const sheet = this.createSheet(this.verses, 0, state);
         const book = { sheets: [sheet], pageStart: null };
-        this.view.dataset.layout = "surround";
         this.mount(book);
         this.createColumns(sheet, ends.length);
         this.placeStanzas(sheet, ends);
@@ -195,7 +329,7 @@ export class FocusLyrics {
         if (!header) return null;
         for (const size of TYPE_SIZES) {
             sheet.paper.style.setProperty("--focus-lyric-size", `${size}cqw`);
-            if (header.offsetHeight > sheet.columns[1].clientHeight) continue;
+            if (!fitsBox(header) || header.offsetHeight > sheet.columns[1].clientHeight) continue;
             if (sheet.columns.every(fitsBox) && sheet.lines.every(fitsBox)) return book;
         }
         return null;
@@ -254,9 +388,11 @@ export class FocusLyrics {
             block.dataset.space = verse.space;
             if (verse.trailingInterlude) block.classList.add("focus-lyrics-trailing-interlude");
             if (verse.marker) block.classList.add("focus-lyrics-marker");
-            for (const { text } of verse.lines) {
+            for (const [index, { text, interludeBefore }] of verse.lines.entries()) {
                 const line = document.createElement("span");
                 line.className = "focus-lyrics-line";
+                if (verse.heading && index === 0) line.classList.add("focus-lyrics-marker");
+                if (index && interludeBefore) line.classList.add("is-after-interlude");
                 line.dir = "auto";
                 line.textContent = text;
                 block.append(line);
@@ -393,19 +529,15 @@ export class FocusLyrics {
         delete this.view.dataset.turning;
     }
 
-    private fit(book: Book, sizes: number[]) {
+    private fit(book: Book, sizes: number[], minimumColumns = 1) {
+        const maxColumns = book.sheets.length === 1 || this.renderedLayout === "staggered" ? 2 : 3;
+        if (book.sheets.some(({ stanzas }) => stanzas.length < minimumColumns)) return false;
         for (const size of sizes) {
-            if (this.fittingColumns(book, size)) return true;
+            for (let columns = minimumColumns; columns <= maxColumns; columns += 1) {
+                if (this.setType(book, { size, columns })) return true;
+            }
         }
         return false;
-    }
-
-    private fittingColumns(book: Book, size: number) {
-        const maxColumns = book.sheets.length === 1 ? 2 : 3;
-        for (let columns = 1; columns <= maxColumns; columns += 1) {
-            if (this.setType(book, { size, columns })) return columns;
-        }
-        return 0;
     }
 
     private findWrappedLayout(books: Book[]) {
@@ -435,24 +567,33 @@ export class FocusLyrics {
         return best.book;
     }
 
-    private findDenseLayout(book: Book): PrintLayout {
-        let low = 0;
-        let high = COMPACT_SIZES[COMPACT_SIZES.length - 1];
-        let bestColumns = 1;
-        for (let step = 0; step < 11; step += 1) {
-            const size = (low + high) / 2;
-            const columns = this.fittingColumns(book, size);
-            if (columns) {
-                low = size;
-                bestColumns = columns;
-            } else {
-                high = size;
+    private extendPaper(books: Book[]) {
+        this.view.classList.add("is-extended");
+        this.view.classList.remove("is-vertical");
+        this.changeLayout("folio");
+        let best = { book: books[0], type: { size: 3.1, columns: 1 }, height: Infinity };
+        for (const book of books) {
+            this.mount(book);
+            const maxColumns = this.view.clientWidth >= 440 ? 2 : 1;
+            for (let columns = 1; columns <= maxColumns; columns += 1) {
+                const type = { size: 3.1, columns };
+                if (!this.setType(book, type)) continue;
+                const height = Math.max(...book.sheets.map(({ paper }) => paper.offsetHeight));
+                if (height < best.height) best = { book, type, height };
             }
         }
-        return { size: low, columns: bestColumns };
+        this.mount(best.book);
+        this.setType(best.book, best.type);
+        this.freezeWrappedLines(best.book);
+        const height = Math.max(
+            ...best.book.sheets.map(({ paper }) => Math.max(paper.offsetHeight, paper.offsetWidth)),
+        );
+        for (const { paper } of best.book.sheets) paper.style.minHeight = `${height}px`;
+        return best.book;
     }
 
     private createColumns(sheet: Sheet, count: number) {
+        delete sheet.copy.dataset.flow;
         if (sheet.columns.length === count) return;
         sheet.copy.dataset.columns = String(count);
         sheet.copy.style.setProperty("--focus-lyric-columns", String(count));
@@ -479,7 +620,6 @@ export class FocusLyrics {
     }
 
     private setType(book: Book, { size, columns }: PrintLayout) {
-        const wrap = this.view.classList.contains("allow-line-wrap");
         const vertical = this.view.classList.contains("is-vertical");
         for (const sheet of book.sheets) {
             sheet.paper.style.setProperty("--focus-lyric-size", `${size}cqw`);
@@ -493,6 +633,11 @@ export class FocusLyrics {
                 this.placeStanzas(sheet, columnEnds(weights, count));
             }
         }
+        return this.fits(book);
+    }
+
+    private fits(book: Book) {
+        const wrap = this.view.classList.contains("allow-line-wrap");
         return book.sheets.every(
             ({ print, copy, lines, columns: boxes }) =>
                 fitsBox(print) &&
@@ -517,12 +662,24 @@ function fitsBox(box: HTMLElement) {
 }
 
 function wrapsLine(line: HTMLElement, vertical: boolean) {
+    const style = getComputedStyle(line);
     const thickness = vertical ? line.offsetWidth : line.offsetHeight;
-    return thickness > Number.parseFloat(getComputedStyle(line).lineHeight) * 1.5;
+    const spacing =
+        Number.parseFloat(style.paddingBlockStart) + Number.parseFloat(style.paddingBlockEnd);
+    return thickness - spacing > Number.parseFloat(style.lineHeight) * 1.5;
 }
 
-function hashTrack(track: string) {
-    let hash = 2166136261;
-    for (const character of track) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
-    return hash >>> 0;
+function spaceIntensive(layout: LyricLayout) {
+    return (
+        isStanzaLayout(layout) ||
+        ["surround", "sidebar", "staggered", "broadsheet", "banner"].includes(layout)
+    );
+}
+
+function hasVariedStanzas(stanzas: Verse[]) {
+    if (stanzas.length < 3) return false;
+    const lengths = stanzas.map(({ lines }) => lines.length);
+    if (Math.max(...lengths) >= Math.min(...lengths) * 2 + 1) return true;
+    const widths = stanzas.map(({ lines }) => Math.max(...lines.map(({ text }) => text.length)));
+    return Math.max(...widths) >= Math.min(...widths) * 2 + 6;
 }

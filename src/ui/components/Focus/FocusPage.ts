@@ -6,6 +6,7 @@ import {
 } from "../../../utils/chinese-conversion";
 import { parseFuriganaMarkup } from "../../../utils/furigana";
 import { getTextLanguageTag } from "../../../utils/text-presentation";
+import { getMeasuredLyricEnd } from "../Lyrics/timeline";
 import { FocusLyrics } from "./FocusLyrics";
 import { FocusPlayer } from "./FocusPlayer";
 
@@ -50,13 +51,19 @@ export class FocusPage {
         const { conversion } = getChineseLyricsPresentation(text, this.chineseConversion);
         this.lyricsRoot.lang = lines.length ? getTextLanguageTag(text, undefined, conversion) : "";
         const gaps = new Set(interludes.map(({ nextIndex }) => nextIndex));
-        this.lines = lines.flatMap((line, index) => {
-            const lyric = {
+        this.lines = lines.map((line, index) => {
+            const section = line.presentation?.sectionIndex;
+            return {
                 startTime: synced ? line.time : null,
+                endTime: synced ? getMeasuredLyricEnd(line) : undefined,
+                sectionBreakBefore: line.sectionBreakBefore,
+                sectionIndex:
+                    typeof section === "number" && Number.isSafeInteger(section) && section >= 0
+                        ? section
+                        : undefined,
                 interludeBefore: gaps.has(index),
                 text: convertChineseText(parseFuriganaMarkup(line.text).text, conversion),
             };
-            return line.sectionBreakBefore ? [{ startTime: null, text: "" }, lyric] : [lyric];
         });
         this.status = status;
         this.update();
