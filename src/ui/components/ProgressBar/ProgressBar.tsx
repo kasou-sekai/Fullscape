@@ -29,23 +29,31 @@ const SeekableProgressBar = () => {
 
     const animationFrame = React.useRef<number | null>(null);
     const progressRef = React.useRef(curProgress);
+    const labeledProgress = React.useRef(curProgress);
+    const paintedPercentage = React.useRef<number | null>(null);
     const durationRef = React.useRef(curDuration);
     const playbackAnchor = React.useRef({ progress: curProgress, timestamp: 0, isPlaying: false });
 
     const paintProgress = (progress: number) => {
         progressRef.current = progress;
         const percentage = getProgressPercentage(progress, durationRef.current);
-        if (fillRef.current) {
+        if (fillRef.current && percentage !== paintedPercentage.current) {
+            const previousPercentage = paintedPercentage.current;
             fillRef.current.style.width = `${percentage}%`;
-            fillRef.current.style.minWidth = percentage > 0 ? "10px" : "0";
+            if (previousPercentage === null || (previousPercentage > 0) !== (percentage > 0)) {
+                fillRef.current.style.minWidth = percentage > 0 ? "10px" : "0";
+            }
+            paintedPercentage.current = percentage;
         }
-        setProgress((previous) =>
-            Math.floor(previous / 1000) === Math.floor(progress / 1000) &&
-            Math.floor((durationRef.current - previous) / 1000) ===
+        const previous = labeledProgress.current;
+        if (
+            Math.floor(previous / 1000) !== Math.floor(progress / 1000) ||
+            Math.floor((durationRef.current - previous) / 1000) !==
                 Math.floor((durationRef.current - progress) / 1000)
-                ? previous
-                : progress,
-        );
+        ) {
+            labeledProgress.current = progress;
+            setProgress(progress);
+        }
     };
     const stopAnimation = () => {
         if (animationFrame.current !== null) cancelAnimationFrame(animationFrame.current);

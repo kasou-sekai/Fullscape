@@ -19,6 +19,11 @@ type LayoutDestination = {
     bounds: Pick<DOMRect, "top" | "bottom" | "height">;
     scrollTop: number;
 };
+type ScrollTile = {
+    tile: HTMLElement;
+    layer: HTMLElement;
+    motion?: ReturnType<typeof getQueueTileMotion>;
+};
 
 /** The queue is a wall of upcoming artwork; the playing artwork lives on the left. */
 export class Queue {
@@ -30,6 +35,7 @@ export class Queue {
     private static observedGallery: HTMLElement | null = null;
     private static tileOverflowAnimations = new WeakMap<HTMLElement, Animation[]>();
     private static scrollGallery: HTMLElement | null = null;
+    private static scrollTiles: ScrollTile[] = [];
     private static scrollFrame: number | null = null;
     private static scrollListener: (() => void) | null = null;
     private static layoutDestinations = new WeakMap<HTMLElement, LayoutDestination>();
@@ -112,6 +118,7 @@ export class Queue {
         }
         if (this.scrollFrame !== null) cancelAnimationFrame(this.scrollFrame);
         this.scrollGallery = null;
+        this.scrollTiles = [];
         this.scrollFrame = null;
         this.scrollListener = null;
     }
@@ -120,11 +127,13 @@ export class Queue {
     private static setupScrollAnimations(gallery: HTMLElement) {
         this.teardownScrollAnimations();
         this.scrollGallery = gallery;
-        if (
-            typeof requestAnimationFrame !== "function" ||
-            prefersReducedMotion()
-        )
-            return;
+        this.scrollTiles = Array.from(gallery.querySelectorAll<HTMLElement>(".queue-tile")).flatMap(
+            (tile): ScrollTile[] => {
+                const layer = tile.querySelector<HTMLElement>(".queue-motion-layer");
+                return layer ? [{ tile, layer }] : [];
+            },
+        );
+        if (typeof requestAnimationFrame !== "function" || prefersReducedMotion()) return;
         const update = () => {
             this.scrollFrame = null;
             if (this.scrollGallery !== gallery) return;
@@ -140,30 +149,31 @@ export class Queue {
     private static updateScrollProgress(gallery: HTMLElement) {
         const galleryBounds = gallery.getBoundingClientRect();
         if (!galleryBounds.height) return;
-        const measurements = Array.from(gallery.querySelectorAll<HTMLElement>(".queue-tile")).map(
-            (tile) => {
-                const destination = this.layoutDestinations.get(tile);
-                if (!destination) return { tile, bounds: tile.getBoundingClientRect() };
-                const scrollDelta = gallery.scrollTop - destination.scrollTop;
-                return {
-                    tile,
-                    bounds: {
-                        top: destination.bounds.top - scrollDelta,
-                        bottom: destination.bounds.bottom - scrollDelta,
-                        height: destination.bounds.height,
-                    },
-                };
-            },
-        );
-        measurements.forEach(({ tile, bounds }) => {
-            const state = getQueueTileMotion(bounds, galleryBounds, gallery.scrollTop);
-            if (!state) return;
-            const motion = tile.querySelector<HTMLElement>(".queue-motion-layer");
-            if (!motion) return;
-            motion.style.transformOrigin = state.origin;
-            motion.style.transform = `translate3d(0, ${state.translateY}px, 0) scale3d(${state.scaleX}, ${state.scaleY}, 1)`;
-            motion.style.opacity = String(state.progress);
-            motion.style.filter = `blur(${state.blur}px)`;
+        const scrollTop = gallery.scrollTop;
+        // Read all tile positions before writing styles to their motion layers.
+        const measurements = this.scrollTiles.map(({ tile }) => {
+            const destination = this.layoutDestinations.get(tile);
+            if (!destination) return tile.getBoundingClientRect();
+            const scrollDelta = scrollTop - destination.scrollTop;
+            return {
+                top: destination.bounds.top - scrollDelta,
+                bottom: destination.bounds.bottom - scrollDelta,
+                height: destination.bounds.height,
+            };
+        });
+        this.scrollTiles.forEach((entry, index) => {
+            const state = getQueueTileMotion(measurements[index], galleryBounds, scrollTop);
+            if (
+                !state ||
+                (entry.motion?.progress === state.progress && entry.motion.origin === state.origin)
+            )
+                return;
+            entry.motion = state;
+            const { style } = entry.layer;
+            style.transformOrigin = state.origin;
+            style.transform = `translate3d(0, ${state.translateY}px, 0) scale3d(${state.scaleX}, ${state.scaleY}, 1)`;
+            style.opacity = String(state.progress);
+            style.filter = `blur(${state.blur}px)`;
         });
     }
     private static refreshTimers: ReturnType<typeof setTimeout>[] = [];

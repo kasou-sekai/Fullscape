@@ -1,4 +1,4 @@
-import { richGroupEnd } from "../../../services/lyrics-rich-document";
+import { activeRichLines, richGroupEnd, richLineEnd } from "../../../services/lyrics-rich-document";
 import type { EnhancedLyricLine } from "../../../services/third-party-lyrics";
 
 export type TimedLyricLine = {
@@ -33,6 +33,38 @@ export function buildLyricsTimeline(lines: EnhancedLyricLine[]) {
     return {
         timedLines,
         interludes: buildInterludes(lines, timedLines),
+    };
+}
+
+/** Voice activity and the held-line selection only change at voice starts and ends. */
+export function createRichLineLookup(lines: EnhancedLyricLine[]) {
+    const boundaries = new Set<number>();
+    for (const line of lines) {
+        boundaries.add(richGroupEnd(line));
+        for (const voice of [line, ...(line.backgrounds ?? [])]) {
+            if (voice.time === null) continue;
+            boundaries.add(voice.time);
+            boundaries.add(richLineEnd(voice));
+        }
+    }
+    const times = [...boundaries].filter(Number.isFinite).sort((a, b) => a - b);
+    let start = Number.POSITIVE_INFINITY;
+    let end = Number.NEGATIVE_INFINITY;
+    let state: { active: number[]; singing: boolean };
+    return (progress: number) => {
+        if (progress >= start && progress < end) return state;
+        let low = 0;
+        let high = times.length;
+        while (low < high) {
+            const middle = (low + high) >> 1;
+            if (times[middle] <= progress) low = middle + 1;
+            else high = middle;
+        }
+        start = times[low - 1] ?? Number.NEGATIVE_INFINITY;
+        end = times[low] ?? Number.POSITIVE_INFINITY;
+        const active = activeRichLines(lines, progress);
+        state = { active, singing: active.some((index) => progress < richGroupEnd(lines[index])) };
+        return state;
     };
 }
 

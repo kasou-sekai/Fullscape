@@ -4,12 +4,7 @@ import {
 } from "../../../services/lyrics-preference";
 import { traceLyricsBridge } from "../../../services/lyrics-bridge-trace";
 import { LyricsCoordinator } from "../../../services/lyrics-coordinator";
-import {
-    activeRichLines,
-    groupRichLines,
-    richRuby,
-    richGroupEnd,
-} from "../../../services/lyrics-rich-document";
+import { groupRichLines, richRuby } from "../../../services/lyrics-rich-document";
 import {
     animateFeedback,
     frameSmoothing,
@@ -57,6 +52,7 @@ import { escapeHtml } from "../../../utils/escape-html";
 import { renderLyricLineContent } from "./rendering";
 import {
     buildLyricsTimeline,
+    createRichLineLookup,
     findActiveInterlude,
     findActiveLineIndex,
     getInterludeBreatheDuration,
@@ -90,6 +86,14 @@ type KaraokeFuriganaRenderState = {
     releaseDuration: number;
     animation: Animation | null;
 };
+type LyricTransform = {
+    top: number;
+    scale: number;
+    blur: number;
+    opacity: number;
+    delay: number;
+    translate: number;
+};
 type LyricsDiagnostics = {
     total: number;
     timed: number;
@@ -106,6 +110,7 @@ type BridgeLease = {
 
 export class Lyrics {
     private static readonly coordinator = new LyricsCoordinator();
+    private static richLineLookup: ReturnType<typeof createRichLineLookup> | null = null;
     private static richActive = new Set<number>();
     private static lastRichLayoutProgress: number | null = null;
     private static lastRichLayoutClock = 0;
@@ -138,6 +143,7 @@ export class Lyrics {
     private static activeInterlude: LyricInterlude | null = null;
     private static interludeNode: HTMLElement | null = null;
     private static interludeDotNodes: HTMLElement[] = [];
+    private static interludeDotsVisible = false;
     private static karaokeWordsByLine: KaraokeWordRenderState[][] = [];
     private static karaokeFuriganaByLine: KaraokeFuriganaRenderState[][] = [];
     private static lineHeights: number[] = [];
@@ -146,6 +152,8 @@ export class Lyrics {
     private static dictionaryFurigana: Array<FuriganaRenderData | null> = [];
     private static activeIndex = -1;
     private static lineContentNodes: (HTMLElement | null)[] = [];
+    private static lineBackgroundNodes: (HTMLElement | null)[] = [];
+    private static lineOutsideViewport: boolean[] = [];
     private static updateTimer: ReturnType<typeof setTimeout> | null = null;
     private static updateFrame: number | null = null;
     private static playbackClockProgress: number | null = null;
@@ -193,6 +201,9 @@ export class Lyrics {
     private static manualScrollTargetPosition = -1;
     private static manualScrollRenderPosition = -1;
     private static manualScrollFrame: number | null = null;
+    private static manualLayouts = new Map<number, LyricTransform[]>();
+    private static manualLayoutReducedMotion: boolean | null = null;
+    private static manualLayoutFontSize = 0;
     private static lineRightSpaces: number[] = [];
     private static wrappingTemplates = new WeakMap<HTMLElement, string>();
     private static readonly bridgeLeases = new Map<string, BridgeLease>();
@@ -209,6 +220,7 @@ export class Lyrics {
         this.ordinaryCandidate = null;
         this.currentRichEntry = null;
         this.pendingRichEntry = null;
+        this.richLineLookup = null;
         this.richActive.clear();
         DOM.container.classList.remove("lyrics-has-translation");
         this.cancelKaraokeAnimations();
@@ -217,11 +229,14 @@ export class Lyrics {
         this.dictionaryFurigana = [];
         this.lineNodes = [];
         this.lineContentNodes = [];
+        this.lineBackgroundNodes = [];
+        this.lineOutsideViewport = [];
         this.timedLines = [];
         this.interludes = [];
         this.activeInterlude = null;
         this.interludeNode = null;
         this.interludeDotNodes = [];
+        this.interludeDotsVisible = false;
         this.karaokeWordsByLine = [];
         this.karaokeFuriganaByLine = [];
         this.lineHeights = [];
@@ -1262,14 +1277,18 @@ export class Lyrics {
         this.cancelKaraokeAnimations();
         this.resetLyricsInteraction(false);
         this.lines = [];
+        this.richLineLookup = null;
         this.dictionaryFurigana = [];
         this.lineNodes = [];
         this.lineContentNodes = [];
+        this.lineBackgroundNodes = [];
+        this.lineOutsideViewport = [];
         this.timedLines = [];
         this.interludes = [];
         this.activeInterlude = null;
         this.interludeNode = null;
         this.interludeDotNodes = [];
+        this.interludeDotsVisible = false;
         this.karaokeWordsByLine = [];
         this.karaokeFuriganaByLine = [];
         this.lineHeights = [];
@@ -1380,7 +1399,8 @@ export class Lyrics {
     }
 
     private static applyLines(lines: LyricLine[]) {
-        if (!lines.some((line) => line.presentation)) {
+        const rich = lines.some((line) => line.presentation);
+        if (!rich) {
             this.ordinaryCandidate = lines;
             if (this.appleCandidate && this.prefersAppleCandidate()) {
                 this.applyRichEntry(this.appleCandidate);
@@ -1407,9 +1427,11 @@ export class Lyrics {
         this.stopLoop();
         this.isSynced = nextIsSynced;
         this.lines = lines;
-        if (!lines.some((line) => line.presentation)) this.currentRichEntry = null;
+        this.richLineLookup = rich ? createRichLineLookup(lines) : null;
+        if (!rich) this.currentRichEntry = null;
         this.lastRichLayoutProgress = null;
         this.richActive.clear();
+        this.manualLayouts.clear();
         DOM.container.classList.toggle(
             "lyrics-has-translation",
             lines.some(
@@ -1637,7 +1659,12 @@ export class Lyrics {
         this.lineContentNodes = this.lineNodes.map((node) =>
             node.querySelector<HTMLElement>(".rnp-lyrics-line-content"),
         );
+        this.lineBackgroundNodes = this.lineNodes.map((node) =>
+            node.querySelector<HTMLElement>(".rnp-rich-backgrounds"),
+        );
+        this.lineOutsideViewport = this.lineNodes.map(() => false);
         this.interludeNode = this.container.querySelector<HTMLElement>(".rnp-lyrics-interlude");
+        this.interludeDotsVisible = false;
         this.interludeDotNodes = this.interludeNode
             ? Array.from(this.interludeNode.children).filter(
                   (node): node is HTMLElement => node instanceof HTMLElement,
@@ -1815,20 +1842,14 @@ export class Lyrics {
     private static updateActive(progress: number) {
         if (!this.isSynced) return;
         if (!this.container || !this.lines.length) return;
-        const rich = this.lines.some((line) => line.presentation);
-        const candidateActive = rich ? activeRichLines(this.lines, progress) : [];
+        const rich = this.richLineLookup?.(progress);
         // A held line is still visible, but it is no longer singing. Let a real
         // interlude take over; short pauses continue to hold the completed line.
-        const singing = candidateActive.some((index) => progress < richGroupEnd(this.lines[index]));
-        const nextInterlude = singing ? null : findActiveInterlude(this.interludes, progress);
-        const active = nextInterlude ? [] : candidateActive;
+        const nextInterlude = rich?.singing ? null : findActiveInterlude(this.interludes, progress);
+        const active = nextInterlude ? undefined : rich?.active;
         const nextIndex =
-            rich && active.length
-                ? active[0]
-                : nextInterlude
-                  ? -1
-                  : findActiveLineIndex(this.timedLines, progress);
-        const now = performance.now();
+            active?.[0] ?? (nextInterlude ? -1 : findActiveLineIndex(this.timedLines, progress));
+        const now = rich ? performance.now() : 0;
         const jumped =
             rich &&
             this.lastRichLayoutProgress !== null &&
@@ -1844,9 +1865,12 @@ export class Lyrics {
         }
         const activeChanged =
             rich &&
-            (active.length !== this.richActive.size ||
-                active.some((index) => !this.richActive.has(index)));
-        if (rich) this.richActive = new Set(active);
+            ((active?.length ?? 0) !== this.richActive.size ||
+                active?.some((index) => !this.richActive.has(index)));
+        if (activeChanged) {
+            this.richActive = new Set(active);
+            this.manualLayouts.clear();
+        }
         if (this.pendingRichEntry && nextIndex !== this.activeIndex) {
             this.applyRichEntry(this.pendingRichEntry);
             return;
@@ -1879,7 +1903,7 @@ export class Lyrics {
     }
 
     private static updateKaraokeProgress(progress: number) {
-        if (this.lines.some((line) => line.presentation)) {
+        if (this.richLineLookup) {
             this.updateRichKaraoke(progress);
             return;
         }
@@ -1925,38 +1949,35 @@ export class Lyrics {
             const start = this.lines[index]?.time;
             if (start === null || start === undefined) continue;
             const fresh = !this.richAnimations.has(index);
-            if (fresh) this.ensureKaraokePropertiesRegistered();
-            for (const word of this.karaokeWordsByLine[index] ?? []) {
-                if (!word.animation) {
-                    word.animation = word.node.animate(this.buildKaraokeKeyframes(word), {
+            const words = this.karaokeWordsByLine[index] ?? [];
+            if (fresh || jumped || playing !== this.karaokeAnimationsPlaying) {
+                if (fresh) this.ensureKaraokePropertiesRegistered();
+                const lineProgress = Math.max(0, progress - start);
+                for (const word of words) {
+                    word.animation ??= word.node.animate(this.buildKaraokeKeyframes(word), {
                         delay: Math.max(0, word.time - start),
                         duration: word.effectiveDuration + word.releaseDuration,
                         fill: "both",
                         easing: "linear",
                     });
-                }
-                if (fresh || jumped || playing !== this.karaokeAnimationsPlaying) {
                     word.animation.pause();
-                    word.animation.currentTime = Math.max(0, progress - start);
+                    word.animation.currentTime = lineProgress;
                     if (playing) word.animation.play();
                 }
-            }
-            for (const ruby of this.karaokeFuriganaByLine[index] ?? []) {
-                if (!ruby.animation)
-                    ruby.animation = ruby.node.animate(this.buildFuriganaKeyframes(ruby), {
+                for (const ruby of this.karaokeFuriganaByLine[index] ?? []) {
+                    ruby.animation ??= ruby.node.animate(this.buildFuriganaKeyframes(ruby), {
                         delay: Math.max(0, ruby.time - start),
                         duration: ruby.duration + ruby.releaseDuration,
                         fill: "both",
                         easing: "linear",
                     });
-                if (fresh || jumped || playing !== this.karaokeAnimationsPlaying) {
                     ruby.animation.pause();
-                    ruby.animation.currentTime = Math.max(0, progress - start);
+                    ruby.animation.currentTime = lineProgress;
                     if (playing) ruby.animation.play();
                 }
+                this.richAnimations.add(index);
             }
-            this.richAnimations.add(index);
-            this.updateKaraokeWordClasses(this.karaokeWordsByLine[index] ?? [], progress);
+            this.updateKaraokeWordClasses(words, progress);
         }
         this.lastKaraokeProgress = progress;
         this.lastKaraokeClockTime = now;
@@ -1978,6 +1999,8 @@ export class Lyrics {
         if (!this.interludeNode) return;
         const interlude = this.activeInterlude;
         if (!interlude) {
+            if (!this.interludeDotsVisible) return;
+            this.interludeDotsVisible = false;
             this.interludeNode.style.opacity = "0";
             this.interludeNode.style.setProperty("--interlude-scale", "0");
             this.interludeDotNodes.forEach((node) => node.style.setProperty("opacity", "0"));
@@ -2028,7 +2051,10 @@ export class Lyrics {
             dotOpacity((dotsDuration / 3) * 2),
         ];
 
-        this.interludeNode.style.opacity = "1";
+        if (!this.interludeDotsVisible) {
+            this.interludeDotsVisible = true;
+            this.interludeNode.style.opacity = "1";
+        }
         this.interludeNode.style.setProperty("--interlude-scale", `${Math.max(0, scale)}`);
         this.interludeDotNodes.forEach((node, index) => {
             node.style.setProperty(
@@ -2427,14 +2453,14 @@ export class Lyrics {
             const distance = this.manualScrollTargetPosition - this.manualScrollRenderPosition;
             if (Math.abs(distance) < 0.002) {
                 this.manualScrollRenderPosition = this.manualScrollTargetPosition;
-                this.applyTransforms();
+                this.applyTransforms(false, true);
                 return;
             }
             this.manualScrollRenderPosition += prefersReducedMotion()
                 ? distance
                 : distance * frameSmoothing(timestamp - previousTime);
             previousTime = timestamp;
-            this.applyTransforms();
+            this.applyTransforms(false, true);
             this.manualScrollFrame = requestAnimationFrame(render);
         };
         this.manualScrollFrame = requestAnimationFrame(render);
@@ -2452,6 +2478,8 @@ export class Lyrics {
         this.manualScrollActive = false;
         this.manualScrollTargetPosition = -1;
         this.manualScrollRenderPosition = -1;
+        this.manualLayouts.clear();
+        this.manualLayoutReducedMotion = null;
         this.lyricsRoot?.classList.remove("rnp-lyrics-interacting");
         if (apply && this.isSynced) {
             this.applyTransforms(!wasManualScrollActive);
@@ -2459,37 +2487,42 @@ export class Lyrics {
         }
     }
 
-    private static applyTransforms(skipAnimation = false) {
+    private static applyTransforms(skipAnimation = false, scrolling = false) {
         if (!this.isSynced) return;
         if (!this.lyricsRoot || !this.lineNodes.length) return;
-        const lyricsRoot = this.lyricsRoot;
         if (!this.lineHeights.length || this.lineHeights.length !== this.lineNodes.length) {
             this.measureHeights();
         }
-        const rich = this.lines.some((line) => line.presentation);
-        this.lineNodes.forEach((node, idx) => {
-            const active = rich
-                ? this.richActive.has(idx)
-                : this.activeIndex >= 0 && idx === this.activeIndex;
-            node.classList.toggle("active", active);
-            const background = node.querySelector<HTMLElement>(".rnp-rich-backgrounds");
-            if (background) {
-                background.setAttribute("aria-hidden", `${!active}`);
-                background.style.transition = skipAnimation || prefersReducedMotion() ? "none" : "";
+        const rich = this.richLineLookup !== null;
+        const reducedMotion = prefersReducedMotion();
+        const manual = this.manualScrollActive;
+        const emphasizePlayingVoices = rich && !manual;
+        const scrollOnly = scrolling && manual && reducedMotion === this.manualLayoutReducedMotion;
+        let fontSize = this.manualLayoutFontSize;
+        if (!scrollOnly) {
+            fontSize = this.getFontSize();
+            this.lineNodes.forEach((node, idx) => {
+                const active = rich ? this.richActive.has(idx) : idx === this.activeIndex;
+                node.classList.toggle("active", active);
+                const background = this.lineBackgroundNodes[idx];
+                if (background) {
+                    background.setAttribute("aria-hidden", `${!active}`);
+                    background.style.transition = skipAnimation || reducedMotion ? "none" : "";
+                }
+                if (rich)
+                    this.lineHeights[idx] =
+                        (this.baseLineHeights[idx] || this.lineHeights[idx]) +
+                        (active ? this.backgroundHeights[idx] || 0 : 0);
+            });
+            if (Math.abs(fontSize - this.lastMeasuredFontSize) > 0.5) {
+                this.stabilizeLineWrapping();
+                this.measureHeights();
             }
-            if (rich)
-                this.lineHeights[idx] =
-                    (this.baseLineHeights[idx] || this.lineHeights[idx]) +
-                    (active ? this.backgroundHeights[idx] || 0 : 0);
-        });
-
-        const fontSize = this.getFontSize();
-        if (Math.abs(fontSize - this.lastMeasuredFontSize) > 0.5) {
-            this.stabilizeLineWrapping();
-            this.measureHeights();
+            if (fontSize !== this.manualLayoutFontSize) this.manualLayouts.clear();
         }
+        this.manualLayoutReducedMotion = manual && !skipAnimation ? reducedMotion : null;
         const baseGap = this.LINE_GAP_PX;
-        const containerHeight = this.containerHeight || lyricsRoot.clientHeight || 1;
+        const containerHeight = this.containerHeight || 1;
         const centerY = containerHeight * 0.38;
         const baseIndent = Math.max(12, Math.min(36, fontSize * 0.8));
         const interludeHeight = this.INTERLUDE_HEIGHT_PX;
@@ -2497,28 +2530,13 @@ export class Lyrics {
 
         const translateByOffset = (offset: number) => Math.max(0, baseIndent - offset * 6);
         const translateForLine = (index: number, offset: number) => {
-            const rightSpace =
-                this.lineRightSpaces[index] ??
-                Math.max(
-                    0,
-                    lyricsRoot.clientWidth -
-                        this.lineNodes[index].offsetLeft -
-                        this.lineNodes[index].offsetWidth,
-                );
+            const rightSpace = this.lineRightSpaces[index];
             if (this.lines[index]?.presentation?.alignment === "center") return 0;
             if (this.lines[index]?.presentation?.alignment === "right")
                 return translateByOffset(offset);
             return Math.min(translateByOffset(offset), rightSpace);
         };
 
-        type LyricTransform = {
-            top: number;
-            scale: number;
-            blur: number;
-            opacity: number;
-            delay: number;
-            translate: number;
-        };
         const buildTransforms = (layoutActiveIndex: number): LyricTransform[] => {
             const hasActive = layoutActiveIndex >= 0;
             const current = Math.max(
@@ -2529,14 +2547,12 @@ export class Lyrics {
                 null as never,
             );
             const scaleByOffset = (offset: number) => Math.max(0.72, 1 - 0.12 * offset);
-            const blurByOffset = (offset: number) =>
-                this.manualScrollActive ? 0 : Math.min(4.5, offset * 0.9);
+            const blurByOffset = (offset: number) => (manual ? 0 : Math.min(4.5, offset * 0.9));
             const opacityByOffset = (offset: number) =>
-                this.manualScrollActive ? 1 : Math.max(0.32, 1 - Math.max(0, offset - 1) * 0.22);
-            const delayByOffset = (offset: number) =>
-                this.manualScrollActive ? 0 : Math.min(6, offset) * 45;
+                manual ? 1 : Math.max(0.32, 1 - Math.max(0, offset - 1) * 0.22);
+            const delayByOffset = (offset: number) => (manual ? 0 : Math.min(6, offset) * 45);
 
-            if (this.activeInterlude && !this.manualScrollActive) {
+            if (this.activeInterlude && !manual) {
                 const { anchorIndex, nextIndex } = this.activeInterlude;
                 const getVisualHeight = (index: number, scale: number) =>
                     (this.lineHeights[index] || fontSize) * scale;
@@ -2630,7 +2646,7 @@ export class Lyrics {
             };
 
             for (let i = current - 1; i >= 0; i--) {
-                const offset = rich && this.richActive.has(i) ? 0 : current - i;
+                const offset = emphasizePlayingVoices && this.richActive.has(i) ? 0 : current - i;
                 const scale = scaleByOffset(offset);
                 const height = this.lineHeights[i] * scale;
                 transforms[i] = {
@@ -2644,7 +2660,7 @@ export class Lyrics {
             }
 
             for (let i = current + 1; i < this.lineNodes.length; i++) {
-                const offset = rich && this.richActive.has(i) ? 0 : i - current;
+                const offset = emphasizePlayingVoices && this.richActive.has(i) ? 0 : i - current;
                 const scale = scaleByOffset(offset);
                 const height = this.lineHeights[i - 1] * transforms[i - 1].scale;
                 transforms[i] = {
@@ -2659,9 +2675,11 @@ export class Lyrics {
             return transforms;
         };
 
-        let transforms: LyricTransform[];
-        if (!this.manualScrollActive) {
-            transforms = buildTransforms(this.activeIndex);
+        let from: LyricTransform[];
+        let to: LyricTransform[] | undefined;
+        let fraction = 0;
+        if (!manual) {
+            from = buildTransforms(this.activeIndex);
         } else {
             const position = Math.max(
                 0,
@@ -2674,41 +2692,37 @@ export class Lyrics {
             );
             const lowerIndex = Math.floor(position);
             const upperIndex = Math.min(this.lines.length - 1, lowerIndex + 1);
-            const fraction = position - lowerIndex;
-            const from = buildTransforms(lowerIndex);
-            const to = buildTransforms(upperIndex);
-            transforms = from.map((transform, index) => ({
-                top: transform.top + (to[index].top - transform.top) * fraction,
-                scale: transform.scale + (to[index].scale - transform.scale) * fraction,
-                blur: transform.blur + (to[index].blur - transform.blur) * fraction,
-                opacity: transform.opacity + (to[index].opacity - transform.opacity) * fraction,
-                delay: 0,
-                translate:
-                    transform.translate + (to[index].translate - transform.translate) * fraction,
-            }));
+            fraction = position - lowerIndex;
+            // Keep the two layouts bracketing the scroll position, reusing the
+            // shared endpoint when the position crosses into the next line.
+            this.manualLayoutFontSize = fontSize;
+            from = this.manualLayouts.get(lowerIndex) ?? buildTransforms(lowerIndex);
+            to =
+                upperIndex === lowerIndex
+                    ? from
+                    : (this.manualLayouts.get(upperIndex) ?? buildTransforms(upperIndex));
+            this.manualLayouts.clear();
+            this.manualLayouts.set(lowerIndex, from);
+            this.manualLayouts.set(upperIndex, to);
         }
 
+        const lerp = (start: number, end: number) => start + (end - start) * fraction;
         const interlude = this.activeInterlude;
+        let extraGap = 0;
         if (interlude && this.interludeNode) {
             const { anchorIndex, nextIndex } = interlude;
             let interludeTop = centerY - interludeHeight / 2;
-            if (this.manualScrollActive) {
-                const nextTransform = transforms[nextIndex];
-                const anchorTransform = transforms[anchorIndex];
-                if (anchorTransform) {
+            if (to) {
+                const nextTop = lerp(from[nextIndex].top, to[nextIndex].top);
+                if (anchorIndex >= 0) {
+                    const anchorTop = lerp(from[anchorIndex].top, to[anchorIndex].top);
+                    const anchorScale = lerp(from[anchorIndex].scale, to[anchorIndex].scale);
                     const anchorBottom =
-                        anchorTransform.top +
-                        (this.lineHeights[anchorIndex] || fontSize) * anchorTransform.scale;
+                        anchorTop + (this.lineHeights[anchorIndex] || fontSize) * anchorScale;
                     interludeTop = anchorBottom + interludeLineGap;
-                    const extraGap =
-                        interludeTop + interludeHeight + interludeLineGap - nextTransform.top;
-                    if (extraGap > 0) {
-                        for (let index = nextIndex; index < transforms.length; index += 1) {
-                            transforms[index].top += extraGap;
-                        }
-                    }
+                    extraGap = Math.max(0, interludeTop + interludeHeight + interludeLineGap - nextTop);
                 } else {
-                    interludeTop = nextTransform.top - interludeLineGap - interludeHeight;
+                    interludeTop = nextTop - interludeLineGap - interludeHeight;
                 }
             }
 
@@ -2720,41 +2734,50 @@ export class Lyrics {
             this.interludeNode.classList.toggle("rnp-lyrics-center", alignment === "center");
             this.interludeNode.style.setProperty("--interlude-height", `${interludeHeight}px`);
             this.interludeNode.style.transform = `translate3d(${right ? -indent : indent}px, ${interludeTop}px, 0) scale(var(--interlude-scale, 0))`;
-        } else {
-            this.interludeNode?.style.setProperty("opacity", "0");
-            this.interludeNode?.style.setProperty("--interlude-scale", "0");
         }
 
+        const overscan = containerHeight * this.LINE_RENDER_OVERSCAN;
+        const animateTransform = !skipAnimation && !reducedMotion && !manual;
         this.lineNodes.forEach((node, idx) => {
-            const t = transforms[idx];
+            const t = from[idx];
             if (!t) return;
-            const scaledHeight = (this.lineHeights[idx] || fontSize) * t.scale;
-            const overscan = containerHeight * this.LINE_RENDER_OVERSCAN;
+            const end = to?.[idx];
+            const scale = end ? lerp(t.scale, end.scale) : t.scale;
+            let top = end ? lerp(t.top, end.top) : t.top;
+            if (extraGap > 0 && idx >= (interlude?.nextIndex ?? 0)) top += extraGap;
+            const scaledHeight = (this.lineHeights[idx] || fontSize) * scale;
             const outsideViewport =
-                t.top + scaledHeight < -overscan || t.top > containerHeight + overscan;
-            const wasOutsideViewport = node.classList.contains("rnp-lyrics-line-outside");
-            node.classList.toggle("rnp-lyrics-line-outside", outsideViewport);
+                top + scaledHeight < -overscan || top > containerHeight + overscan;
+            const wasOutsideViewport = this.lineOutsideViewport[idx];
+            if (outsideViewport !== wasOutsideViewport) {
+                this.lineOutsideViewport[idx] = outsideViewport;
+                node.classList.toggle("rnp-lyrics-line-outside", outsideViewport);
+            }
+            // Write the position when a line first leaves so pointer hit tests
+            // cannot keep using its last visible rectangle.
+            if (scrollOnly && outsideViewport && wasOutsideViewport) return;
+
+            const translate = end ? lerp(t.translate, end.translate) : t.translate;
+            const right = this.lines[idx]?.presentation?.alignment === "right";
+            const transform = `translate3d(${right ? -translate : translate}px, ${top}px, 0) scale(${scale})`;
+            if (scrollOnly) {
+                node.style.transform = transform;
+                return;
+            }
             const enteredViewport = wasOutsideViewport && !outsideViewport;
-            const duration =
-                skipAnimation ||
-                prefersReducedMotion() ||
-                this.manualScrollActive ||
-                enteredViewport
-                    ? 0
-                    : MOTION.lyric;
+            const duration = animateTransform && !enteredViewport ? MOTION.lyric : 0;
             node.style.setProperty("--lyrics-line-transform-duration", `${duration}ms`);
             node.style.setProperty(
                 "--lyrics-line-transform-delay",
-                `${skipAnimation || prefersReducedMotion() || this.manualScrollActive ? 0 : t.delay}ms`,
+                `${animateTransform ? t.delay : 0}ms`,
             );
             const isHovered = this.lyricsInteractionActive && node === this.hoveredLine;
-            const right = this.lines[idx]?.presentation?.alignment === "right";
             node.style.transformOrigin = right
                 ? "right center"
                 : this.lines[idx]?.presentation?.alignment === "center"
                   ? "center center"
                   : "left center";
-            node.style.transform = `translate3d(${right ? -t.translate : t.translate}px, ${t.top}px, 0) scale(${t.scale})`;
+            node.style.transform = transform;
             node.style.opacity = `${t.opacity}`;
             node.style.filter =
                 t.blur && !this.lyricsInteractionActive ? `blur(${t.blur}px)` : "none";
@@ -2805,15 +2828,16 @@ export class Lyrics {
     private static measureHeights() {
         const lyricsRoot = this.lyricsRoot;
         if (!lyricsRoot) return;
+        this.manualLayouts.clear();
+        this.manualLayoutReducedMotion = null;
         this.lineHeights = this.lineNodes.map(
             (node) => node.offsetHeight || node.scrollHeight || 0,
         );
         this.baseLineHeights = [...this.lineHeights];
-        this.backgroundHeights = this.lineNodes.map(
-            (node) => node.querySelector<HTMLElement>(".rnp-rich-backgrounds")?.scrollHeight ?? 0,
-        );
+        this.backgroundHeights = this.lineBackgroundNodes.map((node) => node?.scrollHeight ?? 0);
+        const clientWidth = lyricsRoot.clientWidth;
         this.lineRightSpaces = this.lineNodes.map((node) =>
-            Math.max(0, lyricsRoot.clientWidth - node.offsetLeft - node.offsetWidth),
+            Math.max(0, clientWidth - node.offsetLeft - node.offsetWidth),
         );
         this.containerHeight = lyricsRoot.clientHeight;
         this.lastMeasuredFontSize = this.getFontSize();

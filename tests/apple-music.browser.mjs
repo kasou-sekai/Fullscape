@@ -244,7 +244,14 @@ test(
  const secondHeightBefore=L.lineHeights[1];
  progress=2500;L.updateActive(progress);L.stopLoop();
  result.manualBackgroundLayout={before:secondHeightBefore,after:L.lineHeights[1],expected:L.baseLineHeights[1]+L.backgroundHeights[1],aria:L.lineNodes[1].querySelector('.rnp-rich-backgrounds').getAttribute('aria-hidden'),position:L.manualScrollRenderPosition};
- L.resetLyricsInteraction(false);
+ const duetScales=()=>L.lineNodes.slice(0,2).map(node=>Math.round(new DOMMatrixReadOnly(node.style.transform).m22*100));
+ result.duetScroll=[0,0.5,1,2,1,0.5,0].map(position=>{
+  L.manualScrollRenderPosition=position;L.applyTransforms(false,true);
+  return duetScales();
+ });
+ result.duetStillHighlighted=L.lineNodes.slice(0,2).every(node=>node.classList.contains('active'));
+ L.resetLyricsInteraction();
+ result.duetPlaybackScales=duetScales();
  const tail={...bg,duration:7000,words:[{time:2200,duration:7000,text:bg.text}],presentation:{...bg.presentation,end:9.2}};
  progress=2500;L.applyLines(Fixture.groupRichLines([main,right,tail,after]));L.stopLoop();
  const tailWord=L.karaokeWordsByLine[0].find(word=>word.node.closest('.rnp-rich-backgrounds'));
@@ -305,6 +312,16 @@ test(
   const dotsX=alignment==='right'?lastDot.right:alignment==='center'?(firstDot.left+lastDot.right)/2:firstDot.left;
   const lineX=alignment==='right'?line.right:alignment==='center'?(line.left+line.right)/2:line.left;
   return {alignment, horizontal:Math.round(dotsX-lineX), vertical:Math.round((dots.top+dots.bottom-row.top-row.bottom)/2)};
+ });
+ L.appleCandidate=null;L.ordinaryCandidate=null;L.currentRichEntry=null;
+ progress=500;L.applyLines(Array.from({length:32},(_,index)=>({time:index*2000,duration:1000,text:'Lyric line '+index})));L.stopLoop();
+ L.manualScrollActive=true;L.manualScrollRenderPosition=0;L.applyTransforms();
+ const scrollSnapshot=()=>L.lineNodes.map(node=>node.classList.contains('rnp-lyrics-line-outside') ? null : node.style.transform);
+ result.manualScroll=[0.25,0.75,1.25,28.75,1.5].map(position=>{
+  L.manualScrollRenderPosition=position;L.applyTransforms(false,true);
+  const scrolled=scrollSnapshot();
+  L.applyTransforms();
+  return {same:JSON.stringify(scrolled)===JSON.stringify(scrollSnapshot()),visible:scrolled.filter(Boolean).length};
  });
  const output=document.createElement('script');output.type='application/json';output.id='results';output.textContent=JSON.stringify(result);document.body.append(output);L.stopLoop();
  }catch(e){const output=document.createElement('script');output.id='results';output.textContent=JSON.stringify({error:String(e),stack:e.stack});document.body.append(output);}})();</script>`;
@@ -392,6 +409,11 @@ test(
             assert.equal(value.manualBackgroundLayout.after, value.manualBackgroundLayout.expected);
             assert.equal(value.manualBackgroundLayout.aria, "false");
             assert.equal(value.manualBackgroundLayout.position, 1);
+            assert.deepEqual(value.duetScroll, [
+                [100, 88], [94, 94], [88, 100], [76, 88], [88, 100], [94, 94], [100, 88],
+            ]);
+            assert.equal(value.duetStillHighlighted, true);
+            assert.deepEqual(value.duetPlaybackScales, [100, 100]);
             assert.deepEqual(value.backgroundTail, {
                 active: [0, 1],
                 opacity: 1,
@@ -416,6 +438,8 @@ test(
                 { alignment: "right", horizontal: 0, vertical: 0 },
                 { alignment: "center", horizontal: 0, vertical: 0 },
             ]);
+            assert.equal(value.manualScroll.length, 5);
+            assert.ok(value.manualScroll.every(({ same, visible }) => same && visible > 0 && visible < 32));
             if (process.env.FULLSCAPE_SPACING_FIXTURE) {
                 assert.equal(value.spacing.length, 2);
                 assert.ok(

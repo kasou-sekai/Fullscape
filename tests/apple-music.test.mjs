@@ -4,7 +4,7 @@ import { build } from "esbuild";
 const { outputFiles } = await build({
     stdin: {
         contents:
-            'export * from "./src/services/lyrics-matching"; export * from "./src/services/lyrics-rich-document";',
+            'export * from "./src/services/lyrics-matching"; export * from "./src/services/lyrics-rich-document"; export { createRichLineLookup } from "./src/ui/components/Lyrics/timeline";',
         resolveDir: process.cwd(),
     },
     bundle: true,
@@ -153,6 +153,21 @@ test("completed voices stay lit until the next start, including seeks into a gap
     const duet = [main, { ...right, presentation: { ...right.presentation, end: 15 } }, next];
     assert.deepEqual(api.activeRichLines(duet, 18000), [0, 1]);
     assert.equal(api.richLineEnd(right), 16000);
+});
+
+test("rich timing lookup reuses a frame range and preserves voice changes on backward seeks", () => {
+    const tail = { ...background, presentation: { ...background.presentation, end: 18 } };
+    const next = { ...right, time: 20000, presentation: { ...right.presentation, end: 22 } };
+    const lines = api.groupRichLines([main, right, tail, next]);
+    const lookup = api.createRichLineLookup(lines);
+    assert.strictEqual(lookup(12000), lookup(12100));
+    for (const progress of [15000, 16000, 17999, 18000, 19999, 20000, 22000, 17000, 9000, 10000]) {
+        const active = api.activeRichLines(lines, progress);
+        assert.deepEqual(lookup(progress), {
+            active,
+            singing: active.some((index) => progress < api.richGroupEnd(lines[index])),
+        });
+    }
 });
 
 test("legacy rich spans retain untimed spaces without changing syllable clocks", () => {
