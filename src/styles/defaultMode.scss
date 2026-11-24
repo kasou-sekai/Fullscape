@@ -1,3 +1,7 @@
+@function reference-size($pixels) {
+    @return calc(1px * $pixels * var(--fullscape-content-scale));
+}
+
 #fullscape-display {
     &,
     &.lyrics-unavailable,
@@ -16,44 +20,6 @@
         --fullscape-title-size: 40px;
         --fullscape-sec-size: 23px;
     }
-    &.vertical-mode.lyrics-active {
-        // show lyrics container in the bottom instead of to the side
-        --lyrics-alignment: center;
-        #fullscape-foreground {
-            width: 100%;
-            height: 50%;
-            margin-top: 20px;
-            #fullscape-art {
-                --fullscape-art-max-width: 350px;
-            }
-        }
-
-        #fad-lyrics-container {
-            right: 0;
-            left: 0;
-            width: 100%;
-            top: 15%;
-            height: auto;
-            .lyrics-wrapper {
-                max-height: 70vh !important;
-            }
-        }
-        &.lyrics-unavailable,
-        &.lyrics-hide-force {
-            --fullscape-foreground-transform: 0%;
-            #fullscape-foreground {
-                width: 100%;
-                height: 100%;
-                #fullscape-art {
-                    --fullscape-art-max-width: 400px;
-                }
-            }
-            #fad-lyrics-container {
-                transform: translateY(24px);
-            }
-        }
-    }
-
     @media (max-width: 1400px) {
         &,
         &.lyrics-unavailable,
@@ -264,5 +230,338 @@
         align-items: center;
         justify-content: center;
         margin: 6px auto 5px;
+    }
+
+    &.proportional-landscape {
+        // Center the 1920 × 1080 reference layout within the full-bleed background.
+        --fullscape-stage-half-width: #{reference-size(960)};
+        --fullscape-stage-height: #{reference-size(1080)};
+        --fullscape-stage-inline-inset: calc((100% - 2 * var(--fullscape-stage-half-width)) / 2);
+        --fullscape-stage-block-inset: calc((100% - var(--fullscape-stage-height)) / 2);
+        --fullscape-reference-cover: 600;
+        --fullscape-reference-details: 580;
+        --fullscape-reference-progress: 537.6;
+        --fullscape-reference-title: 50;
+        --fullscape-reference-title-icon: 35;
+        --fullscape-reference-secondary: 28;
+
+        &:is(.side-view-queue, .lyrics-active:not(.lyrics-unavailable, .lyrics-hide-force)) {
+            --fullscape-reference-cover: 500;
+            --fullscape-reference-details: 480;
+            --fullscape-reference-progress: 480;
+            --fullscape-reference-title: 40;
+            --fullscape-reference-title-icon: 30;
+            --fullscape-reference-secondary: 23;
+        }
+
+        #fullscape-foreground {
+            top: var(--fullscape-stage-block-inset);
+            left: var(--fullscape-stage-inline-inset);
+            width: var(--fullscape-stage-half-width);
+            height: var(--fullscape-stage-height);
+        }
+        #fullscape-art {
+            width: reference-size(var(--fullscape-reference-cover));
+            min-width: 0;
+            max-width: none;
+        }
+        #fullscape-art-image {
+            border-radius: reference-size(8);
+        }
+        #fullscape-details {
+            padding-top: reference-size(30);
+            max-width: reference-size(var(--fullscape-reference-details));
+        }
+        #fullscape-title {
+            font-size: reference-size(var(--fullscape-reference-title));
+        }
+        #fullscape-title svg {
+            width: reference-size(var(--fullscape-reference-title-icon));
+            height: reference-size(var(--fullscape-reference-title-icon));
+        }
+        #playing-icon {
+            width: reference-size(28) !important;
+            height: reference-size(28) !important;
+        }
+        #fullscape-artist,
+        #fullscape-album {
+            font-size: reference-size(var(--fullscape-reference-secondary));
+        }
+        #fullscape-artist svg,
+        #fullscape-album svg {
+            width: calc(1em - #{reference-size(6)});
+            height: calc(1em - #{reference-size(6)});
+            margin-right: reference-size(5);
+        }
+        #fullscape-progress-parent,
+        #fullscape-status {
+            width: reference-size(var(--fullscape-reference-progress));
+            max-width: none;
+        }
+        #fullscape-progress-parent {
+            margin-top: reference-size(12);
+            font-size: calc(1em * var(--fullscape-content-scale));
+        }
+        #fullscape-progress-bar {
+            height: reference-size(10);
+            margin-block: reference-size(10) reference-size(7);
+        }
+        #fullscape-status {
+            margin-top: reference-size(5);
+        }
+        .fullscape-controls-center {
+            gap: reference-size(18);
+            margin-block: reference-size(6) reference-size(5);
+        }
+        #fullscape-back,
+        #fullscape-next {
+            width: reference-size(58);
+            height: reference-size(58);
+        }
+        #fullscape-play {
+            width: reference-size(84);
+            height: reference-size(84);
+        }
+        .apple-music-skip-icon {
+            width: reference-size(44);
+            height: reference-size(44);
+        }
+        .apple-music-play-icon,
+        .apple-music-pause-icon {
+            width: reference-size(68);
+            height: reference-size(68);
+        }
+        #fad-lyrics-container {
+            --lyrics-viewport-top: max(
+                0px,
+                var(--lyrics-container-top, calc(var(--fullscape-stage-block-inset) + #{reference-size(162)}))
+            );
+            right: var(--fullscape-stage-inline-inset);
+            width: var(--fullscape-stage-half-width);
+            height: var(--lyrics-container-height, #{reference-size(720)});
+        }
+        #fullscape-queue-container {
+            inset: calc(var(--fullscape-stage-block-inset) + #{reference-size(183.6)})
+                calc(var(--fullscape-stage-inline-inset) + var(--queue-right-edge, #{reference-size(286)}))
+                calc(var(--fullscape-stage-block-inset) + #{reference-size(129.6)})
+                calc(50% + #{reference-size(24)});
+        }
+        .queue-wall-label {
+            font-size: reference-size(var(--fullscape-reference-title));
+        }
+        .fullscape-lyrics-tools {
+            right: calc(var(--fullscape-stage-inline-inset) + #{reference-size(72)});
+            bottom: calc(var(--fullscape-stage-block-inset) + #{reference-size(43.2)});
+            gap: reference-size(8);
+            button {
+                flex-basis: reference-size(44);
+                width: reference-size(44);
+                height: reference-size(44);
+            }
+            .apple-system-symbol {
+                width: reference-size(28);
+                height: reference-size(28);
+            }
+        }
+
+        &.compact-landscape {
+            --fullscape-stage-half-width: 50%;
+
+            &:is(.side-view-queue, .lyrics-active:not(.lyrics-unavailable, .lyrics-hide-force)) {
+                #fullscape-foreground {
+                    width: var(--fullscape-compact-player-width);
+                }
+                #fad-lyrics-container {
+                    width: calc(100% - var(--fullscape-compact-player-width));
+                    height: clamp(
+                        0px,
+                        max(var(--lyrics-container-height, 0px), 70vh),
+                        calc(100% - var(--lyrics-viewport-top) - max(64px, 8vh))
+                    );
+                }
+                #fullscape-queue-container {
+                    left: calc(var(--fullscape-compact-player-width) + #{reference-size(24)});
+                }
+            }
+
+            .fullscape-lyrics-tools {
+                right: clamp(24px, 4vw, 72px);
+                bottom: clamp(22px, 4vh, 44px);
+            }
+        }
+    }
+
+    &.vertical-mode {
+        --portrait-gutter: clamp(16px, 5vw, 52px);
+
+        #fullscape-foreground {
+            width: 100%;
+            transform: none;
+        }
+        #fullscape-art {
+            width: min(70vw, calc(100vh - 200px), 400px);
+            min-width: 0;
+            max-width: none;
+        }
+        #fullscape-details {
+            width: min(calc(100% - 2 * var(--portrait-gutter)), clamp(220px, 55vw, 420px));
+            max-width: none;
+            padding-top: clamp(10px, 1.8vh, 22px);
+        }
+        #fullscape-title {
+            font-size: clamp(20px, 4.4vw, 36px);
+        }
+        #fullscape-artist,
+        #fullscape-album {
+            font-size: clamp(13px, 2.5vw, 21px);
+        }
+        #fullscape-progress-parent,
+        #fullscape-status {
+            width: 100%;
+        }
+        #fullscape-progress-parent {
+            margin-top: clamp(5px, 1.1vh, 12px);
+        }
+        #fullscape-progress-bar {
+            position: relative;
+            height: 16px;
+            margin: 0;
+            background: transparent;
+            &::before {
+                content: "";
+                position: absolute;
+                inset: 5px 0;
+                border-radius: inherit;
+                background: rgba(var(--main-color), 0.35);
+                pointer-events: none;
+            }
+        }
+        #fullscape-progress-bar-inner {
+            position: relative;
+            height: 6px;
+        }
+        .progress-number {
+            font-size: 12px;
+        }
+        #fullscape-status {
+            margin-top: 2px;
+        }
+        .fullscape-controls-center {
+            gap: clamp(6px, 2.5vw, 16px);
+            margin: 0;
+        }
+        #fullscape-back,
+        #fullscape-next {
+            width: clamp(44px, 6vh, 54px);
+            height: clamp(44px, 6vh, 54px);
+        }
+        #fullscape-play {
+            width: clamp(48px, 8vh, 68px);
+            height: clamp(48px, 8vh, 68px);
+        }
+        .apple-music-control-icon {
+            width: 78%;
+            height: 78%;
+        }
+    }
+
+    &.vertical-mode:is(
+            .side-view-queue,
+            .lyrics-active:not(.lyrics-unavailable, .lyrics-hide-force)
+        ) {
+        // The panel starts after the actual player height, including its controls.
+        body.fullscape-activated & {
+            display: grid;
+            grid-template: auto minmax(0, 1fr) auto / minmax(0, 1fr);
+        }
+
+        #fullscape-foreground {
+            grid-row: 1;
+            height: auto;
+            padding-block: clamp(12px, 4vh, 64px) clamp(12px, 2vh, 28px);
+        }
+        #fullscape-art {
+            width: min(48vw, 29vh, 380px);
+        }
+        #fad-lyrics-container,
+        #fullscape-queue-container {
+            grid-area: 2 / 1;
+            position: relative;
+            inset: auto;
+            justify-self: center;
+            width: min(calc(100% - 2 * var(--portrait-gutter)), 960px);
+            height: auto;
+            min-height: 0;
+            max-height: none;
+        }
+        #fad-lyrics-container {
+            --lyrics-line-inset: 28px;
+            // Keep the lyric glow out of the player and footer while allowing side bleed.
+            clip-path: inset(0 calc(-1 * var(--portrait-gutter)));
+            .lyrics-wrapper,
+            .rnp-lyrics {
+                padding-inline: 0;
+            }
+            .rnp-lyrics {
+                width: calc(100% + var(--lyrics-left-bleed));
+            }
+        }
+        .queue-gallery {
+            margin-block: 0;
+            padding-block: 8px 20px;
+        }
+        .queue-wall-label {
+            font-size: clamp(18px, 4vw, 36px);
+        }
+        .fullscape-lyrics-tools {
+            grid-area: 3 / 1;
+            position: relative;
+            inset: auto;
+            justify-self: end;
+            margin: 8px var(--portrait-gutter) clamp(12px, 2vh, 24px);
+        }
+        #fullscape-upnext-container {
+            grid-area: 3 / 1;
+            position: relative;
+            inset: auto;
+            align-self: start;
+            width: min(320px, calc(100% - 2 * var(--portrait-gutter) - 112px));
+            max-width: none;
+            height: 44px;
+            margin: 8px var(--portrait-gutter) 0;
+            flex-direction: row-reverse;
+            text-align: left;
+        }
+        #fullscape-up-next-cover {
+            width: 44px;
+            height: 44px;
+            border-radius: 6px;
+        }
+        #fullscape-up-next-details {
+            flex: 1;
+            min-width: 0;
+            padding: 4px 0 0 8px;
+            font-size: 10px;
+        }
+        #upNextTitleViewport {
+            padding-top: 3px;
+            font-size: 13px;
+        }
+        @media (max-height: 640px) {
+            #fullscape-foreground {
+                box-sizing: border-box;
+                flex-direction: row;
+                gap: clamp(12px, 4vw, 24px);
+                padding-inline: var(--portrait-gutter);
+            }
+            #fullscape-art {
+                flex: 0 0 auto;
+                width: min(27vw, 20vh, 132px);
+            }
+            #fullscape-details {
+                min-width: 0;
+                padding-top: 0;
+            }
+        }
     }
 }

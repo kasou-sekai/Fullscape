@@ -78,6 +78,11 @@ export class Queue {
         const tiles = Array.from(wall.querySelectorAll<HTMLElement>(".queue-tile"));
         const width = gallery.clientWidth - 16;
         if (!Number.isFinite(width) || width <= 0) return;
+        const queueHeading = wall.querySelector<HTMLElement>(".queue-heading");
+        const measurements = {
+            viewportHeight: gallery.clientHeight || undefined,
+            queueLabelHeight: queueHeading?.offsetHeight || undefined,
+        };
         const applyLayout = (layout: ReturnType<typeof layoutQueue>) => {
             const labels = [
                 [".queue-up-next-label", layout.labels.upNext],
@@ -102,14 +107,16 @@ export class Queue {
             });
             wall.style.height = `${layout.height}px`;
         };
-        let layout = layoutQueue(width, tiles.length);
+        const layout = layoutQueue(width, tiles.length, undefined, measurements);
         applyLayout(layout);
-        const leadCopy = wall.querySelector<HTMLElement>(".queue-tile-lead .queue-lead-copy");
+        if (queueHeading) queueHeading.hidden = layout.columns === 2 && tiles.length === 1;
+        const leadCopy = wall.querySelector<HTMLElement>(".queue-lead-copy");
         const captionHeight = Math.ceil(leadCopy?.scrollHeight || 0);
-        if (captionHeight > 62) {
-            layout = layoutQueue(width, tiles.length, captionHeight);
-            applyLayout(layout);
+        if (captionHeight > 62 || (layout.columns === 2 && captionHeight > 0)) {
+            applyLayout(layoutQueue(width, tiles.length, captionHeight, measurements));
         }
+        // Recalculate the edge reveal when tiles move without a scroll event.
+        if (this.scrollGallery === gallery) this.scrollListener?.();
     }
 
     private static teardownScrollAnimations() {

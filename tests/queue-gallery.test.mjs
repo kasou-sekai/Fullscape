@@ -229,16 +229,21 @@ test("responsive artwork positions follow playback order without mutating Spotif
     DOM.queue.querySelector(".queue-gallery").clientWidth = 576;
     Queue.layoutGallery();
     assert.deepEqual(lanes(), [
-        ["a", "d", "g"],
-        ["b", "e", "h", "j"],
-        ["c", "f", "i", "k"],
+        ["a", "d", "g", "j"],
+        ["e", "h", "k"],
+        ["b", "c", "f", "i"],
     ]);
 
-    DOM.queue.querySelector(".queue-gallery").clientWidth = 416;
+    DOM.queue.querySelector(".queue-gallery").clientWidth = 316;
+    DOM.queue.querySelector(".queue-lead-copy").scrollHeight = 32;
+    const heading = DOM.queue.querySelector(".queue-heading");
+    heading.offsetHeight = 18;
     Queue.layoutGallery();
-    assert.equal(position(byId("c"))[0], 0);
-    assert.ok(position(byId("c"))[1] > position(byId("a"))[1]);
+    assert.equal(position(byId("b"))[0], 0);
     assert.equal(position(byId("d"))[0], position(byId("b"))[0]);
+    assert.equal(position(byId("b"))[1], parseFloat(heading.style.top));
+    assert.equal(position(byId("c"))[1], parseFloat(heading.style.top) + 18 + 8);
+    assert.equal(parseFloat(heading.style.top), position(byId("a"))[1] + 300 + 10 + 32 + 8);
     assert.deepEqual(
         ids(),
         originalOrder.map((track) => track.uid),

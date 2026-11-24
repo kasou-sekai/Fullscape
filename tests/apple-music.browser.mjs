@@ -49,7 +49,13 @@ test(
                     },
                 ],
             });
-            const css = sass.compile("src/styles/base.scss").css;
+            const css = [
+                "src/styles/base.scss",
+                "src/styles/defaultMode.scss",
+                "src/ui/components/Queue/styles.scss",
+            ]
+                .map((path) => sass.compile(path).css)
+                .join("\n");
             const loadEntry = process.env.FULLSCAPE_LOAD_FIXTURE
                 ? JSON.parse(readFileSync(process.env.FULLSCAPE_LOAD_FIXTURE, "utf8")).entry
                 : null;
@@ -132,6 +138,19 @@ test(
  const opening=Number(getComputedStyle(wrapper).opacity);
  for(const animation of transitions)animation.finish();
  const visible=Number(getComputedStyle(wrapper).opacity);
+ const wordFill=originalWords[0].firstElementChild;
+ const wordRange=document.createRange();wordRange.selectNodeContents(wordFill);
+ const inkBounds=wordFill.getBoundingClientRect();
+ const textBounds=wordRange.getBoundingClientRect();
+ const karaokeInk={
+  gradient:getComputedStyle(wordFill).backgroundImage.startsWith('linear-gradient('),
+  left:inkBounds.left<textBounds.left,
+  right:inkBounds.right>textBounds.right,
+  backgroundClip:getComputedStyle(wrapper).clipPath,
+  viewportMaskClip:getComputedStyle(L.lyricsRoot).maskClip,
+  reservedBackgroundHeight:expanded-base,
+  layoutBackgroundHeight:wrapper.offsetHeight,
+ };
  progress=2500; L.updateActive(progress);
  const simultaneous=[...L.richActive];
  const end=L.karaokeWordsByLine[0].filter(word=>!word.node.closest('.rnp-rich-backgrounds')).at(-1).effectiveEnd;
@@ -150,7 +169,7 @@ test(
  const held=[...L.richActive];const heldLit=rightNode.classList.contains('active');
  progress=8000; L.updateActive(progress);
  const following=[...L.richActive];
- const result={before,opening,visible,base,expanded,simultaneous,end,origin,rightAligned,rightInset,held,heldLit,following,hasFrozenRows,frameCount:frames.length,lift:frames[20]['--karaoke-lift'],hidden,collapsed,preservedWordNodes};
+ const result={before,opening,visible,base,expanded,simultaneous,end,origin,rightAligned,rightInset,held,heldLit,following,hasFrozenRows,frameCount:frames.length,lift:frames[20]['--karaoke-lift'],hidden,collapsed,preservedWordNodes,karaokeInk};
  progress=2500;L.updateActive(progress);getComputedStyle(wrapper).opacity;wrapper.getAnimations().forEach(animation=>animation.finish());
  const oldLoad = L.loadSequence;
  const retainedWords = [...L.lineNodes[0].querySelectorAll('.rnp-karaoke-word')];
@@ -323,6 +342,147 @@ test(
   L.applyTransforms();
   return {same:JSON.stringify(scrolled)===JSON.stringify(scrollSnapshot()),visible:scrolled.filter(Boolean).length};
  });
+ const auditStyle=document.createElement('style');
+ auditStyle.textContent='#fad-lyrics-container[data-clipping-audit] :is(.lyrics-wrapper,.rnp-lyrics){height:100%}';
+ document.head.append(auditStyle);
+ L.container.dataset.clippingAudit='';
+ const longRuby='とうきょうとっきょきょかきょく'.repeat(4);
+ const samples=[
+  ['English long word',300,64,{text:'Pneumonoultramicroscopicsilicovolcanoconiosis'}],
+  ['Timed German word',300,64,{text:'Donaudampfschifffahrtsgesellschaftskapitän',timed:true}],
+  ['Chinese without spaces',350,64,{text:'星光仍在夜色深处流动我們終將在遠方重逢'.repeat(3)}],
+  ['Japanese reading',300,64,{text:'東京の空',furigana:'｜東京《'+longRuby+'》の空'}],
+  ['Timed Japanese reading',300,64,{text:'東京の空',furigana:'｜東京《'+longRuby+'》の空',timed:true}],
+  ['Korean',350,42,{text:'새벽이빛나기전에우리는다시만나리라'.repeat(3)}],
+  ['Arabic mixed with numbers',350,42,{text:'يَا لَيْلُ εἶναι ٢٤ שָׁלוֹם Hello '.repeat(3).trim(),timed:true}],
+  ['Hindi and Thai',350,42,{text:'ज़िंदगीकीराहपरनिकलपड़े ท้องฟ้ายามเช้าสดใส'.repeat(2)}],
+  ['Emoji and combining marks',300,42,{text:'👩🏽‍🎤👨‍👩‍👧‍👦🏳️‍🌈café '.repeat(5).trim(),timed:true}],
+  ['Small translation',300,12,{text:'Short line',translation:'Supertankertransportversicherung'.repeat(3)}],
+  ['Maximum size with line breaks',410,99,{text:['Line one','Line two','Line three','Line four','Line five','Line six'].join(String.fromCharCode(10))}],
+  ['Apple backing vocals and translation',430,64,{...main,text:'Hear the night',words:undefined,
+    translation:'聽夜晚的聲音'.repeat(5),
+    backgrounds:[{...bg,text:'あの日の空を覚えていますか'.repeat(3),words:undefined}]}],
+ ];
+ result.clippingAudit=samples.map(([name,width,size,source])=>{
+  L.container.style.width=width+'px';L.container.style.height='460px';
+  L.container.style.setProperty('--lyrics-font-size',size+'px');
+  const {timed,...sample}=source;
+  const row={...sample,time:1000,duration:5000};
+  if(timed)row.words=[{time:1000,duration:5000,text:row.text}];
+  progress=1250;L.applyLines([row,{time:8000,text:'Next'}]);L.stopLoop();
+  L.applyTransforms(true);
+  const line=L.lineNodes[0];
+  for(const animation of line.getAnimations()){
+   if(animation instanceof CSSTransition)animation.finish();
+  }
+  const rowBox=line.getBoundingClientRect();
+  const viewport=L.lyricsRoot.getBoundingClientRect();
+  const fade=viewport.height*0.06;
+  let horizontal=true,rectCount=0,verticalOverflow=0;
+  const range=document.createRange();
+  const walker=document.createTreeWalker(line,NodeFilter.SHOW_TEXT);
+  let text;
+  while(text=walker.nextNode()){
+   if(!text.textContent.trim() || text.parentElement.closest('[hidden]'))continue;
+   range.selectNodeContents(text);
+   for(const rect of range.getClientRects()){
+    if(!rect.width || !rect.height)continue;
+    rectCount++;
+    horizontal&&=rect.left>=rowBox.left-3 && rect.right<=rowBox.right+3;
+    verticalOverflow=Math.max(verticalOverflow,viewport.top+fade-rect.top,rect.bottom-(viewport.bottom-fade));
+   }
+  }
+  return {name,horizontal,vertical:verticalOverflow<=3,verticalOverflow:Math.round(verticalOverflow),rectCount,viewportFits:viewport.height<=461,
+    preserved:line.querySelector('.rnp-lyrics-line-content>div').textContent.replaceAll(longRuby,'')===row.text,
+    timedWordCount:line.querySelectorAll('.rnp-karaoke-word').length};
+ });
+ const shortReading='とうきょうとっきょきょ'.repeat(2);
+ const rubyLyric={text:'東京の空',furigana:'｜東京《'+shortReading+'》の空'};
+ L.container.style.width='300px';
+ L.applyLines([{...rubyLyric,time:null},{text:'별빛'.repeat(80),time:null}]);L.stopLoop();
+ const untimedRoot=L.lyricsRoot;
+ const rubyWrapped=()=>untimedRoot.querySelector('ruby').classList.contains('rnp-furigana-wrapped');
+ const narrowRuby=rubyWrapped();
+ L.container.style.width='950px';L.refreshLayout();
+ const wideRuby=rubyWrapped();
+ L.container.style.width='300px';L.refreshLayout();
+ untimedRoot.scrollTop=untimedRoot.scrollHeight;
+ result.untimedClipping={narrowRuby,wideRuby,wrappedAgain:rubyWrapped(),scrollable:untimedRoot.scrollTop>0,mask:getComputedStyle(untimedRoot).maskImage};
+ const display=document.getElementById('fullscape-display');
+ document.body.classList.add('fullscape-activated');
+ display.classList.add('vertical-mode','lyrics-active');
+ display.style.setProperty('--lyrics-container-top','15px');
+ display.style.setProperty('--lyrics-container-height','100px');
+ display.insertAdjacentHTML('beforeend',\`
+  <div id="fullscape-foreground">
+   <div id="fullscape-art"><div id="fullscape-art-image"></div></div>
+   <div id="fullscape-details">
+    <div id="fullscape-title">Track title</div>
+    <div id="fullscape-progress-parent"><div style="height:29px"></div></div>
+    <div id="fullscape-status"><div class="fullscape-controls fullscape-controls-center">
+     <button id="fullscape-back"></button><button id="fullscape-play"></button><button id="fullscape-next"></button>
+    </div></div>
+   </div>
+  </div>
+  <div id="fullscape-queue-container"></div>
+  <div class="fullscape-lyrics-tools"><button id="fullscape-side-view"></button></div>
+ \`);
+ L.container.style.removeProperty('height');
+ L.container.style.removeProperty('width');
+ L.container.style.setProperty('--lyrics-font-size','99px');
+ progress=1250;L.applyLines([{time:1000,text:'直前の行'},{time:8000,text:'次の行'}]);L.stopLoop();
+ const displayBox=display.getBoundingClientRect();
+ const portraitBox=L.lyricsRoot.getBoundingClientRect();
+ const bounds=id=>display.querySelector(id).getBoundingClientRect();
+ const controlsBox=bounds('#fullscape-status');
+ const toolsBox=bounds('.fullscape-lyrics-tools');
+ const artworkBox=bounds('#fullscape-art');
+ const progressBox=bounds('#fullscape-progress-parent');
+ display.classList.add('side-view-queue');
+ const queueBox=bounds('#fullscape-queue-container');
+ result.portraitViewport={
+  belowControls:portraitBox.top>=controlsBox.bottom,
+  aboveTools:portraitBox.bottom<=toolsBox.top&&toolsBox.bottom<=displayBox.bottom,
+  clipsPanelInk:getComputedStyle(L.container).clipPath!=='none',
+  usesAvailableHeight:portraitBox.height>100,
+  compactArtwork:artworkBox.width<300&&artworkBox.width===artworkBox.height,
+  progressFits:progressBox.width>=artworkBox.width&&progressBox.width<=displayBox.width,
+  sameQueueSlot:queueBox.top===portraitBox.top&&queueBox.bottom===portraitBox.bottom,
+  stableControls:bounds('#fullscape-status').bottom===controlsBox.bottom,
+ };
+ display.classList.remove('vertical-mode','side-view-queue');
+ display.classList.add('proportional-landscape');
+ display.style.removeProperty('--lyrics-container-top');
+ display.style.removeProperty('--lyrics-container-height');
+ L.container.style.setProperty('--lyrics-font-size','42px');
+ result.landscapeReference=[[1920,1080,1],[1440,900,.75],[1280,960,2/3],[2560,1440,4/3]].map(([width,height,scale])=>{
+  Object.assign(display.style,{width:width+'px',height:height+'px'});
+  display.style.setProperty('--fullscape-content-scale',String(scale));
+  return {
+   art:Math.round(bounds('#fullscape-art').width/scale),
+   progress:Math.round(bounds('#fullscape-progress-parent').width/scale),
+   play:Math.round(bounds('#fullscape-play').width/scale),
+   lyrics:Math.round(bounds('#fad-lyrics-container').width/scale),
+   lyricSize:Math.round(parseFloat(getComputedStyle(L.container).fontSize)/scale),
+   centered:Math.abs(bounds('#fullscape-foreground').top-(height-1080*scale)/2)<1,
+  };
+ });
+ display.classList.add('compact-landscape');
+ result.compactLandscape=[[1440,900,5/6,46.8],[1280,960,2/3*1.18,42]].map(([width,height,scale,playerWidth])=>{
+  Object.assign(display.style,{width:width+'px',height:height+'px'});
+  display.style.setProperty('--fullscape-content-scale',String(scale));
+  display.style.setProperty('--fullscape-compact-player-width',playerWidth+'%');
+  const player=bounds('#fullscape-foreground');
+  const lyrics=bounds('#fad-lyrics-container');
+  const queue=bounds('#fullscape-queue-container');
+  return {
+   art:Math.round(bounds('#fullscape-art').width/scale),
+   progress:Math.round(bounds('#fullscape-progress-parent').width/scale),
+   sharedBoundary:Math.abs(lyrics.left-player.right)<1&&queue.left>player.right,
+   usesSpareHeight:lyrics.height>=600,
+   toolsBelow:bounds('.fullscape-lyrics-tools').top>=lyrics.bottom,
+  };
+ });
  const output=document.createElement('script');output.type='application/json';output.id='results';output.textContent=JSON.stringify(result);document.body.append(output);L.stopLoop();
  }catch(e){const output=document.createElement('script');output.id='results';output.textContent=JSON.stringify({error:String(e),stack:e.stack});document.body.append(output);}})();</script>`;
             const path = join(directory, "fixture.html");
@@ -356,6 +516,15 @@ test(
             assert.ok(value.expanded > value.base, JSON.stringify(value));
             assert.ok(value.opening >= 0 && value.opening < 1, JSON.stringify(value));
             assert.equal(value.visible, 1);
+            assert.equal(value.karaokeInk.gradient, true);
+            assert.equal(value.karaokeInk.left, true);
+            assert.equal(value.karaokeInk.right, true);
+            assert.equal(value.karaokeInk.backgroundClip, "inset(-72px)");
+            assert.equal(value.karaokeInk.viewportMaskClip, "no-clip");
+            assert.equal(
+                value.karaokeInk.reservedBackgroundHeight,
+                value.karaokeInk.layoutBackgroundHeight,
+            );
             assert.deepEqual(value.simultaneous, [0, 1]);
             assert.equal(value.end, 6000);
             assert.equal(value.rightAligned, true);
@@ -440,6 +609,53 @@ test(
             ]);
             assert.equal(value.manualScroll.length, 5);
             assert.ok(value.manualScroll.every(({ same, visible }) => same && visible > 0 && visible < 32));
+            const clippedSamples = value.clippingAudit.filter(
+                ({ horizontal, vertical, viewportFits, preserved, rectCount }) =>
+                    !horizontal || !vertical || !viewportFits || !preserved || !rectCount,
+            );
+            assert.deepEqual(clippedSamples, [], JSON.stringify(clippedSamples));
+            assert.equal(
+                value.clippingAudit.find(({ name }) => name === "Timed German word").timedWordCount,
+                1,
+            );
+            assert.deepEqual(value.untimedClipping, {
+                narrowRuby: true,
+                wideRuby: false,
+                wrappedAgain: true,
+                scrollable: true,
+                mask: "none",
+            });
+            assert.deepEqual(value.portraitViewport, {
+                belowControls: true,
+                aboveTools: true,
+                clipsPanelInk: true,
+                usesAvailableHeight: true,
+                compactArtwork: true,
+                progressFits: true,
+                sameQueueSlot: true,
+                stableControls: true,
+            });
+            assert.deepEqual(
+                value.landscapeReference,
+                Array.from({ length: 4 }, () => ({
+                    art: 500,
+                    progress: 480,
+                    play: 84,
+                    lyrics: 960,
+                    lyricSize: 42,
+                    centered: true,
+                })),
+            );
+            assert.deepEqual(
+                value.compactLandscape,
+                Array.from({ length: 2 }, () => ({
+                    art: 500,
+                    progress: 480,
+                    sharedBoundary: true,
+                    usesSpareHeight: true,
+                    toolsBelow: true,
+                })),
+            );
             if (process.env.FULLSCAPE_SPACING_FIXTURE) {
                 assert.equal(value.spacing.length, 2);
                 assert.ok(

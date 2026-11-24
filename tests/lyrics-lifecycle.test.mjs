@@ -226,6 +226,34 @@ test("playback controls and progress stay enabled with legacy settings and re-re
     assert.equal(previousRoot.isConnected, false);
 });
 
+test("uses spare height on narrower landscape displays and restores the 16:9 reference", async () => {
+    const { main, host, window } = createHost(true);
+    const classes = new Map();
+    const css = new Map();
+    host.DOM.container.classList.toggle = (name, active) => classes.set(name, active);
+    host.DOM.container.style.setProperty = (name, value) => css.set(name, value);
+    await main();
+
+    for (const [width, height, compact, scale, playerWidth] of [
+        [1440, 900, true, 5 / 6, 46.8],
+        [1280, 960, true, (2 / 3) * 1.18, 42],
+        [1000, 1000, true, (1000 / 1920) * 1.18, 42],
+        [1920, 1080, false, 1, 50],
+        [2560, 1080, false, 1, 50],
+        [1080, 1920, false, 1, 50],
+    ]) {
+        window.innerWidth = width;
+        window.innerHeight = height;
+        host.callbacks.render();
+
+        assert.equal(classes.get("compact-landscape"), compact);
+        assert.ok(Math.abs(Number(css.get("--fullscape-content-scale")) - scale) < 1e-9);
+        assert.ok(
+            Math.abs(parseFloat(css.get("--fullscape-compact-player-width")) - playerWidth) < 1e-9,
+        );
+    }
+});
+
 for (const playing of [true, false]) {
     test(`disabling lyrics stops the ${playing ? "animation frame" : "paused timer"} before replacing its DOM`, async () => {
         const { main, Lyrics, host, settings, frames, timers } = createHost(playing);

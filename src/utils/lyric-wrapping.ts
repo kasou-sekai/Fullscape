@@ -1,12 +1,33 @@
 type Position = { node: Node; offset: number };
 
+const graphemeSegmenter =
+    typeof Intl.Segmenter === "function"
+        ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+        : null;
+
+export function wrapOversizedLyricReadings(block: HTMLElement) {
+    const rubies = Array.from(block.querySelectorAll<HTMLElement>(".rnp-furigana-ruby"));
+    if (!rubies.length) return false;
+    rubies.forEach((ruby) => ruby.classList.remove("rnp-furigana-wrapped"));
+    const width = block.clientWidth;
+    if (!width) return false;
+    const oversized = rubies.filter((ruby) => ruby.offsetWidth > width + 1);
+    oversized.forEach((ruby) => ruby.classList.add("rnp-furigana-wrapped"));
+    return oversized.length > 0;
+}
+
 // Read the browser's actual line breaks, including its shaping, word-breaking
 // rules and ruby layout. Do not estimate widths from character counts.
 export function freezeMeasuredLyricRows(source: HTMLElement, target: HTMLElement) {
     const range = document.createRange();
     let starts: Position[] = [];
     let baseline: number | null = null;
-    const tolerance = Number.parseFloat(getComputedStyle(source).fontSize) * 0.5;
+    let availableWidth = 0;
+    let wrappedAtom = false;
+    const style = getComputedStyle(source);
+    const tolerance = Number.parseFloat(style.fontSize) * 0.5;
+    const lineHeight = Number.parseFloat(style.lineHeight);
+    const wrappedReading = wrapOversizedLyricReadings(source);
     const record = (position: Position, rect: DOMRect) => {
         if (!rect.width || !rect.height) return;
         if (baseline !== null && rect.bottom > baseline + tolerance) starts.push(position);
@@ -21,16 +42,27 @@ export function freezeMeasuredLyricRows(source: HTMLElement, target: HTMLElement
                 range.selectNode(node);
                 const parent = node.parentNode;
                 if (!parent) return;
+                const rect = range.getBoundingClientRect();
+                // A wide word can wrap internally. Freezing a row around that
+                // word would disable its breaks and push its text past the edge.
+                if (
+                    rect.width > availableWidth + 1 ||
+                    (rect.width >= availableWidth - 1 && node.offsetHeight > lineHeight + 2)
+                ) {
+                    wrappedAtom = true;
+                }
                 record(
                     { node: parent, offset: Array.prototype.indexOf.call(parent.childNodes, node) },
-                    range.getBoundingClientRect(),
+                    rect,
                 );
                 return;
             }
             node.childNodes.forEach(visit);
         } else if (node.nodeType === Node.TEXT_NODE) {
             let offset = 0;
-            for (const character of node.textContent ?? "") {
+            const text = node.textContent ?? "";
+            for (const item of graphemeSegmenter?.segment(text) ?? text) {
+                const character = typeof item === "string" ? item : item.segment;
                 // A preserved trailing space can hang on a third visual row.
                 // It belongs to the preceding fragment, not an empty lyric row.
                 if (/[^\S\n]/u.test(character)) {
@@ -47,10 +79,19 @@ export function freezeMeasuredLyricRows(source: HTMLElement, target: HTMLElement
     const measure = () => {
         starts = [{ node: source, offset: 0 }];
         baseline = null;
+        availableWidth = source.clientWidth;
+        wrappedAtom = false;
         source.childNodes.forEach(visit);
         return starts.length;
     };
     const rowCount = measure();
+    const naturalWrap = wrappedReading || wrappedAtom;
+    target.classList.toggle("rnp-lyrics-natural-wrap", naturalWrap);
+    if (naturalWrap) {
+        range.selectNodeContents(source);
+        target.replaceChildren(range.cloneContents());
+        return;
+    }
     const originalWidth = source.style.width;
     // Chromium does not reliably balance preserved spaces and timed inline
     // boxes. Find the narrowest measured width that keeps the existing row
@@ -67,7 +108,7 @@ export function freezeMeasuredLyricRows(source: HTMLElement, target: HTMLElement
         for (let attempt = 0; attempt < 9 && upper - lower > 1; attempt++) {
             const width = (lower + upper) / 2;
             source.style.width = `${width}px`;
-            if (measure() <= rowCount) upper = width;
+            if (measure() <= rowCount && !wrappedAtom) upper = width;
             else lower = width;
         }
         source.style.width = `${Math.ceil(upper)}px`;

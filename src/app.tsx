@@ -178,7 +178,13 @@ async function startFullscape() {
     }
 
     function updateLyricsBounds() {
-        if (!CFM.get("lyricsDisplay") || !DOM.lyrics?.isConnected) return;
+        if (
+            !CFM.get("lyricsDisplay") ||
+            !DOM.lyrics?.isConnected ||
+            DOM.container.classList.contains("vertical-mode")
+        ) {
+            return;
+        }
         const artwork = DOM.container.querySelector<HTMLElement>("#fullscape-art");
         const controls = DOM.container.querySelector<HTMLElement>("#fullscape-status");
         const progress = DOM.container.querySelector<HTMLElement>("#fullscape-progress-parent");
@@ -243,7 +249,7 @@ async function startFullscape() {
         applyTypography(CFM.get("typography"));
         DOM.container.classList.toggle("lyrics-active", Boolean(CFM.get("lyricsDisplay")));
 
-        updateDisplayOrientation();
+        updateDisplayLayout();
         DOM.container.setAttribute("data-locale", locale);
         DOM.container.classList.remove("lyrics-hide-force");
         DOM.container.style.setProperty(
@@ -258,7 +264,6 @@ async function startFullscape() {
 
         DOM.style.textContent = `
         #fullscape-display {
-            --lyrics-alignment: left;
             --right-margin-lyrics: 0px;
             --icons-display: ${CFM.get("icons") ? "inline-block" : "none"};
        }
@@ -686,15 +691,35 @@ async function startFullscape() {
         });
     }
 
-    function updateDisplayOrientation() {
-        const vertical = window.innerWidth < window.innerHeight;
+    function updateDisplayLayout() {
+        const { innerWidth: width, innerHeight: height } = window;
+        const vertical = width < height;
+        const aspect = width / height;
+        const referenceAspect = 16 / 9;
+        const proportional = !vertical && height > 0 && aspect <= 2;
+        const compact = proportional && aspect < referenceAspect;
+        const compactness = compact
+            ? Math.min(1, (referenceAspect - aspect) / (referenceAspect - 4 / 3))
+            : 0;
+        // Use spare height on narrower displays, with a cap based on available width.
+        const scale = Math.min((width / 1920) * (compact ? 1.18 : 1), height / 1080);
         DOM.container.classList.toggle("vertical-mode", vertical);
+        DOM.container.classList.toggle("proportional-landscape", proportional);
+        DOM.container.classList.toggle("compact-landscape", compact);
+        DOM.container.style.setProperty(
+            "--fullscape-content-scale",
+            String(proportional ? scale : 1),
+        );
+        DOM.container.style.setProperty(
+            "--fullscape-compact-player-width",
+            `${50 - 8 * compactness}%`,
+        );
     }
 
     function applyResize() {
         if (CFM.get("upnextDisplay") !== "never") UpNext.updateUpNext();
         void Background.updateBackground(Spicetify.Player.data.item?.metadata, true);
-        updateDisplayOrientation();
+        updateDisplayLayout();
         updateMetadataOverflow();
         updateLyricsBounds();
     }

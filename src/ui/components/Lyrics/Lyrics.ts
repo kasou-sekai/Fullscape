@@ -47,7 +47,7 @@ import type { LyricsChineseConversion } from "../../../utils/chinese-conversion"
 
 import { detectTextLanguage } from "../../../utils/text-language";
 import { applyTextLanguage, getTextLanguageTag } from "../../../utils/text-presentation";
-import { freezeMeasuredLyricRows } from "../../../utils/lyric-wrapping";
+import { freezeMeasuredLyricRows, wrapOversizedLyricReadings } from "../../../utils/lyric-wrapping";
 import { escapeHtml } from "../../../utils/escape-html";
 import { renderLyricLineContent } from "./rendering";
 import {
@@ -131,6 +131,7 @@ export class Lyrics {
     private static readonly LINE_GAP_PX = 22;
     private static readonly INTERLUDE_HEIGHT_PX = 16;
     private static readonly LINE_RENDER_OVERSCAN = 0.5;
+    private static readonly VIEWPORT_FADE_FRACTION = 0.06;
     private static readonly QQ_MUSIC_RENDER_ADVANCE_MS = 200;
     private static readonly spotifyRequests = new Map<string, Promise<LyricLine[]>>();
     private static readonly enhancedRequests = new Map<string, Promise<LyricLine[]>>();
@@ -204,6 +205,7 @@ export class Lyrics {
     private static manualLayouts = new Map<number, LyricTransform[]>();
     private static manualLayoutReducedMotion: boolean | null = null;
     private static manualLayoutFontSize = 0;
+    private static layoutScale = 1;
     private static lineRightSpaces: number[] = [];
     private static wrappingTemplates = new WeakMap<HTMLElement, string>();
     private static readonly bridgeLeases = new Map<string, BridgeLease>();
@@ -1676,6 +1678,8 @@ export class Lyrics {
         if (!this.isSynced) {
             this.stopLoop();
             this.lineNodes.forEach((node, idx) => node.classList.toggle("active", idx === 0));
+            this.refreshLayout();
+            this.setupResizeObserver();
             return;
         }
         this.stabilizeLineWrapping();
@@ -2521,14 +2525,18 @@ export class Lyrics {
             if (fontSize !== this.manualLayoutFontSize) this.manualLayouts.clear();
         }
         this.manualLayoutReducedMotion = manual && !skipAnimation ? reducedMotion : null;
-        const baseGap = this.LINE_GAP_PX;
+        const baseGap = this.LINE_GAP_PX * this.layoutScale;
         const containerHeight = this.containerHeight || 1;
         const centerY = containerHeight * 0.38;
-        const baseIndent = Math.max(12, Math.min(36, fontSize * 0.8));
-        const interludeHeight = this.INTERLUDE_HEIGHT_PX;
+        const baseIndent = Math.max(
+            12 * this.layoutScale,
+            Math.min(36 * this.layoutScale, fontSize * 0.8),
+        );
+        const interludeHeight = this.INTERLUDE_HEIGHT_PX * this.layoutScale;
         const interludeLineGap = baseGap * 1.5;
 
-        const translateByOffset = (offset: number) => Math.max(0, baseIndent - offset * 6);
+        const translateByOffset = (offset: number) =>
+            Math.max(0, baseIndent - offset * 6 * this.layoutScale);
         const translateForLine = (index: number, offset: number) => {
             const rightSpace = this.lineRightSpaces[index];
             if (this.lines[index]?.presentation?.alignment === "center") return 0;
@@ -2672,6 +2680,11 @@ export class Lyrics {
                     translate: translateForLine(i, offset),
                 };
             }
+            let lastFocused = current;
+            if (emphasizePlayingVoices) {
+                for (const index of this.richActive) lastFocused = Math.max(lastFocused, index);
+            }
+            this.fitFocusedLyrics(transforms, current, lastFocused, containerHeight);
             return transforms;
         };
 
@@ -2745,9 +2758,10 @@ export class Lyrics {
             const scale = end ? lerp(t.scale, end.scale) : t.scale;
             let top = end ? lerp(t.top, end.top) : t.top;
             if (extraGap > 0 && idx >= (interlude?.nextIndex ?? 0)) top += extraGap;
+            const visualTop = top + (this.baseLineHeights[idx] * (1 - scale)) / 2;
             const scaledHeight = (this.lineHeights[idx] || fontSize) * scale;
             const outsideViewport =
-                top + scaledHeight < -overscan || top > containerHeight + overscan;
+                visualTop + scaledHeight < -overscan || visualTop > containerHeight + overscan;
             const wasOutsideViewport = this.lineOutsideViewport[idx];
             if (outsideViewport !== wasOutsideViewport) {
                 this.lineOutsideViewport[idx] = outsideViewport;
@@ -2786,6 +2800,36 @@ export class Lyrics {
                 contentNode.style.scale = isHovered ? "1.02" : "1";
                 contentNode.style.transformOrigin = "center center";
             }
+        });
+    }
+
+    private static fitFocusedLyrics(
+        transforms: LyricTransform[],
+        first: number,
+        last: number,
+        containerHeight: number,
+    ) {
+        if (containerHeight <= 1) return;
+        const fade = containerHeight * this.VIEWPORT_FADE_FRACTION;
+        const inkPadding = Math.min(24 * this.layoutScale, containerHeight * 0.05);
+        const inset = fade + inkPadding;
+        const visualTop = (transform: LyricTransform, index: number) =>
+            transform.top + (this.baseLineHeights[index] * (1 - transform.scale)) / 2;
+        const firstTop = visualTop(transforms[first], first);
+        const lastTransform = transforms[last];
+        const height =
+            visualTop(lastTransform, last) + this.lineHeights[last] * lastTransform.scale - firstTop;
+        const readableHeight = containerHeight - 2 * inset;
+        const fit = height > readableHeight ? readableHeight / height : 1;
+        const top = Math.max(inset, Math.min(firstTop, containerHeight - inset - height * fit));
+        if (top === firstTop && fit === 1) return;
+
+        // Keep the whole focused line or duet in the opaque part of the
+        // viewport. The existing transforms still control entry and exit.
+        transforms.forEach((transform, index) => {
+            const fittedTop = top + (visualTop(transform, index) - firstTop) * fit;
+            transform.scale *= fit;
+            transform.top = fittedTop - (this.baseLineHeights[index] * (1 - transform.scale)) / 2;
         });
     }
 
@@ -2834,17 +2878,26 @@ export class Lyrics {
             (node) => node.offsetHeight || node.scrollHeight || 0,
         );
         this.baseLineHeights = [...this.lineHeights];
-        this.backgroundHeights = this.lineBackgroundNodes.map((node) => node?.scrollHeight ?? 0);
+        // Background vocals reserve their layout height independently of overflowing ink.
+        this.backgroundHeights = this.lineBackgroundNodes.map((node) => node?.offsetHeight ?? 0);
         const clientWidth = lyricsRoot.clientWidth;
         this.lineRightSpaces = this.lineNodes.map((node) =>
             Math.max(0, clientWidth - node.offsetLeft - node.offsetWidth),
         );
         this.containerHeight = lyricsRoot.clientHeight;
+        this.layoutScale =
+            Number(getComputedStyle(lyricsRoot).getPropertyValue("--fullscape-content-scale")) || 1;
         this.lastMeasuredFontSize = this.getFontSize();
     }
 
     static refreshLayout() {
-        if (!this.lyricsRoot || !this.isSynced) return;
+        if (!this.lyricsRoot) return;
+        if (!this.isSynced) {
+            this.lyricsRoot
+                .querySelectorAll<HTMLElement>(".rnp-lyrics-line-content > div:has(.rnp-furigana-ruby)")
+                .forEach(wrapOversizedLyricReadings);
+            return;
+        }
         this.stabilizeLineWrapping();
         this.measureHeights();
         this.applyTransforms(true);

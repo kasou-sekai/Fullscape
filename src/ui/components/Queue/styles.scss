@@ -257,12 +257,6 @@
     #fullscape-art-image.queue-artwork-landing {
         visibility: hidden;
     }
-    &.vertical-mode #fullscape-queue-container {
-        left: 8%;
-        right: 8%;
-        top: 52%;
-        bottom: 90px;
-    }
     @media (max-width: 900px), (max-height: 900px) {
         .queue-wall-label {
             font-size: 35px;

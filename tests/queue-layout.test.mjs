@@ -56,11 +56,36 @@ test("large artwork reads both complete right-hand rows before restarting on the
         assert.deepEqual(readingOrder, [0, 1, 2, 5, 6, 3, 4, 9, 10, 7, 8, 11, 12]);
     }
 });
-test("narrow artwork reads only the fitting right-hand row before restarting on the left", () => {
+test("three columns place two tracks beside the feature before starting staggered lower rows", () => {
     const { tiles, readingOrder } = layoutQueue(560, 10);
-    assert.ok(tiles[1].y + tiles[1].width <= tiles[0].y + tiles[0].width);
-    assert.ok(tiles[3].y + tiles[3].width > tiles[0].y + tiles[0].width);
-    assert.deepEqual(readingOrder, [0, 1, 2, 5, 3, 4, 8, 6, 7, 9]);
+    assert.notEqual(tiles[0].y, tiles[1].y);
+    assert.equal(tiles[1].x, tiles[2].x);
+    assert.ok(tiles[2].y + tiles[2].width <= tiles[0].y + tiles[0].width);
+    assert.equal(tiles[3].x, 0);
+    assert.ok(tiles[4].y >= tiles[0].y + tiles[0].width + 10 + 62);
+    assert.notEqual(tiles[5].y, tiles[3].y);
+    assert.deepEqual(readingOrder, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+});
+test("the feature spans two cells and their gap at every supported column count", () => {
+    for (const width of [220, 319, 320, 420, 599, 600, 1100]) {
+        const { tiles } = layoutQueue(width, 8);
+        const gap = width < 600 ? 14 : 18;
+        assert.ok(Math.abs(tiles[0].width - (2 * tiles[1].width + gap)) < 0.001);
+    }
+});
+test("the narrow heading lines up with the left card and leaves eight pixels above the right", () => {
+    for (const captionHeight of [34, 110]) {
+        const { tiles, labels, columns } = layoutQueue(308, 6, captionHeight, {
+            viewportHeight: 261,
+            queueLabelHeight: 18,
+        });
+        assert.equal(columns, 2);
+        assert.equal(tiles[0].width, 191);
+        assert.equal(labels.queue.y, tiles[0].y + tiles[0].width + 10 + captionHeight + 8);
+        assert.equal(tiles[1].y, labels.queue.y);
+        assert.equal(tiles[2].y, labels.queue.y + 18 + 8);
+        assert.equal(tiles[2].x, labels.queue.x);
+    }
 });
 test("reading order includes every tile exactly once at responsive widths", () => {
     for (const width of [220, 320, 419, 420, 559, 600, 740, 1100]) {
