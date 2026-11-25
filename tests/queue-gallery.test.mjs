@@ -118,7 +118,7 @@ class Node {
         return this.anim;
     }
 }
-let notifications, reduced;
+let notifications, reduced, onQueueResize;
 const entry = (id) => ({
     uid: id,
     uri: id,
@@ -139,6 +139,12 @@ beforeEach(() => {
         createElement: (tag) => Object.assign(new Node(), { tag }),
     };
     globalThis.window = { matchMedia: () => ({ matches: reduced }) };
+    globalThis.ResizeObserver = class {
+        constructor(callback) { onQueueResize = callback; }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+    };
     globalThis.getComputedStyle = () => ({ backgroundImage: "url(old.png)" });
     Spicetify.showNotification = (text) => notifications.push(text);
     Spicetify.Player.data.item.uri = "old";
@@ -267,8 +273,10 @@ test("queue updates retain unchanged card nodes instead of reloading every cover
     assert.equal(updated[1], retained[0]);
     assert.equal(updated[2], retained[1]);
 });
-test("the next card is promoted in place so it can animate to the featured slot", () => {
+test("the next card is promoted in place and stops scrolling its caption", () => {
     const promoted = DOM.queue.querySelectorAll(".queue-tile")[1];
+    let captionCancelled = false;
+    Queue.tileOverflowAnimations.set(promoted, [{ cancel: () => { captionCancelled = true; } }]);
     QueueAdapter.read = () => ({
         next: [entry("b"), entry("c")],
         later: [],
@@ -277,12 +285,13 @@ test("the next card is promoted in place so it can animate to the featured slot"
     const tiles = DOM.queue.querySelectorAll(".queue-tile");
     assert.equal(tiles[0], promoted);
     assert.equal(tiles[0].classList.contains("queue-tile-lead"), true);
+    assert.equal(captionCancelled, true);
     assert.equal(
         tiles[0].querySelector(".queue-lead-copy").parent,
         tiles[0].querySelector(".queue-motion-layer"),
     );
 });
-test("hover scrolls only clipped queue text immediately and resets it on leave", () => {
+test("hover scrolls only clipped queue text and updates its reach when the queue resizes", () => {
     const tile = DOM.queue.querySelectorAll(".queue-tile")[1];
     const titleViewport = tile.querySelector(".queue-track-title-viewport");
     const artistViewport = tile.querySelector(".queue-track-artist-viewport");
@@ -291,11 +300,18 @@ test("hover scrolls only clipped queue text immediately and resets it on leave",
     titleViewport.firstElementChild = title;
     artistViewport.firstElementChild = artist;
     titleViewport.clientWidth = artistViewport.clientWidth = 100;
+    titleViewport.scrollWidth = 220;
+    artistViewport.scrollWidth = 100;
     title.scrollWidth = 220;
     artist.scrollWidth = 80;
     title.style.removeProperty = artist.style.removeProperty = () => {};
     let hovered = true;
     tile.matches = () => hovered;
+    const queryAll = DOM.queue.querySelectorAll.bind(DOM.queue);
+    DOM.queue.querySelectorAll = (selector) => {
+        if (selector !== ".queue-tile:is(:hover, :focus-visible)") return queryAll(selector);
+        return hovered ? [tile] : [];
+    };
     let animation, calls = 0, cancels = 0;
     title.animate = (frames, options) => {
         calls++;
@@ -319,19 +335,29 @@ test("hover scrolls only clipped queue text immediately and resets it on leave",
         assert.equal(animation.currentTime, 3000);
         assert.equal(animation.options.iterations, Infinity);
         assert.equal(animation.frames[2].transform, "translateX(-125px)");
+
+        DOM.queue.querySelector(".queue-gallery").clientWidth = 500;
+        titleViewport.clientWidth = 80;
+        titleViewport.scrollWidth = 228;
+        onQueueResize();
+        assert.equal(cancels, 1);
+        frames.shift()();
+        assert.equal(calls, 2);
+        assert.equal(animation.frames[2].transform, "translateX(-153px)");
+
         hovered = false;
         tile.onpointerleave();
-        assert.equal(cancels, 1);
-        title.scrollWidth = 100;
+        assert.equal(cancels, 2);
+        titleViewport.scrollWidth = title.scrollWidth = 80;
         hovered = true;
         tile.onpointerenter();
         frames.shift()();
-        assert.equal(calls, 1, "a title that fits must stay still");
-        title.scrollWidth = 220;
+        assert.equal(calls, 2, "a title that fits must stay still");
+        titleViewport.scrollWidth = title.scrollWidth = 220;
         tile.onpointerenter();
         hovered = false;
         frames.shift()();
-        assert.equal(calls, 1, "leaving before measurement must not start scrolling");
+        assert.equal(calls, 2, "leaving before measurement must not start scrolling");
     } finally {
         if (originalFrame) globalThis.requestAnimationFrame = originalFrame;
         else delete globalThis.requestAnimationFrame;

@@ -155,7 +155,8 @@ async function startFullscape() {
 
             const measurements = targets.map((target) => ({
                 ...target,
-                overflow: Math.ceil(target.track.scrollWidth - target.viewport.clientWidth),
+                // The viewport's scrollable width includes the padding around the text.
+                overflow: target.viewport.scrollWidth - target.viewport.clientWidth,
             }));
             const maxOverflow = Math.max(0, ...measurements.map(({ overflow }) => overflow));
             if (maxOverflow <= 1 || window.matchMedia("(prefers-reduced-motion: reduce)").matches)

@@ -15,8 +15,6 @@ const appModules = {
     "./constants": "export default {}; export const CLASSES_TO_ADD = [];",
     "./utils/motion": "export const initializeMotionTokens = () => {}; export const animateFeedback = () => {}; export const cancelFeedback = () => {}; export const prefersReducedMotion = () => true; export const MOTION = {};",
     "./utils/selectors": "export default { getExtraBarSelector: () => globalThis.host.extraBar ?? null };",
-    "./utils/overflow-scroll":
-        "export const createOverflowScrollAnimation = () => {}; export const getOverflowScrollTiming = () => {};",
     "./services/html-creator": 'export const getHtmlContent = () => "markup";',
     "./services/mousetrap-record": "export const initMoustrapRecord = () => {};",
     "./services/lyrics-bridge": "export const startSharedBridgePresence = () => {};",
@@ -151,6 +149,7 @@ function createHost(playing) {
         document: {
             body: new Element(),
             documentElement: new Element(),
+            timeline: { currentTime: 0 },
             querySelector: () => null,
             createElement: () => new Element(),
             getElementById: (id) => host.extraBar?.appended?.find((node) => node.id === id) ?? null,
@@ -161,7 +160,13 @@ function createHost(playing) {
             constructor(callback) { host.observers.push(callback); }
             observe() {}
         },
-        window: { innerWidth: 1200, innerHeight: 800, addEventListener: noop, removeEventListener: noop },
+        window: {
+            innerWidth: 1200,
+            innerHeight: 800,
+            addEventListener: noop,
+            removeEventListener: noop,
+            matchMedia: () => ({ matches: false }),
+        },
         Spicetify: {
             CosmosAsync: { get: async () => null },
             Mousetrap: { bind: (key, handler) => shortcuts.set(key, handler), unbind: (key) => shortcuts.delete(key) },
@@ -252,6 +257,38 @@ test("uses spare height on narrower landscape displays and restores the 16:9 ref
             Math.abs(parseFloat(css.get("--fullscape-compact-player-width")) - playerWidth) < 1e-9,
         );
     }
+});
+
+test("the now-playing title scrolls far enough to show its end inside the padded viewport", async () => {
+    const { main, host, settings, body, frames, timers } = createHost(true);
+    settings.lyricsDisplay = false;
+    body.classList.contains = (name) => name === "fullscape-activated";
+    await main();
+    await host.callbacks.activate();
+
+    const viewport = host.DOM.container.querySelector("#fullscape-title-text-viewport");
+    const track = host.DOM.title;
+    viewport.clientWidth = 300;
+    viewport.scrollWidth = 430;
+    track.scrollWidth = 400;
+    const secondaryViewport = host.DOM.container.querySelector("#fullscape-secondary-meta");
+    secondaryViewport.clientWidth = 300;
+    secondaryViewport.scrollWidth = 300;
+    host.DOM.container.querySelector("#fullscape-secondary-meta-track").scrollWidth = 200;
+    let endTransform;
+    track.animate = (keyframes) => {
+        endTransform = keyframes[2].transform;
+        return { cancel() {} };
+    };
+
+    [...timers.values()].find(({ delay }) => delay === 200).callback();
+    while (frames.size) {
+        const [id, callback] = frames.entries().next().value;
+        frames.delete(id);
+        callback();
+    }
+
+    assert.equal(endTransform, "translateX(-135px)");
 });
 
 for (const playing of [true, false]) {

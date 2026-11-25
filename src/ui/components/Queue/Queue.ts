@@ -204,7 +204,7 @@ export class Queue {
         container.setAttribute("aria-label", "Queue");
         this.update(true);
         if (typeof ResizeObserver !== "undefined") {
-            this.layoutObserver = new ResizeObserver(() => this.layoutGallery());
+            this.layoutObserver = new ResizeObserver(() => this.refreshLayout());
             this.layoutObserver.observe(container);
             if (DOM.cover) this.layoutObserver.observe(DOM.cover);
             this.observedGallery = container.querySelector<HTMLElement>(".queue-gallery");
@@ -540,8 +540,10 @@ export class Queue {
         const copy = tile.querySelector<HTMLElement>(".queue-lead-copy, .queue-artwork-copy");
         if (!motion || !artwork || !copy) return;
         copy.className = isUpNext ? "queue-lead-copy" : "queue-artwork-copy";
-        if (isUpNext) motion.append(artwork, copy);
-        else {
+        if (isUpNext) {
+            this.cancelTileOverflow(tile);
+            motion.append(artwork, copy);
+        } else {
             artwork.append(copy);
             motion.append(artwork);
         }
@@ -567,7 +569,7 @@ export class Queue {
                 .map((viewport) => {
                     const track = viewport.firstElementChild as HTMLElement | null;
                     return track
-                        ? { track, overflow: Math.ceil(track.scrollWidth - viewport.clientWidth) }
+                        ? { track, overflow: viewport.scrollWidth - viewport.clientWidth }
                         : null;
                 })
                 .filter((value): value is { track: HTMLElement; overflow: number } =>
